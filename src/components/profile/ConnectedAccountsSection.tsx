@@ -174,7 +174,7 @@ export default function ConnectedAccountsSection() {
   };
 
   return (
-    <div className="mt-6 bg-white rounded-lg border shadow-sm">
+    <div className="bg-white rounded-lg border shadow-sm">
       {/* Header */}
       <div className="px-6 py-4 border-b">
         <div className="flex items-center gap-3">

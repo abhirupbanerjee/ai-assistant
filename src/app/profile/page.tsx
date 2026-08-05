@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2, Download } from 'lucide-react';
+import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2, Download, Plug, type LucideIcon } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import ConnectedAccountsSection from '@/components/profile/ConnectedAccountsSection';
@@ -22,6 +22,14 @@ interface MemoryData {
   totalFacts: number;
 }
 
+type ProfileTab = 'memory' | 'backup' | 'accounts';
+
+const PROFILE_TABS: { id: ProfileTab; label: string; icon: LucideIcon }[] = [
+  { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'backup', label: 'Backup', icon: Download },
+  { id: 'accounts', label: 'Connected Accounts', icon: Plug },
+];
+
 export default function ProfilePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -34,6 +42,27 @@ export default function ProfilePage() {
   const [exportingHistory, setExportingHistory] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [deletingFact, setDeletingFact] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ProfileTab>('memory');
+
+  // Deep-linking: /profile?tab=backup selects a tab directly. Also auto-open
+  // Connected Accounts when returning from an OAuth connect round-trip so the
+  // success/error notice rendered by ConnectedAccountsSection is visible.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'memory' || tab === 'backup' || tab === 'accounts') {
+      setActiveTab(tab);
+      return;
+    }
+    if (
+      params.has('google_connected') ||
+      params.has('google_error') ||
+      params.has('ms_connected') ||
+      params.has('ms_error')
+    ) {
+      setActiveTab('accounts');
+    }
+  }, []);
 
   const loadMemory = useCallback(async () => {
     try {
@@ -171,7 +200,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -191,7 +220,7 @@ export default function ProfilePage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-2 text-red-800">
@@ -201,152 +230,187 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Memory Section */}
-        <div className="bg-white rounded-lg border shadow-sm">
-          <div className="px-6 py-4 border-b">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Brain className="text-blue-600" size={24} />
-                <div>
-                  <h2 className="font-semibold text-gray-900">Memory</h2>
-                  <p className="text-sm text-gray-500">
-                    Facts the assistant remembers about you ({totalFacts} total)
-                  </p>
-                </div>
-              </div>
-              {totalFacts > 0 && (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setClearCategoryId('all');
-                    setShowClearConfirm(true);
-                  }}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 size={16} className="mr-2" />
-                  Clear All
-                </Button>
-              )}
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Sidebar Tabs */}
+          <nav className="md:w-60 shrink-0" aria-label="Profile sections">
+            <div className="bg-white rounded-lg border shadow-sm p-2 flex md:flex-col gap-1 overflow-x-auto">
+              {PROFILE_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors whitespace-nowrap md:w-full text-left ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Icon size={16} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </nav>
 
-          <div className="p-6">
-            {!memoryData || memoryData.memories.length === 0 ? (
-              <div className="text-center py-8">
-                <Brain className="mx-auto h-12 w-12 text-gray-300" />
-                <h3 className="mt-4 text-sm font-medium text-gray-900">No memories yet</h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  As you chat, the assistant will learn and remember facts about you.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {memoryData.memories.map((memory) => (
-                  <div key={memory.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h3 className="font-medium text-gray-900">
-                          {getCategoryDisplayName(memory)}
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          Last updated: {new Date(memory.updatedAt).toLocaleDateString()}
+          {/* Tab Content */}
+          <div className="flex-1 min-w-0">
+            {activeTab === 'memory' && (
+              <>
+                {/* Memory Section */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Brain className="text-blue-600" size={24} />
+                        <div>
+                          <h2 className="font-semibold text-gray-900">Memory</h2>
+                          <p className="text-sm text-gray-500">
+                            Facts the assistant remembers about you ({totalFacts} total)
+                          </p>
+                        </div>
+                      </div>
+                      {totalFacts > 0 && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setClearCategoryId('all');
+                            setShowClearConfirm(true);
+                          }}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 size={16} className="mr-2" />
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-6">
+                    {!memoryData || memoryData.memories.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Brain className="mx-auto h-12 w-12 text-gray-300" />
+                        <h3 className="mt-4 text-sm font-medium text-gray-900">No memories yet</h3>
+                        <p className="mt-2 text-sm text-gray-500">
+                          As you chat, the assistant will learn and remember facts about you.
                         </p>
                       </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setClearCategoryId(memory.categoryId);
-                          setShowClearConfirm(true);
-                        }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 size={14} className="mr-1" />
-                        Clear
-                      </Button>
-                    </div>
-                    <ul className="space-y-2">
-                      {memory.facts.map((fact, index) => (
-                        <li
-                          key={index}
-                          className="flex items-start justify-between gap-2 text-sm text-gray-700 group"
-                        >
-                          <div className="flex items-start gap-2 min-w-0">
-                            <span className="text-blue-500 mt-1 shrink-0">•</span>
-                            <span className="break-words">{fact}</span>
+                    ) : (
+                      <div className="space-y-6">
+                        {memoryData.memories.map((memory) => (
+                          <div key={memory.id} className="border rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <h3 className="font-medium text-gray-900">
+                                  {getCategoryDisplayName(memory)}
+                                </h3>
+                                <p className="text-xs text-gray-500">
+                                  Last updated: {new Date(memory.updatedAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setClearCategoryId(memory.categoryId);
+                                  setShowClearConfirm(true);
+                                }}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 size={14} className="mr-1" />
+                                Clear
+                              </Button>
+                            </div>
+                            <ul className="space-y-2">
+                              {memory.facts.map((fact, index) => (
+                                <li
+                                  key={index}
+                                  className="flex items-start justify-between gap-2 text-sm text-gray-700 group"
+                                >
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <span className="text-blue-500 mt-1 shrink-0">•</span>
+                                    <span className="break-words">{fact}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeleteFact(memory.categoryId, fact)}
+                                    disabled={deletingFact === fact}
+                                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all shrink-0 disabled:opacity-50"
+                                    title="Delete this fact"
+                                  >
+                                    {deletingFact === fact ? (
+                                      <Loader2 className="animate-spin" size={14} />
+                                    ) : (
+                                      <X size={14} />
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
-                          <button
-                            onClick={() => handleDeleteFact(memory.categoryId, fact)}
-                            disabled={deletingFact === fact}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all shrink-0 disabled:opacity-50"
-                            title="Delete this fact"
-                          >
-                            {deletingFact === fact ? (
-                              <Loader2 className="animate-spin" size={14} />
-                            ) : (
-                              <X size={14} />
-                            )}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
+                </div>
+
+                {/* Info Section */}
+                <div className="mt-6 bg-blue-50 border border-blue-100 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 mb-2">How Memory Works</h3>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• The assistant extracts key facts from your conversations</li>
+                    <li>• Memory helps provide more personalized and relevant responses</li>
+                    <li>• You can clear your memory at any time from this page</li>
+                    <li>• Memory is stored per category to keep context relevant</li>
+                  </ul>
+                </div>
+              </>
+            )}
+
+            {activeTab === 'backup' && (
+              /* Backup Section */
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="px-6 py-4 border-b">
+                  <div className="flex items-center gap-3">
+                    <Download className="text-blue-600" size={24} />
+                    <div>
+                      <h2 className="font-semibold text-gray-900">Backup</h2>
+                      <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="px-6 py-4">
+                  {exportError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800 text-sm">
+                      <AlertTriangle size={16} />
+                      <span>{exportError}</span>
+                    </div>
+                  )}
+                  <Button
+                    variant="secondary"
+                    onClick={handleExportHistory}
+                    disabled={exportingHistory}
+                  >
+                    {exportingHistory ? (
+                      <>
+                        <Loader2 className="animate-spin mr-2" size={16} />
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download size={16} className="mr-2" />
+                        Download Chat History
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Backup Section */}
-        <div className="mt-6 bg-white rounded-lg border shadow-sm">
-          <div className="px-6 py-4 border-b">
-            <div className="flex items-center gap-3">
-              <Download className="text-blue-600" size={24} />
-              <div>
-                <h2 className="font-semibold text-gray-900">Backup</h2>
-                <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
-              </div>
-            </div>
+            {activeTab === 'accounts' && <ConnectedAccountsSection />}
           </div>
-          <div className="px-6 py-4">
-            {exportError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800 text-sm">
-                <AlertTriangle size={16} />
-                <span>{exportError}</span>
-              </div>
-            )}
-            <Button
-              variant="secondary"
-              onClick={handleExportHistory}
-              disabled={exportingHistory}
-            >
-              {exportingHistory ? (
-                <>
-                  <Loader2 className="animate-spin mr-2" size={16} />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <Download size={16} className="mr-2" />
-                  Download Chat History
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* Connected Accounts (Drive Connectors — §8 Task 8) */}
-        <ConnectedAccountsSection />
-
-        {/* Info Section */}
-        <div className="mt-6 bg-blue-50 border border-blue-100 rounded-lg p-4">
-          <h3 className="font-medium text-blue-900 mb-2">How Memory Works</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• The assistant extracts key facts from your conversations</li>
-            <li>• Memory helps provide more personalized and relevant responses</li>
-            <li>• You can clear your memory at any time from this page</li>
-            <li>• Memory is stored per category to keep context relevant</li>
-          </ul>
         </div>
       </main>
 

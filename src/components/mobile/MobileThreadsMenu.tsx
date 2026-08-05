@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
+  Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
   Download, Home
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -324,8 +324,8 @@ export default function MobileThreadsMenu({
           )}
           {session?.user && (
             <Link href="/profile" onClick={closeThreadsMenu} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
-              <Brain size={16} />
-              Your Memory
+              <User size={16} />
+              Profile
             </Link>
           )}
           {session?.user && (

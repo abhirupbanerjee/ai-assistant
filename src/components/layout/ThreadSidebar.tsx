@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
+  Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
   PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -739,8 +739,8 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
               href="/profile"
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <Brain size={16} />
-              Your Memory
+              <User size={16} />
+              Profile
             </Link>
           )}
           {session?.user && (
