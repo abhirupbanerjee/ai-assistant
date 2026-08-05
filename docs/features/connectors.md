@@ -55,6 +55,7 @@ User connects account (OAuth) → Token stored encrypted →
 | **GitHub** | GitHub OAuth App | Never (revoke only) | Repos, Issues, PRs, Code Search (12 tools) | 8091 |
 | **Notion** | Notion OAuth | Never (revoke only) | Pages, Databases, Search, Users (7 tools) | 8092 |
 | **Slack** | Slack OAuth | Never (revoke only) | Messages, Channels, Users (5 tools) | 8093 |
+| **GitBook** | GitBook OAuth 2.0 | 1 hour (refreshable) | Spaces, Pages, Search, Comments, Users (8 tools) | 8094 |
 
 ---
 
@@ -85,6 +86,7 @@ flowchart TD
         GitHub["github-connector :8091"]
         Notion["notion-connector :8092"]
         Slack["slack-connector :8093"]
+        GitBook["gitbook-connector :8094"]
     end
 
     Profile -->|"Connect"| OAuth
@@ -144,6 +146,7 @@ All connectors request **minimal read-oriented scopes**:
 | GitHub | `repo`, `read:org`, `workflow`, `user:email` | Read/write repos, read orgs |
 | Notion | Read content, read comments, read user info | Read-only |
 | Slack | `channels:read`, `channels:history`, `search:read`, `users:read` | Read-only |
+| GitBook | `read:spaces`, `read:content`, `read:comments` | Read-only |
 | Google Drive | `drive.file`, `spreadsheets`, `documents`, `presentations` | App-created files + shared |
 | OneDrive | `Files.Read`, `Files.ReadWrite`, `Sites.Read.All` | Read/write user files |
 
@@ -201,6 +204,7 @@ For each connector you want to enable, register an OAuth application:
 | GitHub | https://github.com/settings/developers | `{NEXTAUTH_URL}/api/connectors/github/callback` |
 | Notion | https://www.notion.so/my-integrations | `{NEXTAUTH_URL}/api/connectors/notion/callback` |
 | Slack | https://api.slack.com/apps | `{NEXTAUTH_URL}/api/connectors/slack/callback` |
+| GitBook | https://app.gitbook.com/account/developer | `{NEXTAUTH_URL}/api/connectors/gitbook/callback` |
 | Google | https://console.cloud.google.com/apis/credentials | `{NEXTAUTH_URL}/api/connectors/google/callback` |
 | Microsoft | Azure Portal → App registrations | `{NEXTAUTH_URL}/api/connectors/microsoft/callback` |
 
@@ -318,6 +322,7 @@ Since each user connects their own account, rate limits are **per-user** (not sh
 | GitHub | 5,000 req/hour (authenticated) | Per user token |
 | Notion | 3 req/second | Per integration |
 | Slack | Tiered by workspace plan | Per workspace |
+| GitBook | 100 req/minute | Per OAuth app |
 | Google Drive | 12,000 req/minute (per user) | Per user token |
 | Microsoft Graph | 10,000 req/minute | Per app + user |
 

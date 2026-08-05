@@ -1,5 +1,9 @@
 /**
- * Token vault — fetches per-user Slack OAuth tokens from the AI-assistant app.
+ * Token vault — fetches per-user GitBook OAuth tokens from the AI-assistant app.
+ *
+ * Copied from services/_connector-template/src/vault.ts
+ * VaultProvider extended with 'gitbook'.
+ * GitBook tokens expire after 1 hour — uses expiry-based caching.
  */
 
 import { createHmac } from 'crypto';
@@ -7,7 +11,7 @@ import { getJson, HttpError } from './http';
 import { AppConfig } from './config';
 import { logger } from './logger';
 
-export type VaultProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'slack' | 'gitbook';
+export type VaultProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'gitbook';
 
 export interface VaultToken {
   accessToken: string;
@@ -27,7 +31,8 @@ interface CachedVaultToken extends VaultToken {
 const tokenCache = new Map<string, CachedVaultToken>();
 
 const EXPIRY_SAFETY_MS = 60_000;
-const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24h for non-expiring Slack tokens
+// GitBook tokens expire after 1 hour. Cache with 60s safety margin.
+const DEFAULT_TTL_MS = 50 * 60 * 1000;
 const NEGATIVE_CACHE_MS = 30_000;
 const negativeCache = new Map<string, number>();
 
@@ -68,7 +73,7 @@ export async function getUserToken(
 
   let data: unknown;
   try {
-    data = await getJson(url, headers, cfg.slackTimeoutMs);
+    data = await getJson(url, headers, cfg.gitbookTimeoutMs);
   } catch (err) {
     if (err instanceof HttpError) {
       if (err.status === 404) {
@@ -106,7 +111,7 @@ export async function getUserToken(
     const parsed = Date.parse(resp.tokenExpiry);
     expiresAt = Number.isNaN(parsed) ? now + DEFAULT_TTL_MS : parsed;
   } else {
-    // Slack tokens never expire — use a very long cache TTL.
+    // GitBook tokens should have an expiry; fall back to 50 min if missing.
     expiresAt = now + DEFAULT_TTL_MS;
   }
 

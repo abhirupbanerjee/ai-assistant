@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   HardDrive,
   Github,
+  BookOpen,
   AlertTriangle,
   Loader2,
   CheckCircle2,
@@ -34,7 +35,7 @@ interface ConnectedAccountStatus {
   updatedAt?: string;
 }
 
-type ProviderKey = 'google' | 'microsoft' | 'github';
+type ProviderKey = 'google' | 'microsoft' | 'github' | 'gitbook';
 
 interface ProviderConfig {
   key: ProviderKey;
@@ -75,12 +76,22 @@ const FALLBACK_PROVIDERS: ProviderConfig[] = [
     icon: 'Github',
     accentColor: 'text-purple-600',
   },
+  {
+    key: 'gitbook',
+    label: 'GitBook',
+    description: 'Access GitBook spaces, pages, and reader comments',
+    startPath: '/api/connectors/gitbook/start',
+    disconnectPath: '/api/connectors/gitbook/disconnect',
+    icon: 'BookOpen',
+    accentColor: 'text-indigo-600',
+  },
 ];
 
 /** Map icon string names to lucide-react components. */
 const ICON_MAP: Record<string, typeof HardDrive> = {
   HardDrive,
   Github,
+  BookOpen,
 };
 
 /** Format scope URIs into human-readable labels. */
@@ -107,16 +118,19 @@ export default function ConnectedAccountsSection() {
     google: null,
     microsoft: null,
     github: null,
+    gitbook: null,
   });
   const [loading, setLoading] = useState<Record<ProviderKey, boolean>>({
     google: true,
     microsoft: true,
     github: true,
+    gitbook: true,
   });
   const [disconnecting, setDisconnecting] = useState<Record<ProviderKey, boolean>>({
     google: false,
     microsoft: false,
     github: false,
+    gitbook: false,
   });
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 

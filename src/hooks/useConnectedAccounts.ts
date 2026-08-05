@@ -39,6 +39,12 @@ export interface ConnectedAccountsStatus {
     revoked: boolean;
     scopes?: string;
   };
+  gitbook: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
 }
 
 export function useConnectedAccounts() {

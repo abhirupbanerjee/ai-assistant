@@ -28,7 +28,7 @@ import { getJson, HttpError } from './http';
 import { AppConfig } from './config';
 import { logger } from './logger';
 
-export type VaultProvider = 'google' | 'microsoft';
+export type VaultProvider = 'google' | 'microsoft' | 'gitbook';
 
 /** A successfully retrieved per-user token. */
 export interface VaultToken {

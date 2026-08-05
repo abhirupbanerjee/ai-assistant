@@ -42,6 +42,12 @@ export interface ConnectedAccountsResponse {
     revoked: boolean;
     scopes?: string;
   };
+  gitbook: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
 }
 
 export async function GET() {
@@ -68,6 +74,7 @@ export async function GET() {
   const github = accounts.find((a) => a.provider === 'github');
   const notion = accounts.find((a) => a.provider === 'notion');
   const slack = accounts.find((a) => a.provider === 'slack');
+  const gitbook = accounts.find((a) => a.provider === 'gitbook');
 
   const response: ConnectedAccountsResponse = {
     google: {
@@ -99,6 +106,12 @@ export async function GET() {
       displayName: slack?.displayName,
       revoked: slack?.revoked ?? false,
       scopes: slack?.scopes,
+    },
+    gitbook: {
+      connected: !!gitbook && !gitbook.revoked,
+      displayName: gitbook?.displayName,
+      revoked: gitbook?.revoked ?? false,
+      scopes: gitbook?.scopes,
     },
   };
 

@@ -268,6 +268,27 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
+  # GitBook Connector — microservice for GitBook API access (spaces, pages, search, comments)
+  # Requires GITBOOK_CONNECTOR_BEARER_TOKEN set and profile 'gitbook' enabled.
+  gitbook-connector:
+    profiles:
+      - gitbook
+    build:
+      context: ./services/gitbook-connector
+      dockerfile: Dockerfile
+    container_name: policy-bot-gitbook-connector
+    environment:
+      - PORT=8094
+      - CONNECTOR_BEARER_TOKEN=${GITBOOK_CONNECTOR_BEARER_TOKEN}
+      - CONNECTOR_HMAC_SECRET=${CONNECTOR_HMAC_SECRET}
+      - APP_BASE_URL=${NEXTAUTH_URL}
+      - GITBOOK_TIMEOUT_MS=30000
+      - CORS_ORIGINS=*
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
 networks:
   policy-bot-network:
     name: policy-bot-network

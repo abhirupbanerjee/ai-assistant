@@ -10,7 +10,7 @@ import { getJson, HttpError } from './http';
 import { AppConfig } from './config';
 import { logger } from './logger';
 
-export type VaultProvider = 'google' | 'microsoft' | 'github';
+export type VaultProvider = 'google' | 'microsoft' | 'github' | 'gitbook';
 
 export interface VaultToken {
   accessToken: string;

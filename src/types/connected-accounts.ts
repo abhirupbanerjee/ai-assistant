@@ -6,7 +6,7 @@
  * or Microsoft OneDrive accounts.
  */
 
-export type ConnectedAccountProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'slack';
+export type ConnectedAccountProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'slack' | 'gitbook';
 
 export interface ConnectedAccount {
   id: string;
