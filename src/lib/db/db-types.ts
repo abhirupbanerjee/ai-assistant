@@ -537,7 +537,7 @@ export interface FunctionApiCategoriesTable {
 
 export interface UserConnectedAccountsTable {
   id: string;
-  provider: Generated<'google' | 'microsoft' | 'github' | 'notion' | 'slack'>;
+  provider: Generated<'google' | 'microsoft' | 'github' | 'notion' | 'slack' | 'gitbook'>;
   user_email: string;
   display_name: string | null;
   access_token: string | null;
