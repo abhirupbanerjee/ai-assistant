@@ -1048,7 +1048,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS user_connected_accounts (
       id              TEXT PRIMARY KEY,
-      provider        TEXT NOT NULL CHECK (provider IN ('google', 'microsoft')),
+      provider        TEXT NOT NULL CHECK (provider IN ('google', 'microsoft', 'github', 'notion', 'slack')),
       user_email      TEXT NOT NULL,
       display_name    TEXT,
       access_token    TEXT,
@@ -1061,6 +1061,12 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       updated_at      TIMESTAMPTZ DEFAULT NOW()
     )
   `.execute(database);
+  // Drop and recreate the provider CHECK constraint to include new connectors
+  // (github, notion, slack). Runs on every connection for existing databases;
+  // CREATE TABLE above already has the full list for fresh installs.
+  await sql`ALTER TABLE user_connected_accounts DROP CONSTRAINT IF EXISTS user_connected_accounts_provider_check`.execute(database);
+  await sql`ALTER TABLE user_connected_accounts ADD CONSTRAINT user_connected_accounts_provider_check CHECK (provider IN ('google', 'microsoft', 'github', 'notion', 'slack'))`.execute(database);
+
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_connected_accounts_unique ON user_connected_accounts(user_email, provider)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_user_connected_accounts_user ON user_connected_accounts(user_email)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_user_connected_accounts_provider ON user_connected_accounts(provider)`.execute(database);
