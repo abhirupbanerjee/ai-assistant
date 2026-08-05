@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Folder, Check, Loader2, AlertCircle, Plus, ChevronDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Folder, Check, Loader2, AlertCircle, Plus, ChevronDown, ExternalLink } from 'lucide-react';
 import { useConnectedAccounts } from '@/hooks/useConnectedAccounts';
 
 const LAST_FOLDER_KEY = 'drive:lastFolder';
@@ -97,6 +98,38 @@ function saveLastFolder(choice: LastFolderChoice) {
   }
 }
 
+/** Popover width in px (Tailwind w-72 = 18rem). */
+const POPOVER_WIDTH = 288;
+/** Estimated popover height used for flip-up decisions (title + list + footer). */
+const POPOVER_EST_HEIGHT = 340;
+/** Minimum gap between popover and viewport edges. */
+const VIEWPORT_MARGIN = 8;
+
+interface PopoverPosition {
+  left: number;
+  top: number;
+  flipUp: boolean;
+}
+
+/**
+ * Compute the fixed-position coordinates for the popover from the button's
+ * bounding rect. Right-aligns to the button, flips above the button when
+ * there isn't enough room below, and clamps to the viewport horizontally.
+ */
+function computePopoverPosition(rect: DOMRect): PopoverPosition {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const left = Math.min(
+    Math.max(rect.right - POPOVER_WIDTH, VIEWPORT_MARGIN),
+    Math.max(vw - POPOVER_WIDTH - VIEWPORT_MARGIN, VIEWPORT_MARGIN)
+  );
+  const spaceBelow = vh - rect.bottom;
+  const spaceAbove = rect.top;
+  const flipUp = spaceBelow < POPOVER_EST_HEIGHT && spaceAbove > spaceBelow;
+  const top = flipUp ? rect.top - 6 : rect.bottom + 6;
+  return { left, top, flipUp };
+}
+
 export default function SaveToDriveButton({
   outputId,
   context = 'thread',
@@ -119,6 +152,9 @@ export default function SaveToDriveButton({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [webViewLink, setWebViewLink] = useState<string | null>(null);
+  const [foldersError, setFoldersError] = useState<string | null>(null);
+  const [popoverPos, setPopoverPos] = useState<PopoverPosition | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -126,6 +162,9 @@ export default function SaveToDriveButton({
     setChoice(loadLastFolder());
   }, []);
 
+  // Click-outside closes the popover. Works with the portal because
+  // popoverRef points at the portaled DOM node (DOM contains() is
+  // portal-agnostic).
   useEffect(() => {
     function onClickOutside(event: MouseEvent) {
       if (
@@ -141,16 +180,54 @@ export default function SaveToDriveButton({
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [open]);
 
+  // Position the portaled popover from the button rect, and keep it glued to
+  // the button while any ancestor scrolls or the window resizes.
+  useEffect(() => {
+    if (!open) {
+      setPopoverPos(null);
+      return;
+    }
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const rect = buttonRef.current?.getBoundingClientRect();
+        if (rect) setPopoverPos(computePopoverPosition(rect));
+      });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
+
   const loadFolders = useCallback(async () => {
     if (foldersLoaded || foldersLoading) return;
     setFoldersLoading(true);
+    setFoldersError(null);
     try {
       const res = await fetch('/api/drive/folders', { credentials: 'same-origin' });
-      if (!res.ok) throw new Error(`Failed to load folders: ${res.status}`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+        console.warn('[SaveToDrive] folder list failed', { status: res.status, code: body.code ?? null });
+        setFoldersError(
+          body.code === 'RECONNECT_REQUIRED' || body.code === 'INSUFFICIENT_SCOPE'
+            ? "Couldn't load folders — please reconnect your Google account in Settings."
+            : body.error || "Couldn't load folders. Please try again."
+        );
+        setFolders([]);
+        return; // foldersLoaded stays false → next popover open retries
+      }
       const data = (await res.json()) as { folders: DriveFolder[] };
       setFolders(data.folders || []);
       setFoldersLoaded(true);
     } catch (err) {
+      console.warn('[SaveToDrive] folder list fetch error', err);
+      setFoldersError("Couldn't load folders. Please try again.");
       setFolders([]);
     } finally {
       setFoldersLoading(false);
@@ -164,6 +241,7 @@ export default function SaveToDriveButton({
         loadFolders();
         setError(null);
         setSaved(false);
+        setWebViewLink(null);
       }
       return next;
     });
@@ -233,8 +311,15 @@ export default function SaveToDriveButton({
 
       saveLastFolder(choice);
       setSaved(true);
+      setWebViewLink(data.webViewLink ?? null);
       if (data.webViewLink) {
-        window.open(data.webViewLink, '_blank');
+        const win = window.open(data.webViewLink, '_blank');
+        if (!win) {
+          // Popup blocked — the user-gesture context can expire across the
+          // async upload (Safari is strict about this). The inline "Open in
+          // Drive" link rendered below is the reliable fallback.
+          console.warn('[SaveToDrive] popup blocked by browser — inline link shown');
+        }
       }
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -286,10 +371,18 @@ export default function SaveToDriveButton({
         <ChevronDown size={14} className="text-gray-400" />
       </button>
 
-      {open && (
+      {open && popoverPos && typeof document !== 'undefined' && createPortal(
         <div
           ref={popoverRef}
-          className="absolute right-0 top-full z-20 mt-2 w-72 rounded-lg border border-gray-200 bg-white shadow-lg p-3"
+          style={{
+            position: 'fixed',
+            left: popoverPos.left,
+            top: popoverPos.top,
+            width: POPOVER_WIDTH,
+            maxWidth: 'calc(100vw - 16px)',
+            transform: popoverPos.flipUp ? 'translateY(-100%)' : undefined,
+          }}
+          className="z-[1000] rounded-lg border border-gray-200 bg-white shadow-lg p-3"
         >
           <div className="text-sm font-medium text-gray-800 mb-2">Save to Google Drive</div>
           <div className="text-xs text-gray-500 mb-3">Folder: {selectedLabel}</div>
@@ -316,7 +409,14 @@ export default function SaveToDriveButton({
               </div>
             )}
 
-            {!foldersLoading && folders.length === 0 && foldersLoaded && (
+            {foldersError && (
+              <div className="flex items-start gap-1.5 px-2 py-1.5 text-xs text-red-600">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{foldersError}</span>
+              </div>
+            )}
+
+            {!foldersError && !foldersLoading && folders.length === 0 && foldersLoaded && (
               <div className="px-2 py-1.5 text-xs text-gray-400">No app-created folders yet.</div>
             )}
 
@@ -399,7 +499,20 @@ export default function SaveToDriveButton({
             {saving && <Loader2 size={16} className="animate-spin" />}
             {saving ? 'Saving…' : 'Save now'}
           </button>
-        </div>
+
+          {webViewLink && (
+            <a
+              href={webViewLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              <ExternalLink size={12} />
+              Open in Drive
+            </a>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );
