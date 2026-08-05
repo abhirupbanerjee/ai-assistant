@@ -4,7 +4,10 @@
 // that 404 on the new server → ChunkLoadError → ChatWindow ErrorBoundary.
 // v9 added BRANDING_UPDATED eviction for manifest + bot-icon caches.
 // v10 removes stale slash-command Create list from + menu cache.
-const CACHE_VERSION = 'v10';
+// v11 evicts the pre-Save-to-Drive bundle: the 2026-08-05 deploy added the
+// SaveToDriveButton + connected-accounts hook, but clients kept running the
+// old app-shell JS from the v10 caches so the button never rendered.
+const CACHE_VERSION = 'v11';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
