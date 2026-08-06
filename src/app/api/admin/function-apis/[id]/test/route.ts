@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { buildConnectorIdentityHeaders } from '@/lib/connector-identity';
 import {
   getFunctionAPIConfig,
   updateFunctionAPITestStatus,
@@ -89,7 +90,10 @@ export async function POST(
     let sampleResponse: unknown = null;
 
     try {
-      const headers = buildAuthHeaders(config);
+      const headers = {
+        ...buildAuthHeaders(config),
+        ...buildConnectorIdentityHeaders(user.email),
+      };
       const timeout = AbortSignal.timeout(config.timeoutSeconds * 1000);
 
       // ── Step 1: Connectivity check ─────────────────────────────────────────
