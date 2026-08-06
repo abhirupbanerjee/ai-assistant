@@ -7,7 +7,12 @@
 // v11 evicts the pre-Save-to-Drive bundle: the 2026-08-05 deploy added the
 // SaveToDriveButton + connected-accounts hook, but clients kept running the
 // old app-shell JS from the v10 caches so the button never rendered.
-const CACHE_VERSION = 'v11';
+// v12 evicts the pre-Artifact-Canvas bundle: the 2026-08-06 deploy added
+// react-resizable-panels, ArtifactCanvas, viewer components, and the new
+// three-panel layout. Without this bump, returning clients would run the
+// old app-shell JS that lacks the canvas components, causing missing-module
+// errors and a broken chat layout.
+const CACHE_VERSION = 'v12';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
