@@ -14,7 +14,7 @@ import {
   PanelRightClose,
   PanelRightOpen
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, MessageVisualization, ArtifactCanvasItem, DiagramHint } from '@/types';
 import { useResizableSidebar } from '@/hooks/useResizableSidebar';
 import ResizeHandle from '@/components/ui/ResizeHandle';
 import PodcastPlayer from './PodcastPlayer';
@@ -48,9 +48,65 @@ interface ArtifactsPanelProps {
   generatedImages: GeneratedImageInfo[];
   generatedPodcasts: PodcastHint[];
   urlSources: UrlSource[];
+  generatedDiagrams?: DiagramHint[];
+  visualizations?: MessageVisualization[];
+  messageId?: string;
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
+  onArtifactClick?: (item: ArtifactCanvasItem) => void;
   hidden?: boolean; // For mobile: hide when input is focused
+}
+
+function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
+  return {
+    artifactId: doc.id,
+    artifactType: doc.fileType as ArtifactCanvasItem['artifactType'],
+    title: doc.filename,
+    downloadUrl: doc.downloadUrl,
+  };
+}
+
+function buildImageCanvasItem(img: GeneratedImageInfo): ArtifactCanvasItem {
+  return {
+    artifactId: img.id,
+    artifactType: 'image',
+    title: img.alt || 'Generated image',
+    downloadUrl: img.url,
+  };
+}
+
+function buildPodcastCanvasItem(podcast: PodcastHint): ArtifactCanvasItem {
+  return {
+    artifactId: podcast.id,
+    artifactType: 'podcast',
+    title: podcast.filename,
+    downloadUrl: podcast.downloadUrl,
+  };
+}
+
+function buildDiagramCanvasItem(diagram: DiagramHint): ArtifactCanvasItem {
+  return {
+    artifactId: `diagram-${diagram.title || Date.now()}`,
+    artifactType: 'diagram',
+    title: diagram.title || 'Diagram',
+    downloadUrl: '',
+    mermaidCode: diagram.code,
+  };
+}
+
+function buildChartCanvasItem(
+  viz: MessageVisualization,
+  messageId: string,
+  index: number
+): ArtifactCanvasItem {
+  return {
+    artifactId: `chart-${messageId}-${index}`,
+    artifactType: 'chart',
+    title: viz.title || `Chart ${index + 1}`,
+    downloadUrl: '',
+    chartData: viz.data,
+    chartType: viz.chartType,
+  };
 }
 
 interface SectionState {
@@ -61,6 +117,74 @@ interface SectionState {
 }
 
 // Helper to get file icon based on extension
+interface ArtifactRowProps {
+  icon: React.ReactNode;
+  label: string;
+  title?: string;
+  badge: { show: boolean; text: string; variant: 'expired' | 'warning' | 'none' };
+  isExpired: boolean;
+  onClick?: () => void;
+  downloadUrl?: string;
+}
+
+function ArtifactRow({ icon, label, title, badge, isExpired, onClick, downloadUrl }: ArtifactRowProps) {
+  const baseClasses = `flex items-center gap-2 p-1.5 rounded group w-full text-left ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`;
+
+  if (isExpired || (!onClick && !downloadUrl)) {
+    return (
+      <div className={baseClasses} title={title}>
+        {icon}
+        <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+          {label}
+        </span>
+        {badge.show && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+            badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+          }`}>
+            {badge.text}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (onClick) {
+    return (
+      <button onClick={onClick} className={baseClasses} title={title}>
+        {icon}
+        <span className="text-xs truncate flex-1 text-gray-700">{label}</span>
+        {badge.show && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+            badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+          }`}>
+            {badge.text}
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={downloadUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={baseClasses}
+      title={title}
+    >
+      {icon}
+      <span className="text-xs truncate flex-1 text-gray-700">{label}</span>
+      {badge.show && (
+        <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+          badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+        }`}>
+          {badge.text}
+        </span>
+      )}
+    </a>
+  );
+}
+
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase();
   if (ext === 'pdf') return <FileText size={14} className="text-red-500" />;
@@ -76,8 +200,12 @@ export default function ArtifactsPanel({
   generatedImages,
   generatedPodcasts,
   urlSources,
+  generatedDiagrams = [],
+  visualizations = [],
+  messageId = '',
   onRemoveUpload,
   onRemoveUrlSource,
+  onArtifactClick,
   hidden = false,
 }: ArtifactsPanelProps) {
   // Resizable sidebar hook - handles width and collapsed state
@@ -115,7 +243,7 @@ export default function ArtifactsPanel({
   const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
 
   // Count totals (use filtered fileUploads to avoid double-counting)
-  const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length;
+  const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length + generatedDiagrams.length + visualizations.length;
   const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
   const toggleSection = (section: keyof SectionState) => {
@@ -217,59 +345,46 @@ export default function ArtifactsPanel({
                     {generatedDocs.map((doc) => {
                       const badge = getExpirationBadge(doc.expiresAt);
                       const isExpired = badge.variant === 'expired';
+                      const item = buildDocCanvasItem(doc);
                       return (
-                        <a
+                        <ArtifactRow
                           key={doc.id}
-                          href={isExpired ? undefined : doc.downloadUrl}
-                          target={isExpired ? undefined : '_blank'}
-                          rel={isExpired ? undefined : 'noopener noreferrer'}
-                          className={`flex items-center gap-2 p-1.5 rounded group ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-                          onClick={isExpired ? (e) => e.preventDefault() : undefined}
-                        >
-                          <FileText size={14} className="text-purple-500 flex-shrink-0" />
-                          <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`} title={doc.filename}>
-                            {doc.filename}
-                          </span>
-                          {badge.show && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
-                              badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {badge.text}
-                            </span>
-                          )}
-                        </a>
+                          icon={<FileText size={14} className="text-purple-500 flex-shrink-0" />}
+                          label={doc.filename}
+                          title={doc.filename}
+                          badge={badge}
+                          isExpired={isExpired}
+                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                          downloadUrl={isExpired ? undefined : doc.downloadUrl}
+                        />
                       );
                     })}
                     {generatedImages.map((img) => {
                       const badge = getExpirationBadge(img.expiresAt);
                       const isExpired = badge.variant === 'expired';
+                      const item = buildImageCanvasItem(img);
                       return (
-                        <a
+                        <ArtifactRow
                           key={img.id}
-                          href={isExpired ? undefined : img.url}
-                          target={isExpired ? undefined : '_blank'}
-                          rel={isExpired ? undefined : 'noopener noreferrer'}
-                          className={`flex items-center gap-2 p-1.5 rounded group ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-                          onClick={isExpired ? (e) => e.preventDefault() : undefined}
-                        >
-                          <ImageIcon size={14} className="text-purple-500 flex-shrink-0" />
-                          <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`} title={img.alt}>
-                            {img.alt || 'Generated image'}
-                          </span>
-                          {badge.show && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
-                              badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {badge.text}
-                            </span>
-                          )}
-                        </a>
+                          icon={<ImageIcon size={14} className="text-purple-500 flex-shrink-0" />}
+                          label={img.alt || 'Generated image'}
+                          title={img.alt}
+                          badge={badge}
+                          isExpired={isExpired}
+                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                          downloadUrl={isExpired ? undefined : img.url}
+                        />
                       );
                     })}
                     {generatedPodcasts.map((podcast) => {
                       const badge = getExpirationBadge(podcast.expiresAt);
+                      const item = buildPodcastCanvasItem(podcast);
                       return (
-                        <div key={podcast.id} className="flex items-center gap-2">
+                        <button
+                          key={podcast.id}
+                          onClick={() => onArtifactClick?.(item)}
+                          className="w-full flex items-center gap-2"
+                        >
                           <div className="flex-1 min-w-0">
                             <PodcastPlayer podcast={podcast} compact />
                           </div>
@@ -280,7 +395,35 @@ export default function ArtifactsPanel({
                               {badge.text}
                             </span>
                           )}
-                        </div>
+                        </button>
+                      );
+                    })}
+                    {generatedDiagrams.map((diagram, idx) => {
+                      const item = buildDiagramCanvasItem(diagram);
+                      return (
+                        <ArtifactRow
+                          key={`diagram-${idx}`}
+                          icon={<FileText size={14} className="text-purple-500 flex-shrink-0" />}
+                          label={diagram.title || 'Diagram'}
+                          title={diagram.title}
+                          badge={{ show: false, text: '', variant: 'none' }}
+                          isExpired={false}
+                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                        />
+                      );
+                    })}
+                    {visualizations.map((viz, idx) => {
+                      const item = buildChartCanvasItem(viz, messageId, idx);
+                      return (
+                        <ArtifactRow
+                          key={`chart-${idx}`}
+                          icon={<FileText size={14} className="text-purple-500 flex-shrink-0" />}
+                          label={viz.title || `Chart ${idx + 1}`}
+                          title={viz.title}
+                          badge={{ show: false, text: '', variant: 'none' }}
+                          isExpired={false}
+                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                        />
                       );
                     })}
                   </div>

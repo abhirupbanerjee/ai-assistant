@@ -3,20 +3,24 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from 'react-resizable-panels';
 import ChatWindow, { type ChatWindowRef } from '@/components/chat/ChatWindow';
 import ThreadSidebar, { type ThreadSidebarRef } from '@/components/layout/ThreadSidebar';
 
 import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
+import ArtifactCanvas from '@/components/chat/ArtifactCanvas';
+import MobileArtifactCanvas from '@/components/mobile/MobileArtifactCanvas';
 import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
+import { useCanvasState } from '@/hooks/useCanvasState';
 import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt } from '@/types';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt, ArtifactCanvasItem } from '@/types';
 
 interface WelcomeConfig {
   title?: string;
@@ -28,6 +32,11 @@ function HomeContent() {
   const { data: session } = useSession();
   const chatWindowRef = useRef<ChatWindowRef>(null);
   const sidebarRef = useRef<ThreadSidebarRef>(null);
+  const threadSidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const chatMainPanelRef = useRef<ImperativePanelHandle>(null);
+  const artifactsPanelRef = useRef<ImperativePanelHandle>(null);
+  const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+
   // Phase 2.3: read a shared payload from the Android share sheet
   // (redirected here by /api/share-target). Memoize so the value is stable
   // across re-renders; the MessageInput only consumes it once.
@@ -49,6 +58,20 @@ function HomeContent() {
   const [threadCount, setThreadCount] = useState(0);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
+  const canvasState = useCanvasState();
+
+  // Imperatively collapse/expand panels when canvas mode changes
+  useEffect(() => {
+    if (isMobile) return;
+
+    if (canvasState.mode === 'canvas') {
+      threadSidebarPanelRef.current?.collapse();
+      artifactsPanelRef.current?.resize(66);
+    } else {
+      threadSidebarPanelRef.current?.expand();
+      artifactsPanelRef.current?.resize(25);
+    }
+  }, [canvasState.mode, isMobile]);
 
   // Swipe gestures for mobile navigation
   useSwipeGesture({
@@ -61,7 +84,7 @@ function HomeContent() {
       mobileMenu?.openThreadsMenu();
     },
     rightEdgeOnly: false, // Allow swipes from anywhere
-    disabled: (mobileMenu?.isThreadsMenuOpen || mobileMenu?.isArtifactsMenuOpen) || !isMobile,
+    disabled: (mobileMenu?.isThreadsMenuOpen || mobileMenu?.isArtifactsMenuOpen) || !isMobile || canvasState.mode === 'canvas',
   });
 
   // Artifacts state (lifted from ChatWindow)
@@ -226,49 +249,93 @@ function HomeContent() {
 
       {/* Content area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left sidebar - Desktop only */}
-        {!isMobile && (
-          <ThreadSidebar
-            ref={sidebarRef}
-            onThreadSelect={handleThreadSelect}
-            onThreadCreated={handleThreadCreated}
-            selectedThreadId={activeThread?.id}
-          />
-        )}
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId="chat-layout"
+          ref={panelGroupRef}
+          className="flex-1"
+        >
+          {!isMobile && (
+            <>
+              <Panel
+                ref={threadSidebarPanelRef}
+                id="thread-sidebar"
+                defaultSize={20}
+                minSize={15}
+                maxSize={35}
+                collapsible
+                collapsedSize={0}
+              >
+                <ThreadSidebar
+                  ref={sidebarRef}
+                  onThreadSelect={handleThreadSelect}
+                  onThreadCreated={handleThreadCreated}
+                  selectedThreadId={activeThread?.id}
+                />
+              </Panel>
+              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors hidden md:block" />
+            </>
+          )}
 
-        {/* Main content area - Always show ChatWindow */}
-        <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          <ErrorBoundary moduleName="ChatWindow">
-            <ChatWindow
-              ref={chatWindowRef}
-              activeThread={activeThread}
-              onThreadCreated={handleThreadCreated}
-              userSubscriptions={userSubscriptions}
-              brandingName={brandingName}
-              brandingSubtitle={brandingSubtitle}
-              globalWelcome={globalWelcome}
-              globalStarterPrompts={globalStarterPrompts}
-              onArtifactsChange={handleArtifactsChange}
-              onInputFocus={handleInputFocus}
-              onInputBlur={handleInputBlur}
-              initialDraft={shareDraft}
-            />
-          </ErrorBoundary>
-        </main>
+          <Panel
+            ref={chatMainPanelRef}
+            id="chat-main"
+            defaultSize={isMobile ? 100 : 55}
+            minSize={25}
+          >
+            <main className="flex flex-col min-h-0 h-full overflow-hidden">
+              <ErrorBoundary moduleName="ChatWindow">
+                <ChatWindow
+                  ref={chatWindowRef}
+                  activeThread={activeThread}
+                  onThreadCreated={handleThreadCreated}
+                  userSubscriptions={userSubscriptions}
+                  brandingName={brandingName}
+                  brandingSubtitle={brandingSubtitle}
+                  globalWelcome={globalWelcome}
+                  globalStarterPrompts={globalStarterPrompts}
+                  onArtifactsChange={handleArtifactsChange}
+                  onInputFocus={handleInputFocus}
+                  onInputBlur={handleInputBlur}
+                  initialDraft={shareDraft}
+                />
+              </ErrorBoundary>
+            </main>
+          </Panel>
 
-        {/* Right sidebar - Desktop only */}
-        {!isMobile && (
-          <ArtifactsPanel
-            threadId={artifactsData.threadId}
-            uploads={artifactsData.uploads}
-            generatedDocs={artifactsData.generatedDocs}
-            generatedImages={artifactsData.generatedImages}
-            generatedPodcasts={artifactsData.generatedPodcasts}
-            urlSources={artifactsData.urlSources}
-            onRemoveUpload={handleRemoveUpload}
-            onRemoveUrlSource={handleRemoveUrlSource}
-          />
-        )}
+          {!isMobile && (
+            <>
+              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors hidden md:block" />
+              <Panel
+                ref={artifactsPanelRef}
+                id="artifacts-panel"
+                defaultSize={25}
+                minSize={15}
+                maxSize={75}
+              >
+                {canvasState.mode === 'canvas' && canvasState.artifact ? (
+                  <ArtifactCanvas
+                    artifact={canvasState.artifact}
+                    onClose={canvasState.closeCanvas}
+                    threadId={artifactsData.threadId}
+                  />
+                ) : (
+                  <ArtifactsPanel
+                    threadId={artifactsData.threadId}
+                    uploads={artifactsData.uploads}
+                    generatedDocs={artifactsData.generatedDocs}
+                    generatedImages={artifactsData.generatedImages}
+                    generatedPodcasts={artifactsData.generatedPodcasts}
+                    urlSources={artifactsData.urlSources}
+                    onRemoveUpload={handleRemoveUpload}
+                    onRemoveUrlSource={handleRemoveUrlSource}
+                    onArtifactClick={(item: ArtifactCanvasItem) => canvasState.openCanvas(item)}
+                  />
+                )}
+              </Panel>
+            </>
+          )}
+        </PanelGroup>
       </div>
 
       {/* Mobile-only: FABs and full-page menus */}
@@ -284,16 +351,24 @@ function HomeContent() {
             onThreadCreated={handleThreadCreated}
             selectedThreadId={activeThread?.id}
           />
-          <MobileArtifactsMenu
-            threadId={artifactsData.threadId}
-            uploads={artifactsData.uploads}
-            generatedDocs={artifactsData.generatedDocs}
-            generatedImages={artifactsData.generatedImages}
-            generatedPodcasts={artifactsData.generatedPodcasts}
-            urlSources={artifactsData.urlSources}
-            onRemoveUpload={handleRemoveUpload}
-            onRemoveUrlSource={handleRemoveUrlSource}
-          />
+          {canvasState.mode === 'canvas' && canvasState.artifact ? (
+            <MobileArtifactCanvas
+              artifact={canvasState.artifact}
+              onClose={canvasState.closeCanvas}
+            />
+          ) : (
+            <MobileArtifactsMenu
+              threadId={artifactsData.threadId}
+              uploads={artifactsData.uploads}
+              generatedDocs={artifactsData.generatedDocs}
+              generatedImages={artifactsData.generatedImages}
+              generatedPodcasts={artifactsData.generatedPodcasts}
+              urlSources={artifactsData.urlSources}
+              onRemoveUpload={handleRemoveUpload}
+              onRemoveUrlSource={handleRemoveUrlSource}
+              onArtifactClick={(item: ArtifactCanvasItem) => canvasState.openCanvas(item)}
+            />
+          )}
         </>
       )}
 

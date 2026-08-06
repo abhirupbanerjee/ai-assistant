@@ -13,7 +13,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ArtifactCanvasItem, DiagramHint, MessageVisualization } from '@/types';
 import MobileMenuDrawer from '@/components/ui/MobileMenuDrawer';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
 import PodcastPlayer from '@/components/chat/PodcastPlayer';
@@ -42,6 +42,34 @@ interface MobileArtifactsMenuProps {
   urlSources: UrlSource[];
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
+  onArtifactClick?: (item: ArtifactCanvasItem) => void;
+}
+
+function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
+  return {
+    artifactId: doc.id,
+    artifactType: doc.fileType as ArtifactCanvasItem['artifactType'],
+    title: doc.filename,
+    downloadUrl: doc.downloadUrl,
+  };
+}
+
+function buildImageCanvasItem(img: GeneratedImageInfo): ArtifactCanvasItem {
+  return {
+    artifactId: img.id,
+    artifactType: 'image',
+    title: img.alt || 'Generated image',
+    downloadUrl: img.url,
+  };
+}
+
+function buildPodcastCanvasItem(podcast: PodcastHint): ArtifactCanvasItem {
+  return {
+    artifactId: podcast.id,
+    artifactType: 'podcast',
+    title: podcast.filename,
+    downloadUrl: podcast.downloadUrl,
+  };
 }
 
 interface SectionState {
@@ -69,6 +97,7 @@ export default function MobileArtifactsMenu({
   urlSources,
   onRemoveUpload,
   onRemoveUrlSource,
+  onArtifactClick,
 }: MobileArtifactsMenuProps) {
   const { isArtifactsMenuOpen, closeArtifactsMenu } = useMobileMenu();
 
@@ -135,14 +164,13 @@ export default function MobileArtifactsMenu({
                     {generatedDocs.map((doc) => {
                       const badge = getExpirationBadge(doc.expiresAt);
                       const isExpired = badge.variant === 'expired';
+                      const item = buildDocCanvasItem(doc);
                       return (
-                        <a
+                        <button
                           key={doc.id}
-                          href={isExpired ? undefined : doc.downloadUrl}
-                          target={isExpired ? undefined : '_blank'}
-                          rel={isExpired ? undefined : 'noopener noreferrer'}
-                          className={`flex items-center gap-2 p-1.5 rounded ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-                          onClick={isExpired ? (e) => e.preventDefault() : undefined}
+                          onClick={() => onArtifactClick?.(item)}
+                          disabled={isExpired}
+                          className={`w-full flex items-center gap-2 p-1.5 rounded text-left ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                         >
                           <FileText size={14} className="text-purple-500 flex-shrink-0" />
                           <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`}>{doc.filename}</span>
@@ -153,20 +181,19 @@ export default function MobileArtifactsMenu({
                               {badge.text}
                             </span>
                           )}
-                        </a>
+                        </button>
                       );
                     })}
                     {generatedImages.map((img) => {
                       const badge = getExpirationBadge(img.expiresAt);
                       const isExpired = badge.variant === 'expired';
+                      const item = buildImageCanvasItem(img);
                       return (
-                        <a
+                        <button
                           key={img.id}
-                          href={isExpired ? undefined : img.url}
-                          target={isExpired ? undefined : '_blank'}
-                          rel={isExpired ? undefined : 'noopener noreferrer'}
-                          className={`flex items-center gap-2 p-1.5 rounded ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-                          onClick={isExpired ? (e) => e.preventDefault() : undefined}
+                          onClick={() => onArtifactClick?.(item)}
+                          disabled={isExpired}
+                          className={`w-full flex items-center gap-2 p-1.5 rounded text-left ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                         >
                           <ImageIcon size={14} className="text-purple-500 flex-shrink-0" />
                           <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`}>{img.alt || 'Generated image'}</span>
@@ -177,13 +204,18 @@ export default function MobileArtifactsMenu({
                               {badge.text}
                             </span>
                           )}
-                        </a>
+                        </button>
                       );
                     })}
                     {generatedPodcasts.map((podcast) => {
                       const badge = getExpirationBadge(podcast.expiresAt);
+                      const item = buildPodcastCanvasItem(podcast);
                       return (
-                        <div key={podcast.id} className="flex items-center gap-2">
+                        <button
+                          key={podcast.id}
+                          onClick={() => onArtifactClick?.(item)}
+                          className="w-full flex items-center gap-2"
+                        >
                           <div className="flex-1 min-w-0">
                             <PodcastPlayer podcast={podcast} compact />
                           </div>
@@ -194,7 +226,7 @@ export default function MobileArtifactsMenu({
                               {badge.text}
                             </span>
                           )}
-                        </div>
+                        </button>
                       );
                     })}
                   </div>

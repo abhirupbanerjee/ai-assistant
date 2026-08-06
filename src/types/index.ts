@@ -2,6 +2,10 @@
 
 export * from './stream';
 
+// ============ Artifact Canvas Types (re-exported) ============
+
+export * from './artifact-canvas';
+
 // ============ Diagram Types (re-exported) ============
 
 export type { DiagramHint, MermaidDiagramType, DiagramGenConfig } from './diagram-gen';
