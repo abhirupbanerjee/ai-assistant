@@ -497,18 +497,42 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'ms_drive_upload_file',
     category: 'onedrive',
-    summary: 'Upload a text file to OneDrive.',
+    summary: 'Upload a file to OneDrive (text or binary).',
     description:
-      'Uploads a file to OneDrive using simple upload. Existing files are ' +
-      'replaced by default. Paths are relative to the OneDrive root.',
+      'Uploads a file to OneDrive using simple upload (<4 MB). Existing ' +
+      'files are replaced by default. Use `contentBase64` for binary files ' +
+      '(images, PDFs, audio) or `content` for plain text.',
     params: [
-      { name: 'path', type: 'string', required: true, description: 'Target path, e.g. "Reports/Q2.txt".' },
-      { name: 'content', type: 'string', required: true, description: 'File content.' },
+      {
+        name: 'filename',
+        type: 'string',
+        description: 'Target filename, e.g. "report.pdf". Used when `folderName` is set.',
+      },
+      {
+        name: 'contentBase64',
+        type: 'string',
+        description: 'File contents encoded as base64 (binary-safe).',
+      },
+      {
+        name: 'content',
+        type: 'string',
+        description: 'Plain-text file content (legacy mode).',
+      },
       {
         name: 'mimeType',
         type: 'string',
         description: 'MIME type of the content.',
         default: 'text/plain',
+      },
+      {
+        name: 'folderName',
+        type: 'string',
+        description: 'Optional. Folder path under the OneDrive root (created on demand).',
+      },
+      {
+        name: 'path',
+        type: 'string',
+        description: 'Legacy full path, e.g. "Reports/Q2.txt". Overrides filename+folderName.',
       },
       {
         name: 'conflictBehavior',
@@ -517,6 +541,18 @@ export const TOOLS: ToolDef[] = [
         enum: ['replace', 'rename', 'fail'],
         default: 'replace',
       },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_drive_list_folders',
+    category: 'onedrive',
+    summary: 'List folders in the user\'s OneDrive root.',
+    description:
+      'Lists top-level folders in the OneDrive root via the Microsoft Graph API. ' +
+      'Used by the Save to OneDrive UI to show folder choices.',
+    params: [
+      { name: 'top', type: 'number', description: 'Maximum number of items to return. Default 50.' },
       { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
     ],
   },

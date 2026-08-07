@@ -12,7 +12,9 @@ import dynamic from 'next/dynamic';
 import { Play, Pause, Download, Volume2, VolumeX, Podcast } from 'lucide-react';
 import type { PodcastHint } from '@/types';
 
-const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
+const SaveToCloudButtons = dynamic(() => import('./SaveToDriveButton').then((m) => m.SaveToCloudButtons), {
+  ssr: false,
+});
 
 interface PodcastPlayerProps {
   podcast: PodcastHint;
@@ -157,7 +159,7 @@ export default function PodcastPlayer({ podcast, compact = false }: PodcastPlaye
           <h4 className="text-sm font-medium text-gray-900 truncate">{podcast.filename}</h4>
           <p className="text-xs text-gray-500">Audio Podcast</p>
         </div>
-        <SaveToDriveButton
+        <SaveToCloudButtons
           filename={podcast.filename || 'podcast.mp3'}
           mimeType={podcast.format === 'wav' ? 'audio/wav' : 'audio/mpeg'}
           getContentBase64={fetchAudioBase64}

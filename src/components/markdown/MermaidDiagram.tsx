@@ -24,7 +24,10 @@ import { Download, ZoomIn, ZoomOut, RotateCcw, FileText } from 'lucide-react';
 import { sanitizeMermaidCode } from '@/lib/diagram-gen/sanitize';
 import { MERMAID_INIT_CONFIG } from '@/lib/diagram-gen/mermaid-config';
 
-const SaveToDriveButton = dynamic(() => import('../chat/SaveToDriveButton'), { ssr: false });
+const SaveToCloudButtons = dynamic(
+  () => import('../chat/SaveToDriveButton').then((m) => m.SaveToCloudButtons),
+  { ssr: false }
+);
 
 interface MermaidDiagramProps {
   /** The Mermaid diagram code */
@@ -645,7 +648,7 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
             <Download size={14} />
             PNG
           </button>
-          <SaveToDriveButton
+          <SaveToCloudButtons
             filename="diagram.svg"
             mimeType="image/svg+xml"
             getContentBase64={async () => getSvgBase64()}

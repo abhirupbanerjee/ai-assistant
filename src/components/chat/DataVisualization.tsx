@@ -29,7 +29,9 @@ import {
 import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import type { ChartType, VisualizationHint } from '@/types/data-sources';
 
-const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
+const SaveToCloudButtons = dynamic(() => import('./SaveToDriveButton').then((m) => m.SaveToCloudButtons), {
+  ssr: false,
+});
 
 // ===== Error Boundary =====
 
@@ -943,7 +945,7 @@ export default function DataVisualization({
             </button>
           )}
           {chartType !== 'table' && (
-            <SaveToDriveButton
+            <SaveToCloudButtons
               filename={chartFileName}
               mimeType="image/png"
               getContentBase64={getChartPngBase64}

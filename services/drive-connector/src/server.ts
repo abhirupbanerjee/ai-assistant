@@ -46,6 +46,7 @@ import {
   slidesInsertText,
   slidesReplaceAllText,
   msDriveListFiles,
+  msDriveListFolders,
   msDriveGetFile,
   msDriveDownloadFile,
   msDriveCreateFolder,
@@ -375,6 +376,11 @@ async function dispatch(
         skip: v.skip as number | undefined,
         userId: v.userId as string | undefined,
       });
+    case 'ms_drive_list_folders':
+      return msDriveListFolders(cfg, {
+        top: v.top as number | undefined,
+        userId: v.userId as string | undefined,
+      });
     case 'ms_drive_get_file':
       return msDriveGetFile(cfg, String(v.itemId), v.userId as string | undefined);
     case 'ms_drive_download_file':
@@ -382,14 +388,16 @@ async function dispatch(
     case 'ms_drive_create_folder':
       return msDriveCreateFolder(cfg, String(v.name), v.parentId as string | undefined, v.userId as string | undefined);
     case 'ms_drive_upload_file':
-      return msDriveUploadFile(
-        cfg,
-        String(v.path),
-        String(v.content),
-        v.mimeType as string | undefined,
-        v.conflictBehavior as 'replace' | 'rename' | 'fail' | undefined,
-        v.userId as string | undefined
-      );
+      return msDriveUploadFile(cfg, {
+        filename: (v.filename as string | undefined) ?? (v.path ? String(v.path) : undefined),
+        contentBase64: v.contentBase64 as string | undefined,
+        content: v.content as string | undefined,
+        mimeType: v.mimeType as string | undefined,
+        folderName: v.folderName as string | undefined,
+        path: v.path as string | undefined,
+        conflictBehavior: v.conflictBehavior as 'replace' | 'rename' | 'fail' | undefined,
+        userId: v.userId as string | undefined,
+      });
     case 'ms_excel_get_range':
       return msExcelGetRange(
         cfg,

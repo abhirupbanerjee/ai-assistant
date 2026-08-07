@@ -6,7 +6,9 @@ import Image from 'next/image';
 import { Download, Maximize2, X, ImageIcon, Sparkles, Cpu } from 'lucide-react';
 import type { GeneratedImageInfo } from '@/types';
 
-const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
+const SaveToCloudButtons = dynamic(() => import('./SaveToDriveButton').then((m) => m.SaveToCloudButtons), {
+  ssr: false,
+});
 
 interface ImageDisplayProps {
   image: GeneratedImageInfo;
@@ -153,7 +155,7 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
               </span>
             </div>
 
-            <SaveToDriveButton
+            <SaveToCloudButtons
               filename={image.alt ? `${image.alt.replace(/\s+/g, '-').toLowerCase()}.png` : 'generated-image.png'}
               mimeType="image/png"
               getContentBase64={fetchImageBase64}

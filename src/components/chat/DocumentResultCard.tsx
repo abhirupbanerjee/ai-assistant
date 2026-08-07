@@ -5,7 +5,9 @@ import { FileText, FileSpreadsheet, FileCode, Globe, FileArchive, Download, Exte
 import type { ArtifactCanvasItem, GeneratedDocumentInfo } from '@/types';
 import { buildDocCanvasItem } from '@/lib/artifact-builders';
 
-const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
+const SaveToCloudButtons = dynamic(() => import('./SaveToDriveButton').then((m) => m.SaveToCloudButtons), {
+  ssr: false,
+});
 
 interface DocumentResultCardProps {
   document: GeneratedDocumentInfo;
@@ -137,7 +139,7 @@ export default function DocumentResultCard({ document, context = 'thread', onOpe
         {/* Action buttons */}
         <div className="flex items-center gap-2">
           {!isExpired && outputId !== undefined && !Number.isNaN(outputId) && (
-            <SaveToDriveButton
+            <SaveToCloudButtons
               outputId={outputId}
               context={context}
               convertToGoogleFormat={isConvertible}

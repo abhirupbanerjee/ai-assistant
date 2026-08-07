@@ -1004,6 +1004,65 @@ export async function msDriveListFiles(
   );
 }
 
+/**
+ * List top-level folders in the OneDrive root. Used by the Save to OneDrive
+ * UI folder picker. Returns only items where `folder` is present.
+ */
+export async function msDriveListFolders(
+  cfg: AppConfig,
+  opts: { top?: number; userId?: string }
+): Promise<OpResult<{ folders: Array<{ id: string; name: string; lastModifiedTime?: string }> }>> {
+  const params = new URLSearchParams();
+  params.set('$top', String(opts.top ?? 50));
+  params.set('$select', 'id,name,folder,size,lastModifiedDateTime');
+  const result = await msRunOp<MsDriveListResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(`${GRAPH_BASE}/me/drive/root/children?${params.toString()}`, headers, cfg.msGraphTimeoutMs)) as MsDriveListResponse,
+    opts.userId
+  );
+  if (!result.ok) return fail(result.error!, result.status, result.code);
+  const folders = (result.data!.value || [])
+    .filter((item) => item.folder)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      lastModifiedTime: (item as MsDriveItem & { lastModifiedDateTime?: string }).lastModifiedDateTime,
+    }));
+  return ok({ folders });
+}
+
+/**
+ * Look up an existing folder's id by name within a parent (or the root when
+ * `parentId` is omitted). Used to resolve the id of a folder that already
+ * exists when `msDriveCreateFolder` returns 409, so nested folder creation
+ * can chain correctly instead of dropping back to the root.
+ */
+async function msFindFolderId(
+  cfg: AppConfig,
+  name: string,
+  parentId: string | undefined,
+  userId?: string
+): Promise<string | undefined> {
+  const base = parentId
+    ? `${GRAPH_BASE}/me/drive/items/${enc(parentId)}/children`
+    : `${GRAPH_BASE}/me/drive/root/children`;
+  const params = new URLSearchParams();
+  params.set('$select', 'id,name,folder');
+  params.set('$top', '200');
+  const result = await msRunOp<MsDriveListResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(`${base}?${params.toString()}`, headers, cfg.msGraphTimeoutMs)) as MsDriveListResponse,
+    userId
+  );
+  if (!result.ok) return undefined;
+  const match = (result.data!.value || []).find(
+    (item) => item.folder && item.name === name
+  );
+  return match?.id;
+}
+
 export async function msDriveGetFile(
   cfg: AppConfig,
   itemId: string,
@@ -1069,24 +1128,94 @@ export async function msDriveCreateFolder(
 }
 
 /**
+ * OneDrive upload result (mirrors the Google DriveUploadResult shape so the
+ * app-side proxy endpoints can treat both providers uniformly).
+ */
+export interface MsDriveUploadResult {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  webViewLink?: string;
+}
+
+/**
  * Upload or overwrite a file in OneDrive. Uses simple upload (<4 MB).
  * For larger files, a resumable upload session should be added later.
+ *
+ * Supports two content modes:
+ *  - `contentBase64`: binary-safe (PNG, MP3, PDF, Office docs). Decoded to a
+ *    Buffer and sent as the raw PUT body.
+ *  - `content`: plain-text body (agent backward-compat for ms_drive_upload_file).
+ *
+ * When `folderName` is supplied the file is placed under that folder (created
+ * on demand via msDriveCreateFolder). When omitted the legacy `path` behaviour
+ * is preserved (file lands at the OneDrive root under `filename`).
  */
 export async function msDriveUploadFile(
   cfg: AppConfig,
-  path: string,
-  content: string,
-  mimeType = 'text/plain',
-  conflictBehavior: 'rename' | 'replace' | 'fail' = 'replace',
-  userId?: string
-): Promise<OpResult<MsDriveItem>> {
-  // Normalize to /-prefixed path with no trailing slash.
-  const normalized = path.startsWith('/') ? path : `/${path}`;
-  const url =
-    `${GRAPH_BASE}/me/drive/root:${enc(normalized)}:/content?` +
-    `@microsoft.graph.conflictBehavior=${enc(conflictBehavior)}`;
+  opts: {
+    /** Target filename. When omitted, the basename of `path` is used. */
+    filename?: string;
+    contentBase64?: string;
+    content?: string;
+    mimeType?: string;
+    folderName?: string;
+    /** Legacy agent path — full OneDrive path, e.g. "Reports/Q2.txt". */
+    path?: string;
+    conflictBehavior?: 'rename' | 'replace' | 'fail';
+    userId?: string;
+  }
+): Promise<OpResult<MsDriveUploadResult>> {
+  const mimeType = opts.mimeType ?? 'text/plain';
+  const conflict = opts.conflictBehavior ?? 'replace';
+  const userId = opts.userId;
 
-  return msRunOp<MsDriveItem>(cfg, async (headers) => {
+  // Resolve the target path.
+  let fullPath: string;
+  if (opts.folderName) {
+    const folder = opts.folderName.startsWith('/') ? opts.folderName : `/${opts.folderName}`;
+    fullPath = `${folder}/${opts.filename}`;
+  } else if (opts.path) {
+    fullPath = opts.path.startsWith('/') ? opts.path : `/${opts.path}`;
+  } else {
+    fullPath = `/${opts.filename}`;
+  }
+
+  const url =
+    `${GRAPH_BASE}/me/drive/root:${enc(fullPath)}:/content?` +
+    `@microsoft.graph.conflictBehavior=${enc(conflict)}`;
+
+  // If a folder was requested and isn't the root, ensure every segment in
+  // the path exists. Graph's PUT-by-path does NOT auto-create intermediate
+  // segments — it errors if any parent is missing — so we must walk the
+  // chain and create each folder under its resolved parent. When a segment
+  // already exists Graph returns 409; we then list the parent's children to
+  // resolve that folder's id so the next segment is nested correctly
+  // (otherwise it would fall back to the root).
+  if (opts.folderName) {
+    const folderPath = opts.folderName.replace(/^\/+|\/+$/g, '');
+    const segments = folderPath.split('/').filter(Boolean);
+    let parentId: string | undefined;
+    for (const seg of segments) {
+      const created = await msDriveCreateFolder(cfg, seg, parentId, userId);
+      if (!created.ok) {
+        if (created.status !== 409) {
+          return fail(created.error!, created.status, created.code);
+        }
+        // Folder already exists — resolve its id by listing the parent so
+        // the next segment nests under it rather than the root.
+        parentId = await msFindFolderId(cfg, seg, parentId, userId);
+      } else {
+        parentId = created.data!.id;
+      }
+    }
+  }
+
+  const body: string | Buffer = opts.contentBase64
+    ? Buffer.from(opts.contentBase64, 'base64')
+    : (opts.content ?? '');
+
+  return msRunOp<MsDriveUploadResult>(cfg, async (headers) => {
     const res = await request({
       method: 'PUT',
       url,
@@ -1094,11 +1223,17 @@ export async function msDriveUploadFile(
         'Content-Type': mimeType,
         ...headers,
       },
-      body: content,
+      body,
       timeoutMs: cfg.msGraphTimeoutMs,
       json: true,
     });
-    return res.data as MsDriveItem;
+    const item = res.data as MsDriveItem;
+    return {
+      fileId: item.id,
+      name: item.name,
+      mimeType: item.file?.mimeType ?? mimeType,
+      webViewLink: (item as MsDriveItem & { webUrl?: string }).webUrl,
+    };
   }, userId);
 }
 

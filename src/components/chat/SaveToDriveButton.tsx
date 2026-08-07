@@ -5,7 +5,9 @@ import { createPortal } from 'react-dom';
 import { Folder, Check, Loader2, AlertCircle, Plus, ChevronDown, ExternalLink } from 'lucide-react';
 import { useConnectedAccounts } from '@/hooks/useConnectedAccounts';
 
-const LAST_FOLDER_KEY = 'drive:lastFolder';
+type Provider = 'google' | 'microsoft';
+
+const LAST_FOLDER_KEY_PREFIX = 'drive:lastFolder:';
 const DEFAULT_FOLDER = 'AI Assistant';
 
 interface LastFolderChoice {
@@ -21,6 +23,8 @@ interface DriveFolder {
 }
 
 export interface SaveToDriveButtonProps {
+  /** Cloud provider target. Defaults to 'google' for backward compatibility. */
+  provider?: Provider;
   /** Mode A: numeric output id from thread_outputs / workspace_outputs. */
   outputId?: number;
   /** Mode A context for ownership lookup. */
@@ -38,7 +42,7 @@ export interface SaveToDriveButtonProps {
    * and avoids races where the user clicks before an eager capture finished.
    */
   getContentBase64?: () => Promise<string | null>;
-  /** Whether to convert Office formats to native Google formats. */
+  /** Whether to convert Office formats to native Google formats (Google only). */
   convertToGoogleFormat?: boolean;
   /** Optional label next to the icon. */
   label?: string;
@@ -75,10 +79,62 @@ function GoogleGIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-function loadLastFolder(): LastFolderChoice {
+/** Microsoft / OneDrive four-square icon (brand blue #0078D4). */
+function MicrosoftIcon({ size = 16 }: { size?: number }) {
+  const half = size / 2;
+  const gap = 0.5;
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      aria-hidden="true"
+    >
+      <rect x="0" y="0" width={half - gap} height={half - gap} fill="#F25022" />
+      <rect x={half + gap} y="0" width={half - gap} height={half - gap} fill="#7FBA00" />
+      <rect x="0" y={half + gap} width={half - gap} height={half - gap} fill="#00A4EF" />
+      <rect x={half + gap} y={half + gap} width={half - gap} height={half - gap} fill="#FFB900" />
+    </svg>
+  );
+}
+
+const PROVIDER_CONFIG: Record<
+  Provider,
+  {
+    label: string;
+    tooltip: string;
+    popoverTitle: string;
+    foldersEndpoint: string;
+    uploadEndpoint: string;
+    connectHint: string;
+    lastFolderKey: string;
+  }
+> = {
+  google: {
+    label: 'Save to Drive',
+    tooltip: 'Save to Google Drive',
+    popoverTitle: 'Save to Google Drive',
+    foldersEndpoint: '/api/drive/folders',
+    uploadEndpoint: '/api/drive/upload',
+    connectHint: 'Google Drive',
+    lastFolderKey: `${LAST_FOLDER_KEY_PREFIX}google`,
+  },
+  microsoft: {
+    label: 'Save to OneDrive',
+    tooltip: 'Save to OneDrive',
+    popoverTitle: 'Save to OneDrive',
+    foldersEndpoint: '/api/onedrive/folders',
+    uploadEndpoint: '/api/onedrive/upload',
+    connectHint: 'OneDrive',
+    lastFolderKey: `${LAST_FOLDER_KEY_PREFIX}microsoft`,
+  },
+};
+
+function loadLastFolder(key: string): LastFolderChoice {
   if (typeof window === 'undefined') return { type: 'default', name: DEFAULT_FOLDER };
   try {
-    const raw = window.localStorage.getItem(LAST_FOLDER_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return { type: 'default', name: DEFAULT_FOLDER };
     const parsed = JSON.parse(raw) as LastFolderChoice;
     if (parsed.type === 'folder' && parsed.id) return parsed;
@@ -89,10 +145,10 @@ function loadLastFolder(): LastFolderChoice {
   }
 }
 
-function saveLastFolder(choice: LastFolderChoice) {
+function saveLastFolder(key: string, choice: LastFolderChoice) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(LAST_FOLDER_KEY, JSON.stringify(choice));
+    window.localStorage.setItem(key, JSON.stringify(choice));
   } catch {
     // Ignore storage errors.
   }
@@ -131,6 +187,7 @@ function computePopoverPosition(rect: DOMRect): PopoverPosition {
 }
 
 export default function SaveToDriveButton({
+  provider = 'google',
   outputId,
   context = 'thread',
   filename,
@@ -138,10 +195,13 @@ export default function SaveToDriveButton({
   contentBase64,
   getContentBase64,
   convertToGoogleFormat,
-  label = 'Save to Drive',
-  tooltip = 'Save to Google Drive',
+  label,
+  tooltip,
 }: SaveToDriveButtonProps) {
-  const { googleConnected, loading: accountsLoading } = useConnectedAccounts();
+  const cfg = PROVIDER_CONFIG[provider];
+  const { googleConnected, microsoftConnected, loading: accountsLoading } = useConnectedAccounts();
+  const isConnected = provider === 'google' ? googleConnected : microsoftConnected;
+
   const [open, setOpen] = useState(false);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(false);
@@ -159,8 +219,8 @@ export default function SaveToDriveButton({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    setChoice(loadLastFolder());
-  }, []);
+    setChoice(loadLastFolder(cfg.lastFolderKey));
+  }, [cfg.lastFolderKey]);
 
   // Click-outside closes the popover. Works with the portal because
   // popoverRef points at the portaled DOM node (DOM contains() is
@@ -210,13 +270,13 @@ export default function SaveToDriveButton({
     setFoldersLoading(true);
     setFoldersError(null);
     try {
-      const res = await fetch('/api/drive/folders', { credentials: 'same-origin' });
+      const res = await fetch(cfg.foldersEndpoint, { credentials: 'same-origin' });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-        console.warn('[SaveToDrive] folder list failed', { status: res.status, code: body.code ?? null });
+        console.warn('[SaveToDrive] folder list failed', { provider, status: res.status, code: body.code ?? null });
         setFoldersError(
           body.code === 'RECONNECT_REQUIRED' || body.code === 'INSUFFICIENT_SCOPE'
-            ? "Couldn't load folders — please reconnect your Google account in Settings."
+            ? `Couldn't load folders — please reconnect your ${cfg.connectHint} account in Settings.`
             : body.error || "Couldn't load folders. Please try again."
         );
         setFolders([]);
@@ -232,7 +292,7 @@ export default function SaveToDriveButton({
     } finally {
       setFoldersLoading(false);
     }
-  }, [foldersLoaded, foldersLoading]);
+  }, [cfg.foldersEndpoint, cfg.connectHint, foldersLoaded, foldersLoading, provider]);
 
   const handleToggle = () => {
     setOpen((prev) => {
@@ -281,9 +341,11 @@ export default function SaveToDriveButton({
       } else {
         body.folderName = DEFAULT_FOLDER;
       }
-      if (convertToGoogleFormat !== undefined) body.convertToGoogleFormat = convertToGoogleFormat;
+      if (convertToGoogleFormat !== undefined && provider === 'google') {
+        body.convertToGoogleFormat = convertToGoogleFormat;
+      }
 
-      const res = await fetch('/api/drive/upload', {
+      const res = await fetch(cfg.uploadEndpoint, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -302,14 +364,14 @@ export default function SaveToDriveButton({
         if (data.code === 'RECONNECT_REQUIRED' || data.code === 'INSUFFICIENT_SCOPE') {
           throw new Error(
             data.code === 'INSUFFICIENT_SCOPE'
-              ? 'Google Drive permission is missing. Please disconnect and reconnect your account in Settings.'
-              : 'Google Drive connection expired. Please reconnect in Settings.'
+              ? `${cfg.connectHint} permission is missing. Please disconnect and reconnect your account in Settings.`
+              : `${cfg.connectHint} connection expired. Please reconnect in Settings.`
           );
         }
         throw new Error(data.error || `Upload failed: ${res.status}`);
       }
 
-      saveLastFolder(choice);
+      saveLastFolder(cfg.lastFolderKey, choice);
       setSaved(true);
       setWebViewLink(data.webViewLink ?? null);
       if (data.webViewLink) {
@@ -330,7 +392,7 @@ export default function SaveToDriveButton({
   };
 
   if (accountsLoading) return null;
-  if (!googleConnected) return null;
+  if (!isConnected) return null;
 
   const buttonContent = saved ? (
     <>
@@ -339,8 +401,8 @@ export default function SaveToDriveButton({
     </>
   ) : (
     <>
-      <GoogleGIcon size={16} />
-      <span className="hidden sm:inline">{label}</span>
+      {provider === 'google' ? <GoogleGIcon size={16} /> : <MicrosoftIcon size={16} />}
+      <span className="hidden sm:inline">{label ?? cfg.label}</span>
     </>
   );
 
@@ -360,7 +422,7 @@ export default function SaveToDriveButton({
         type="button"
         onClick={handleToggle}
         disabled={saving}
-        title={tooltip}
+        title={tooltip ?? cfg.tooltip}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
           saved
             ? 'bg-green-50 border-green-200 text-green-700'
@@ -384,7 +446,7 @@ export default function SaveToDriveButton({
           }}
           className="z-[1000] rounded-lg border border-gray-200 bg-white shadow-lg p-3"
         >
-          <div className="text-sm font-medium text-gray-800 mb-2">Save to Google Drive</div>
+          <div className="text-sm font-medium text-gray-800 mb-2">{cfg.popoverTitle}</div>
           <div className="text-xs text-gray-500 mb-3">Folder: {selectedLabel}</div>
 
           <div className="space-y-1 max-h-48 overflow-y-auto mb-3">
@@ -508,12 +570,27 @@ export default function SaveToDriveButton({
               className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
             >
               <ExternalLink size={12} />
-              Open in Drive
+              {provider === 'google' ? 'Open in Drive' : 'Open in OneDrive'}
             </a>
           )}
         </div>,
         document.body
       )}
+    </div>
+  );
+}
+
+/**
+ * Wrapper that renders Save buttons for every connected cloud-drive provider.
+ * Use this in artifact viewers when a user may have connected Google Drive
+ * and/or OneDrive — each button self-hides when its account isn't connected,
+ * so rendering both unconditionally is safe.
+ */
+export function SaveToCloudButtons(props: Omit<SaveToDriveButtonProps, 'provider'>) {
+  return (
+    <div className="inline-flex items-center gap-2">
+      <SaveToDriveButton {...props} provider="google" />
+      <SaveToDriveButton {...props} provider="microsoft" />
     </div>
   );
 }
