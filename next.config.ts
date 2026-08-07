@@ -115,6 +115,11 @@ const nextConfig: NextConfig = {
     // pulls in cytoscape/dagre/elkjs — without externalization the standalone
     // Docker build fails to resolve these from the bundled server chunk.
     'mermaid',
+    // docx-preview renders .docx files in the browser (DocumentViewer). It
+    // depends on jszip (CJS/ESM hybrid) — externalize to keep the standalone
+    // Docker build from failing to resolve it.
+    'docx-preview',
+    'jszip',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {

@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import * as mammoth from 'mammoth';
+import { renderAsync } from 'docx-preview';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import type { ArtifactCanvasItem } from '@/types';
 
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
@@ -14,31 +16,63 @@ interface DocumentViewerProps {
 export default function DocumentViewer({ artifact }: DocumentViewerProps) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const docxContainerRef = useRef<HTMLDivElement>(null);
 
+  // ── DOCX: render natively via docx-preview (preserves headings, tables,
+  //    page margins, headers/footers, and custom fonts — mammoth stripped all
+  //    of these, which is why headings appeared as plain body text).
   useEffect(() => {
+    if (artifact.artifactType !== 'docx') return;
     let cancelled = false;
 
-    async function loadDocument() {
+    async function loadDocx() {
       try {
         const response = await fetch(artifact.downloadUrl, { credentials: 'same-origin' });
         if (!response.ok) throw new Error(`Failed to load document: ${response.status}`);
-
-        if (artifact.artifactType === 'docx') {
-          const arrayBuffer = await response.arrayBuffer();
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          if (!cancelled) setContent(result.value);
-        } else if (artifact.artifactType === 'md') {
-          const text = await response.text();
-          if (!cancelled) setContent(text);
-        } else {
-          if (!cancelled) setError(`Unsupported document type: ${artifact.artifactType}`);
-        }
+        const arrayBuffer = await response.arrayBuffer();
+        if (cancelled) return;
+        const container = docxContainerRef.current;
+        if (!container) return;
+        // Clear any previous render
+        container.innerHTML = '';
+        await renderAsync(arrayBuffer, container, undefined, {
+          className: 'docx-viewer',
+          inWrapper: true, // render paper-page wrapper with shadows + margins
+          ignoreWidth: false,
+          ignoreHeight: false,
+          breakPages: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+          experimental: true,
+        });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load document');
       }
     }
 
-    loadDocument();
+    loadDocx();
+    return () => { cancelled = true; };
+  }, [artifact.downloadUrl, artifact.artifactType]);
+
+  // ── Markdown: fetch text content
+  useEffect(() => {
+    if (artifact.artifactType !== 'md') return;
+    let cancelled = false;
+
+    async function loadMarkdown() {
+      try {
+        const response = await fetch(artifact.downloadUrl, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`Failed to load document: ${response.status}`);
+        const text = await response.text();
+        if (!cancelled) setContent(text);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load document');
+      }
+    }
+
+    loadMarkdown();
     return () => { cancelled = true; };
   }, [artifact.downloadUrl, artifact.artifactType]);
 
@@ -50,6 +84,16 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
     );
   }
 
+  // ── DOCX: native render container (docx-preview injects paper pages)
+  if (artifact.artifactType === 'docx') {
+    return (
+      <div className="w-full h-full overflow-auto bg-gray-100">
+        <div ref={docxContainerRef} className="docx-viewer-container w-full h-full" />
+      </div>
+    );
+  }
+
+  // ── Markdown loading state
   if (content === null) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -58,18 +102,15 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
     );
   }
 
-  if (artifact.artifactType === 'docx') {
-    return (
-      <div
-        className="w-full h-full overflow-auto bg-white p-6 prose prose-sm max-w-none"
-        dangerouslySetInnerHTML={{ __html: content }}
-      />
-    );
-  }
-
+  // ── Markdown: rendered in a paper-card container with GFM tables,
+  //    task lists, strikethrough, and syntax-highlighted code blocks.
   return (
-    <div className="w-full h-full overflow-auto bg-white p-6 prose prose-sm max-w-none">
-      <ReactMarkdown>{content}</ReactMarkdown>
+    <div className="w-full h-full overflow-auto bg-gray-100 py-6 px-4">
+      <div className="mx-auto max-w-3xl bg-white shadow-sm border border-gray-200 rounded-lg p-8 md:p-12 prose prose-sm md:prose-base max-w-none prose-headings:scroll-mt-4 prose-table:border prose-table:border-gray-300 prose-th:border prose-th:border-gray-300 prose-td:border prose-td:border-gray-300">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }
