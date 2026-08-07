@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -15,6 +15,7 @@ import {
   PanelRightOpen
 } from 'lucide-react';
 import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, MessageVisualization, ArtifactCanvasItem, DiagramHint } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildDiagramCanvasItem, buildChartCanvasItem } from '@/lib/artifact-builders';
 import PodcastPlayer from './PodcastPlayer';
 
 /**
@@ -51,62 +52,49 @@ interface ArtifactsPanelProps {
   messageId?: string;
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
-  onArtifactClick?: (item: ArtifactCanvasItem) => void;
+  onArtifactClick?: (item: ArtifactCanvasItem, siblings: ArtifactCanvasItem[]) => void;
   hidden?: boolean; // For mobile: hide when input is focused
   collapsed?: boolean;
   onCollapseChange?: (collapsed: boolean) => void;
 }
 
-function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
-  return {
-    artifactId: doc.id,
-    artifactType: doc.fileType as ArtifactCanvasItem['artifactType'],
-    title: doc.filename,
-    downloadUrl: doc.downloadUrl,
-  };
-}
-
-function buildImageCanvasItem(img: GeneratedImageInfo): ArtifactCanvasItem {
-  return {
-    artifactId: img.id,
-    artifactType: 'image',
-    title: img.alt || 'Generated image',
-    downloadUrl: img.url,
-  };
-}
-
-function buildPodcastCanvasItem(podcast: PodcastHint): ArtifactCanvasItem {
-  return {
-    artifactId: podcast.id,
-    artifactType: 'podcast',
-    title: podcast.filename,
-    downloadUrl: podcast.downloadUrl,
-  };
-}
-
-function buildDiagramCanvasItem(diagram: DiagramHint): ArtifactCanvasItem {
-  return {
-    artifactId: `diagram-${diagram.title || Date.now()}`,
-    artifactType: 'diagram',
-    title: diagram.title || 'Diagram',
-    downloadUrl: '',
-    mermaidCode: diagram.code,
-  };
-}
-
-function buildChartCanvasItem(
-  viz: MessageVisualization,
-  messageId: string,
-  index: number
-): ArtifactCanvasItem {
-  return {
-    artifactId: `chart-${messageId}-${index}`,
-    artifactType: 'chart',
-    title: viz.title || `Chart ${index + 1}`,
-    downloadUrl: '',
-    chartData: viz.data,
-    chartType: viz.chartType,
-  };
+/**
+ * Build the ordered list of all canvas-viewable artifacts, in the same order
+ * they appear in the sidebar (docs → images → podcasts → diagrams → charts).
+ * Only non-expired items are included so navigation never lands on an expired
+ * artifact that can't be viewed.
+ */
+function buildViewableArtifacts(params: {
+  generatedDocs: GeneratedDocumentInfo[];
+  generatedImages: GeneratedImageInfo[];
+  generatedPodcasts: PodcastHint[];
+  generatedDiagrams: DiagramHint[];
+  visualizations: MessageVisualization[];
+  messageId: string;
+}): ArtifactCanvasItem[] {
+  const items: ArtifactCanvasItem[] = [];
+  for (const doc of params.generatedDocs) {
+    if (getExpirationBadge(doc.expiresAt).variant !== 'expired') {
+      items.push(buildDocCanvasItem(doc));
+    }
+  }
+  for (const img of params.generatedImages) {
+    if (getExpirationBadge(img.expiresAt).variant !== 'expired') {
+      items.push(buildImageCanvasItem(img));
+    }
+  }
+  for (const podcast of params.generatedPodcasts) {
+    if (getExpirationBadge(podcast.expiresAt).variant !== 'expired') {
+      items.push(buildPodcastCanvasItem(podcast));
+    }
+  }
+  params.generatedDiagrams.forEach((diagram, idx) => {
+    items.push(buildDiagramCanvasItem(diagram, idx));
+  });
+  params.visualizations.forEach((viz, idx) => {
+    items.push(buildChartCanvasItem(viz, params.messageId, idx));
+  });
+  return items;
 }
 
 interface SectionState {
@@ -242,6 +230,27 @@ export default function ArtifactsPanel({
   const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length + generatedDiagrams.length + visualizations.length;
   const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
+  // Ordered list of all canvas-viewable artifacts (non-expired only).
+  const viewableArtifacts = useMemo(
+    () =>
+      buildViewableArtifacts({
+        generatedDocs,
+        generatedImages,
+        generatedPodcasts,
+        generatedDiagrams,
+        visualizations,
+        messageId,
+      }),
+    [generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams, visualizations, messageId]
+  );
+
+  const handleArtifactClick = useCallback(
+    (item: ArtifactCanvasItem) => {
+      onArtifactClick?.(item, viewableArtifacts);
+    },
+    [onArtifactClick, viewableArtifacts]
+  );
+
   const toggleSection = (section: keyof SectionState) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
@@ -338,7 +347,7 @@ export default function ArtifactsPanel({
                           title={doc.filename}
                           badge={badge}
                           isExpired={isExpired}
-                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                          onClick={onArtifactClick ? () => handleArtifactClick(item) : undefined}
                           downloadUrl={isExpired ? undefined : doc.downloadUrl}
                         />
                       );
@@ -355,7 +364,7 @@ export default function ArtifactsPanel({
                           title={img.alt}
                           badge={badge}
                           isExpired={isExpired}
-                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                          onClick={onArtifactClick ? () => handleArtifactClick(item) : undefined}
                           downloadUrl={isExpired ? undefined : img.url}
                         />
                       );
@@ -366,7 +375,7 @@ export default function ArtifactsPanel({
                       return (
                         <button
                           key={podcast.id}
-                          onClick={() => onArtifactClick?.(item)}
+                          onClick={() => handleArtifactClick(item)}
                           className="w-full flex items-center gap-2"
                         >
                           <div className="flex-1 min-w-0">
@@ -383,7 +392,7 @@ export default function ArtifactsPanel({
                       );
                     })}
                     {generatedDiagrams.map((diagram, idx) => {
-                      const item = buildDiagramCanvasItem(diagram);
+                      const item = buildDiagramCanvasItem(diagram, idx);
                       return (
                         <ArtifactRow
                           key={`diagram-${idx}`}
@@ -392,7 +401,7 @@ export default function ArtifactsPanel({
                           title={diagram.title}
                           badge={{ show: false, text: '', variant: 'none' }}
                           isExpired={false}
-                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                          onClick={onArtifactClick ? () => handleArtifactClick(item) : undefined}
                         />
                       );
                     })}
@@ -406,7 +415,7 @@ export default function ArtifactsPanel({
                           title={viz.title}
                           badge={{ show: false, text: '', variant: 'none' }}
                           isExpired={false}
-                          onClick={onArtifactClick ? () => onArtifactClick(item) : undefined}
+                          onClick={onArtifactClick ? () => handleArtifactClick(item) : undefined}
                         />
                       );
                     })}

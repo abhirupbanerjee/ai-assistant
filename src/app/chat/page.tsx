@@ -21,6 +21,7 @@ import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
 import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt, ArtifactCanvasItem } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
 
 interface WelcomeConfig {
   title?: string;
@@ -61,6 +62,11 @@ function HomeContent() {
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
   const canvasState = useCanvasState();
+  // Destructure openCanvas for a stable dependency in handleOpenCanvas below.
+  // Depending on the whole canvasState object (a fresh literal every render)
+  // would recreate handleOpenCanvas each render and break MessageBubble's
+  // memoization. openCanvas is individually stable (useCallback with []).
+  const { openCanvas } = canvasState;
 
   // Imperatively collapse/expand panels when canvas mode changes
   useEffect(() => {
@@ -163,6 +169,31 @@ function HomeContent() {
   }) => {
     setArtifactsData(data);
   }, []);
+
+  // Viewable artifacts for canvas navigation siblings — built from the
+  // page-level artifactsData (docs → images → podcasts, excluding expired).
+  // Diagrams/charts live per-message inside ChatWindow and are not included
+  // here, but docs/images/podcasts cover the common cases opened from chat.
+  const viewableCanvasSiblings = useMemo<ArtifactCanvasItem[]>(() => {
+    const items: ArtifactCanvasItem[] = [];
+    for (const doc of artifactsData.generatedDocs) {
+      if (getExpirationVariant(doc.expiresAt) !== 'expired') items.push(buildDocCanvasItem(doc));
+    }
+    for (const img of artifactsData.generatedImages) {
+      if (getExpirationVariant(img.expiresAt) !== 'expired') items.push(buildImageCanvasItem(img));
+    }
+    for (const podcast of artifactsData.generatedPodcasts) {
+      if (getExpirationVariant(podcast.expiresAt) !== 'expired') items.push(buildPodcastCanvasItem(podcast));
+    }
+    return items;
+  }, [artifactsData.generatedDocs, artifactsData.generatedImages, artifactsData.generatedPodcasts]);
+
+  // Open a document/image/podcast artifact in the Canvas side panel. Threaded
+  // down to ChatWindow → MessageBubble → DocumentResultCard so the chat-feed
+  // "Open" button previews the artifact in-app instead of downloading.
+  const handleOpenCanvas = useCallback((item: ArtifactCanvasItem) => {
+    openCanvas(item, viewableCanvasSiblings);
+  }, [openCanvas, viewableCanvasSiblings]);
 
   const handleRemoveUpload = useCallback(async (filename: string) => {
     if (!artifactsData.threadId) return;
@@ -309,6 +340,7 @@ function HomeContent() {
                   onInputFocus={handleInputFocus}
                   onInputBlur={handleInputBlur}
                   initialDraft={shareDraft}
+                  onOpenCanvas={handleOpenCanvas}
                 />
               </ErrorBoundary>
             </main>
@@ -338,6 +370,8 @@ function HomeContent() {
                     artifact={canvasState.artifact}
                     onClose={canvasState.closeCanvas}
                     threadId={artifactsData.threadId}
+                    siblings={canvasState.siblings}
+                    onNavigate={canvasState.navigateTo}
                   />
                 ) : (
                   <ArtifactsPanel
@@ -349,7 +383,9 @@ function HomeContent() {
                     urlSources={artifactsData.urlSources}
                     onRemoveUpload={handleRemoveUpload}
                     onRemoveUrlSource={handleRemoveUrlSource}
-                    onArtifactClick={(item: ArtifactCanvasItem) => canvasState.openCanvas(item)}
+                    onArtifactClick={(item: ArtifactCanvasItem, siblings: ArtifactCanvasItem[]) =>
+                      canvasState.openCanvas(item, siblings)
+                    }
                     collapsed={isArtifactsPanelCollapsed}
                     onCollapseChange={setIsArtifactsPanelCollapsed}
                   />
@@ -377,6 +413,8 @@ function HomeContent() {
             <MobileArtifactCanvas
               artifact={canvasState.artifact}
               onClose={canvasState.closeCanvas}
+              siblings={canvasState.siblings}
+              onNavigate={canvasState.navigateTo}
             />
           ) : (
             <MobileArtifactsMenu
@@ -388,7 +426,9 @@ function HomeContent() {
               urlSources={artifactsData.urlSources}
               onRemoveUpload={handleRemoveUpload}
               onRemoveUrlSource={handleRemoveUrlSource}
-              onArtifactClick={(item: ArtifactCanvasItem) => canvasState.openCanvas(item)}
+              onArtifactClick={(item: ArtifactCanvasItem, siblings: ArtifactCanvasItem[]) =>
+                canvasState.openCanvas(item, siblings)
+              }
             />
           )}
         </>

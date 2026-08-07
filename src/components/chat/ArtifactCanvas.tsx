@@ -19,6 +19,10 @@ interface ArtifactCanvasProps {
   artifact: ArtifactCanvasItem;
   onClose: () => void;
   threadId: string | null;
+  /** Ordered list of viewable artifacts for prev/next navigation. */
+  siblings?: ArtifactCanvasItem[];
+  /** Navigate to a sibling by absolute index. */
+  onNavigate?: (index: number) => void;
 }
 
 function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; threadId: string | null }) {
@@ -106,17 +110,50 @@ function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; 
   }
 }
 
-export default function ArtifactCanvas({ artifact, onClose, threadId }: ArtifactCanvasProps) {
-  // Close on Escape
+export default function ArtifactCanvas({ artifact, onClose, threadId, siblings, onNavigate }: ArtifactCanvasProps) {
+  const hasNav = Boolean(siblings && siblings.length > 1 && onNavigate);
+  const currentIndex = siblings && siblings.length > 0
+    ? siblings.findIndex((s) => s.artifactId === artifact.artifactId)
+    : -1;
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const indexText = hasNav && siblings ? `${safeIndex + 1} / ${siblings.length}` : undefined;
+  const hasPrev = hasNav && safeIndex > 0;
+  const hasNext = hasNav && siblings ? safeIndex < siblings.length - 1 : false;
+
+  const handlePrev = () => {
+    if (hasPrev && onNavigate) onNavigate(safeIndex - 1);
+  };
+  const handleNext = () => {
+    if (hasNext && onNavigate) onNavigate(safeIndex + 1);
+  };
+
+  // Close on Escape + arrow navigation (when focus is not in a text input).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const isTypingTarget =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.tagName === 'SELECT');
+      if (isTypingTarget) return;
+      if (e.key === 'ArrowLeft' && hasPrev) {
+        e.preventDefault();
+        handlePrev();
+      } else if (e.key === 'ArrowRight' && hasNext) {
+        e.preventDefault();
+        handleNext();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, hasPrev, hasNext, safeIndex, siblings, onNavigate]);
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -125,6 +162,11 @@ export default function ArtifactCanvas({ artifact, onClose, threadId }: Artifact
         downloadUrl={artifact.downloadUrl || undefined}
         onClose={onClose}
         artifact={artifact}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
+        indexText={indexText}
+        onPrev={handlePrev}
+        onNext={handleNext}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
         <ArtifactViewer artifact={artifact} threadId={threadId} />

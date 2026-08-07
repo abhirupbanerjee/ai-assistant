@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { RefreshCw } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
@@ -63,6 +63,12 @@ interface ChatWindowProps {
   // Share-target prefill (Phase 2.3) — seeds the composer from the Android
   // share sheet. Passed through to MessageInput.initialDraft.
   initialDraft?: string;
+  /**
+   * Open a document artifact in the Artifact Canvas side panel. Threaded down
+   * to MessageBubble → DocumentResultCard so chat-feed document cards show an
+   * "Open" button instead of "Download" (download remains in the Canvas toolbar).
+   */
+  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
 }
 
 // Ref interface for external control
@@ -106,6 +112,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   onInputFocus,
   onInputBlur,
   initialDraft,
+  onOpenCanvas,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -1112,6 +1119,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             threadId={threadId}
             showSources={effectiveShowSources}
             showCitationTrajectory={effectiveShowCitationTrajectory}
+            onOpenCanvas={onOpenCanvas}
           />
         ))}
 
@@ -1147,6 +1155,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               onFork={message.role === 'assistant' && threadId ? handleFork : undefined}
               onRegenerateWithModel={message.role === 'assistant' && threadId ? handleRegenerateWithModel : undefined}
               query={query}
+              onOpenCanvas={onOpenCanvas}
             />
           </Fragment>
           );
@@ -1185,6 +1194,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               threadId={threadId}
               showSources={effectiveShowSources}
               showCitationTrajectory={effectiveShowCitationTrajectory}
+              onOpenCanvas={onOpenCanvas}
             />
           </div>
         )}

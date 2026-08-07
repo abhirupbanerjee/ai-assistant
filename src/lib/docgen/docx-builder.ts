@@ -125,10 +125,41 @@ export class DocxBuilder {
     // Add page break so content starts on page 2
     children.push(new Paragraph({ pageBreakBefore: true }));
 
-    // Add content sections
+    // Add content sections. Each numbered list section gets its own numbering
+    // reference so the count restarts at 1 per section instead of continuing
+    // across the whole document.
+    let numberedListIndex = 0;
     for (const section of sections) {
-      children.push(...this.renderSection(section));
+      if (section.type === 'numbered') {
+        children.push(...this.renderSection(section, numberedListIndex));
+        numberedListIndex++;
+      } else {
+        children.push(...this.renderSection(section));
+      }
     }
+
+    // Generate one numbering config per numbered list section so each list is
+    // an independent instance (OpenXML continues numbering for paragraphs that
+    // share the same numbering reference).
+    const numberingConfigs = Array.from(
+      { length: Math.max(numberedListIndex, 1) },
+      (_, i) => ({
+        reference: `numbered-list-${i}`,
+        levels: [
+          {
+            level: 0,
+            format: LevelFormat.DECIMAL,
+            text: '%1.',
+            alignment: AlignmentType.LEFT,
+            style: {
+              paragraph: {
+                indent: { left: 720, hanging: 360 },
+              },
+            },
+          },
+        ],
+      })
+    );
 
     // Create document
     const doc = new Document({
@@ -139,24 +170,7 @@ export class DocxBuilder {
       description: this.options.metadata?.description,
       styles: this.getDocumentStyles(),
       numbering: {
-        config: [
-          {
-            reference: 'default-numbering',
-            levels: [
-              {
-                level: 0,
-                format: LevelFormat.DECIMAL,
-                text: '%1.',
-                alignment: AlignmentType.LEFT,
-                style: {
-                  paragraph: {
-                    indent: { left: 720, hanging: 360 },
-                  },
-                },
-              },
-            ],
-          },
-        ],
+        config: numberingConfigs,
       },
       sections: [
         {
@@ -716,7 +730,10 @@ export class DocxBuilder {
   /**
    * Render a content section to Paragraphs
    */
-  private renderSection(section: ContentSection): (Paragraph | Table)[] {
+  private renderSection(
+    section: ContentSection,
+    numberedListIndex?: number
+  ): (Paragraph | Table)[] {
     switch (section.type) {
       case 'heading1':
         return [
@@ -751,14 +768,19 @@ export class DocxBuilder {
             })
         );
 
-      case 'numbered':
+      case 'numbered': {
+        // Each numbered list section uses its own numbering reference so the
+        // count restarts at 1 per section (matching the config generated in
+        // generate()).
+        const listRef = `numbered-list-${numberedListIndex ?? 0}`;
         return (section.content as string[]).map(
           (item) =>
             new Paragraph({
               children: this.parseInlineFormatting(item),
-              numbering: { reference: 'default-numbering', level: 0 },
+              numbering: { reference: listRef, level: 0 },
             })
         );
+      }
 
       case 'code':
         return [this.createCodeBlock(section.content as string)];

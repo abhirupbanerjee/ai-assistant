@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -13,7 +13,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ArtifactCanvasItem, DiagramHint, MessageVisualization } from '@/types';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ArtifactCanvasItem } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem } from '@/lib/artifact-builders';
 import MobileMenuDrawer from '@/components/ui/MobileMenuDrawer';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
 import PodcastPlayer from '@/components/chat/PodcastPlayer';
@@ -42,34 +43,35 @@ interface MobileArtifactsMenuProps {
   urlSources: UrlSource[];
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
-  onArtifactClick?: (item: ArtifactCanvasItem) => void;
+  onArtifactClick?: (item: ArtifactCanvasItem, siblings: ArtifactCanvasItem[]) => void;
 }
 
-function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
-  return {
-    artifactId: doc.id,
-    artifactType: doc.fileType as ArtifactCanvasItem['artifactType'],
-    title: doc.filename,
-    downloadUrl: doc.downloadUrl,
-  };
-}
-
-function buildImageCanvasItem(img: GeneratedImageInfo): ArtifactCanvasItem {
-  return {
-    artifactId: img.id,
-    artifactType: 'image',
-    title: img.alt || 'Generated image',
-    downloadUrl: img.url,
-  };
-}
-
-function buildPodcastCanvasItem(podcast: PodcastHint): ArtifactCanvasItem {
-  return {
-    artifactId: podcast.id,
-    artifactType: 'podcast',
-    title: podcast.filename,
-    downloadUrl: podcast.downloadUrl,
-  };
+/**
+ * Build the ordered list of all canvas-viewable artifacts (non-expired only),
+ * in the same order they appear in the menu (docs → images → podcasts).
+ */
+function buildMobileViewableArtifacts(
+  docs: GeneratedDocumentInfo[],
+  images: GeneratedImageInfo[],
+  podcasts: PodcastHint[]
+): ArtifactCanvasItem[] {
+  const items: ArtifactCanvasItem[] = [];
+  for (const doc of docs) {
+    if (getExpirationBadge(doc.expiresAt).variant !== 'expired') {
+      items.push(buildDocCanvasItem(doc));
+    }
+  }
+  for (const img of images) {
+    if (getExpirationBadge(img.expiresAt).variant !== 'expired') {
+      items.push(buildImageCanvasItem(img));
+    }
+  }
+  for (const podcast of podcasts) {
+    if (getExpirationBadge(podcast.expiresAt).variant !== 'expired') {
+      items.push(buildPodcastCanvasItem(podcast));
+    }
+  }
+  return items;
 }
 
 interface SectionState {
@@ -120,6 +122,19 @@ export default function MobileArtifactsMenu({
   const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length;
   const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
+  // Ordered list of all canvas-viewable artifacts (non-expired only).
+  const viewableArtifacts = useMemo(
+    () => buildMobileViewableArtifacts(generatedDocs, generatedImages, generatedPodcasts),
+    [generatedDocs, generatedImages, generatedPodcasts]
+  );
+
+  const handleArtifactClick = useCallback(
+    (item: ArtifactCanvasItem) => {
+      onArtifactClick?.(item, viewableArtifacts);
+    },
+    [onArtifactClick, viewableArtifacts]
+  );
+
   const toggleSection = (section: keyof SectionState) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
@@ -168,7 +183,7 @@ export default function MobileArtifactsMenu({
                       return (
                         <button
                           key={doc.id}
-                          onClick={() => onArtifactClick?.(item)}
+                          onClick={() => handleArtifactClick(item)}
                           disabled={isExpired}
                           className={`w-full flex items-center gap-2 p-1.5 rounded text-left ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                         >
@@ -191,7 +206,7 @@ export default function MobileArtifactsMenu({
                       return (
                         <button
                           key={img.id}
-                          onClick={() => onArtifactClick?.(item)}
+                          onClick={() => handleArtifactClick(item)}
                           disabled={isExpired}
                           className={`w-full flex items-center gap-2 p-1.5 rounded text-left ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
                         >
@@ -213,7 +228,7 @@ export default function MobileArtifactsMenu({
                       return (
                         <button
                           key={podcast.id}
-                          onClick={() => onArtifactClick?.(item)}
+                          onClick={() => handleArtifactClick(item)}
                           className="w-full flex items-center gap-2"
                         >
                           <div className="flex-1 min-w-0">

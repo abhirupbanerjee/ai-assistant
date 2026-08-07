@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
-import type { Message, MessageMetadata } from '@/types';
+import type { Message, MessageMetadata, ArtifactCanvasItem } from '@/types';
 import SourceCard from './SourceCard';
 import FeedbackButtons from './FeedbackButtons';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
@@ -232,9 +232,14 @@ interface MessageBubbleProps {
   query?: string;
   /** Workspace ID for feedback scoping */
   workspaceId?: string | null;
+  /**
+   * Open a document artifact in the Artifact Canvas side panel. When provided,
+   * document cards in this message show an "Open" button instead of "Download".
+   */
+  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onRegenerateWithModel, onFork, onEdit, threadId, showSources = true, showCitationTrajectory = true, query, workspaceId }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onRegenerateWithModel, onFork, onEdit, threadId, showSources = true, showCitationTrajectory = true, query, workspaceId, onOpenCanvas }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -471,7 +476,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 total={message.generatedDocuments!.length}
                 defaultCollapsed={message.generatedDocuments!.length > 1}
               >
-                <DocumentResultCard document={doc} />
+                <DocumentResultCard document={doc} onOpenCanvas={onOpenCanvas} />
               </CollapsibleArtifactCard>
             ))}
           </div>
@@ -675,6 +680,7 @@ function areMessageBubblePropsEqual(
   if (prev.onRegenerateWithModel !== next.onRegenerateWithModel) return false;
   if (prev.onFork !== next.onFork) return false;
   if (prev.onEdit !== next.onEdit) return false;
+  if (prev.onOpenCanvas !== next.onOpenCanvas) return false;
 
   const pm = prev.message;
   const nm = next.message;

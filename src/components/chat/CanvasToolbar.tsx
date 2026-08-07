@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ArrowLeft, Download, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 import type { ArtifactCanvasItem } from '@/types';
 
 interface CanvasToolbarProps {
@@ -9,6 +9,11 @@ interface CanvasToolbarProps {
   downloadUrl?: string;
   onClose: () => void;
   artifact?: ArtifactCanvasItem;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  indexText?: string;
+  onPrev?: () => void;
+  onNext?: () => void;
 }
 
 /**
@@ -16,7 +21,17 @@ interface CanvasToolbarProps {
  * The fullscreen toggle uses the browser Fullscreen API on the nearest
  * ancestor container (passed via a ref-less lookup of the parent element).
  */
-export default function CanvasToolbar({ title, downloadUrl, onClose, artifact }: CanvasToolbarProps) {
+export default function CanvasToolbar({
+  title,
+  downloadUrl,
+  onClose,
+  artifact,
+  hasPrev = false,
+  hasNext = false,
+  indexText,
+  onPrev,
+  onNext,
+}: CanvasToolbarProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -78,6 +93,31 @@ export default function CanvasToolbar({ title, downloadUrl, onClose, artifact }:
         >
           <ArrowLeft size={18} />
         </button>
+        {indexText && (onPrev || onNext) && (
+          <div className="flex items-center gap-0.5 border-l border-gray-200 pl-2 ml-1 shrink-0">
+            <button
+              onClick={onPrev}
+              disabled={!hasPrev}
+              className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              title="Previous artifact (Left Arrow)"
+              aria-label="Previous artifact"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-xs text-gray-500 font-mono px-1 tabular-nums" aria-live="polite">
+              {indexText}
+            </span>
+            <button
+              onClick={onNext}
+              disabled={!hasNext}
+              className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              title="Next artifact (Right Arrow)"
+              aria-label="Next artifact"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
         <h3 className="text-sm font-medium text-gray-900 truncate" title={title}>
           {title}
         </h3>

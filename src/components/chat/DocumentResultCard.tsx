@@ -1,8 +1,9 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { FileText, FileSpreadsheet, FileCode, Globe, FileArchive, Download, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
-import type { GeneratedDocumentInfo } from '@/types';
+import { FileText, FileSpreadsheet, FileCode, Globe, FileArchive, Download, ExternalLink, Eye, Clock, AlertTriangle } from 'lucide-react';
+import type { ArtifactCanvasItem, GeneratedDocumentInfo } from '@/types';
+import { buildDocCanvasItem } from '@/lib/artifact-builders';
 
 const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
 
@@ -14,6 +15,13 @@ interface DocumentResultCardProps {
    * Workspace artifact cards can pass 'workspace' when they adopt this card.
    */
   context?: 'thread' | 'workspace';
+  /**
+   * Open this document in the Artifact Canvas side panel. When provided, the
+   * primary action button becomes "Open" (Eye icon) instead of "Download" —
+   * the user can download locally from the Canvas toolbar after previewing.
+   * Falls back to a direct download when omitted (e.g. workspace cards).
+   */
+  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
 }
 
 /**
@@ -74,7 +82,7 @@ function formatExpiration(expiresAt: string | null): { text: string | null; vari
   return { text: `Expires ${expDate.toLocaleDateString()}`, variant: 'none' };
 }
 
-export default function DocumentResultCard({ document, context = 'thread' }: DocumentResultCardProps) {
+export default function DocumentResultCard({ document, context = 'thread', onOpenCanvas }: DocumentResultCardProps) {
   const { text: expirationText, variant: expirationVariant } = formatExpiration(document.expiresAt);
   const isExpired = expirationVariant === 'expired';
   const isWarning = expirationVariant === 'warning';
@@ -87,7 +95,12 @@ export default function DocumentResultCard({ document, context = 'thread' }: Doc
 
   const handleOpen = () => {
     if (isExpired) return;
-    window.open(document.downloadUrl, '_blank');
+    if (onOpenCanvas) {
+      onOpenCanvas(buildDocCanvasItem(document));
+    } else {
+      // No canvas wiring (e.g. workspace card) — fall back to a direct open.
+      window.open(document.downloadUrl, '_blank');
+    }
   };
 
   const outputId = document.id ? Number(document.id) : undefined;
@@ -134,6 +147,16 @@ export default function DocumentResultCard({ document, context = 'thread' }: Doc
           )}
           {isExpired ? (
             <span className="text-xs text-gray-400 italic px-3 py-2">Deleted</span>
+          ) : onOpenCanvas ? (
+            <button
+              onClick={handleOpen}
+              title="Open in canvas"
+              aria-label="Open in canvas"
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <Eye size={16} />
+              Open
+            </button>
           ) : isHtml ? (
             <button
               onClick={handleOpen}
