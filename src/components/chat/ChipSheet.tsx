@@ -89,15 +89,15 @@ export default function ChipSheet({
       {!isOpen && hasActiveFeatures && (
         <button
           onClick={onClose} // "onClose" actually opens it when collapsed
-          className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 transition-colors"
+          className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 transition-all duration-200"
           title={`${activeFeatures.length} option${activeFeatures.length !== 1 ? 's' : ''} active — tap to view`}
           aria-label={`${activeFeatures.length} option${activeFeatures.length !== 1 ? 's' : ''} active — tap to view`}
         >
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 transition-all duration-200">
             {activeFeatures.map((feature, index) => (
               <span
                 key={index}
-                className="flex items-center justify-center w-5 h-5 bg-blue-100 text-blue-700 rounded-full"
+                className="flex items-center justify-center w-5 h-5 bg-blue-100 text-blue-700 rounded-full transition-all duration-200"
                 title={feature.label}
               >
                 {feature.icon}
@@ -147,7 +147,7 @@ export default function ChipSheet({
             <div ref={contentRef} className="px-4 pb-6 pt-3 space-y-3">
               {/* Category + Attachment chips */}
               {(categoryChipSlot || attachmentChipsSlot) && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 transition-all duration-200">
                   {categoryChipSlot}
                   {attachmentChipsSlot}
                 </div>
@@ -155,14 +155,14 @@ export default function ChipSheet({
 
               {/* Mode chips */}
               {modeChips && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 transition-all duration-200">
                   {modeChips}
                 </div>
               )}
 
               {/* Language/Tone chips */}
               {languageToneChips && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 transition-all duration-200">
                   {languageToneChips}
                 </div>
               )}

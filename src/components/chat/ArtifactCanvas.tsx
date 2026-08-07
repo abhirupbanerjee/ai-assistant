@@ -12,6 +12,7 @@ import ChartViewer from './viewers/ChartViewer';
 import PodcastViewer from './viewers/PodcastViewer';
 import PdfViewer from './viewers/PdfViewer';
 import ZipViewer from './viewers/ZipViewer';
+import SkeletonArtifact from './SkeletonArtifact';
 import { useDriveUpload } from '@/hooks/useDriveUpload';
 
 interface ArtifactCanvasProps {
@@ -42,9 +43,8 @@ function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; 
     case 'xlsx':
       if (loading) {
         return (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
-            <p className="text-sm">Uploading to Google Drive for preview…</p>
+          <div className="h-full">
+            <SkeletonArtifact variant="document" />
           </div>
         );
       }
@@ -124,6 +124,7 @@ export default function ArtifactCanvas({ artifact, onClose, threadId }: Artifact
         title={artifact.title}
         downloadUrl={artifact.downloadUrl || undefined}
         onClose={onClose}
+        artifact={artifact}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
         <ArtifactViewer artifact={artifact} threadId={threadId} />

@@ -20,6 +20,8 @@ interface ScrollNavButtonsProps {
   isStreaming: boolean;
   /** True on touch devices — buttons are always visible when relevant (no hover) */
   isTouchDevice: boolean;
+  /** Number of new messages/turns accumulated while the user is scrolled up (optional badge) */
+  unreadCount?: number;
   /** Optional extra classNames appended to the wrapper */
   className?: string;
   /**
@@ -53,12 +55,15 @@ export default function ScrollNavButtons({
   clientHeight,
   isStreaming,
   isTouchDevice,
+  unreadCount = 0,
   className = '',
   hoverClassName = 'opacity-0 group-hover:opacity-100 transition-opacity duration-200',
   buttonClassName = DEFAULT_BUTTON_CLASS,
 }: ScrollNavButtonsProps) {
   const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-  const showScrollDown = distanceFromBottom > SCROLL_DOWN_THRESHOLD && !isStreaming;
+  // Show scroll-down during streaming too when the user has scrolled up (unread indicator)
+  const showScrollDown = (distanceFromBottom > SCROLL_DOWN_THRESHOLD && !isStreaming)
+    || (distanceFromBottom > SCROLL_DOWN_THRESHOLD && isStreaming && unreadCount > 0);
   const showScrollUp = scrollTop > SCROLL_UP_THRESHOLD && !isStreaming;
 
   const scrollToTop = useCallback(() => {
@@ -101,11 +106,16 @@ export default function ScrollNavButtons({
       {showScrollDown && (
         <button
           onClick={scrollToBottom}
-          className={buttonClassName}
-          title="Scroll to bottom"
-          aria-label="Scroll to bottom"
+          className={`${buttonClassName} relative`}
+          title={unreadCount > 0 ? `${unreadCount} new — scroll to bottom` : 'Scroll to bottom'}
+          aria-label={unreadCount > 0 ? `${unreadCount} new — scroll to bottom` : 'Scroll to bottom'}
         >
           <ArrowDown size={16} />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-blue-600 rounded-full ring-2 ring-white">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
       )}
     </div>

@@ -56,6 +56,8 @@ function HomeContent() {
   const [globalWelcome, setGlobalWelcome] = useState<WelcomeConfig>({});
   const [globalStarterPrompts, setGlobalStarterPrompts] = useState<StarterPrompt[]>([]);
   const [threadCount, setThreadCount] = useState(0);
+  const [isThreadSidebarCollapsed, setIsThreadSidebarCollapsed] = useState(false);
+  const [isArtifactsPanelCollapsed, setIsArtifactsPanelCollapsed] = useState(false);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
   const canvasState = useCanvasState();
@@ -265,15 +267,24 @@ function HomeContent() {
                 maxSize={35}
                 collapsible
                 collapsedSize={0}
+                onCollapse={() => setIsThreadSidebarCollapsed(true)}
+                onExpand={() => setIsThreadSidebarCollapsed(false)}
               >
                 <ThreadSidebar
                   ref={sidebarRef}
                   onThreadSelect={handleThreadSelect}
                   onThreadCreated={handleThreadCreated}
                   selectedThreadId={activeThread?.id}
+                  collapsed={isThreadSidebarCollapsed}
+                  onCollapseChange={setIsThreadSidebarCollapsed}
                 />
               </Panel>
-              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors hidden md:block" />
+              <PanelResizeHandle
+                className="group relative w-1.5 bg-gray-200 hover:bg-blue-500 active:bg-blue-600 transition-colors cursor-col-resize hidden md:flex items-center justify-center z-10"
+                onDoubleClick={() => panelGroupRef.current?.setLayout([20, 55, 25])}
+              >
+                <div className="w-0.5 h-6 bg-gray-400/60 rounded-full group-hover:bg-white/80 pointer-events-none" />
+              </PanelResizeHandle>
             </>
           )}
 
@@ -283,7 +294,7 @@ function HomeContent() {
             defaultSize={isMobile ? 100 : 55}
             minSize={25}
           >
-            <main className="flex flex-col min-h-0 h-full overflow-hidden">
+            <main className="flex flex-col min-h-0 h-full overflow-hidden bg-white">
               <ErrorBoundary moduleName="ChatWindow">
                 <ChatWindow
                   ref={chatWindowRef}
@@ -305,13 +316,22 @@ function HomeContent() {
 
           {!isMobile && (
             <>
-              <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-blue-400 transition-colors hidden md:block" />
+              <PanelResizeHandle
+                className="group relative w-1.5 bg-gray-200 hover:bg-blue-500 active:bg-blue-600 transition-colors cursor-col-resize hidden md:flex items-center justify-center z-10"
+                onDoubleClick={() => panelGroupRef.current?.setLayout([20, 55, 25])}
+              >
+                <div className="w-0.5 h-6 bg-gray-400/60 rounded-full group-hover:bg-white/80 pointer-events-none" />
+              </PanelResizeHandle>
               <Panel
                 ref={artifactsPanelRef}
                 id="artifacts-panel"
                 defaultSize={25}
                 minSize={15}
                 maxSize={75}
+                collapsible
+                collapsedSize={0}
+                onCollapse={() => setIsArtifactsPanelCollapsed(true)}
+                onExpand={() => setIsArtifactsPanelCollapsed(false)}
               >
                 {canvasState.mode === 'canvas' && canvasState.artifact ? (
                   <ArtifactCanvas
@@ -330,6 +350,8 @@ function HomeContent() {
                     onRemoveUpload={handleRemoveUpload}
                     onRemoveUrlSource={handleRemoveUrlSource}
                     onArtifactClick={(item: ArtifactCanvasItem) => canvasState.openCanvas(item)}
+                    collapsed={isArtifactsPanelCollapsed}
+                    onCollapseChange={setIsArtifactsPanelCollapsed}
                   />
                 )}
               </Panel>

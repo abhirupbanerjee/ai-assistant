@@ -25,6 +25,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import ChatSummaryBanner from './ChatSummaryBanner';
 import ChatWelcome from './ChatWelcome';
 import ScrollNavButtons from './ScrollNavButtons';
+import ThreadContextBar from './ThreadContextBar';
 
 // Lazy-load heavy conditional components that only render during specific streaming states
 const SubagentPanel = dynamic(() => import('./SubagentPanel'), { ssr: false, loading: () => <div className="h-24 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
@@ -255,6 +256,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   // Scroll position tracking for ScrollNavButtons
   const [scrollPos, setScrollPos] = useState({ top: 0, height: 0, clientHeight: 0 });
+  // Unread turn counter — increments when streaming content arrives while the
+  // user is scrolled up; resets to 0 once they scroll back to the bottom.
+  const [unreadTurns, setUnreadTurns] = useState(0);
+  const prevMessageCountRef = useRef(0);
 
   // Per-thread scroll position memory
   const { saveScroll, restoreScroll, confirmRestore, cancelRestore } = useScrollMemory(messagesContainerRef);
@@ -439,6 +444,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           ...m,
           timestamp: new Date(m.timestamp),
         })));
+        prevMessageCountRef.current = data.messages.length;
+        setUnreadTurns(0);
         setUploads(data.uploads || []);
 
         // Task plan info is now shown via per-task progressive updates in the chat (Phase 1.4)
@@ -723,6 +730,19 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     });
   }, [messages.length, isScrolledUp, streamingState.isStreaming, streamingState.currentContent, streamingState.currentThinkingContent, threadId, confirmRestore, bottomSpacerHeight]);
 
+  // Unread-turn tracking: increment when new messages are committed while the
+  // user is scrolled up (e.g. a background assistant turn finishes). Reset
+  // happens in scrollToBottom / handleMessagesScroll when the user returns to
+  // the bottom, and on new send / thread load.
+  useEffect(() => {
+    const prevCount = prevMessageCountRef.current;
+    const currentCount = messages.length;
+    if (currentCount > prevCount && isScrolledUp) {
+      setUnreadTurns(prev => prev + (currentCount - prevCount));
+    }
+    prevMessageCountRef.current = currentCount;
+  }, [messages.length, isScrolledUp]);
+
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     // Ignore scroll events triggered by our own programmatic scrolling
     if (programmaticScrollRef.current) return;
@@ -731,12 +751,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (!container) return;
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setIsScrolledUp(!atBottom);
+    if (atBottom) {
+      // User returned to the bottom — clear the unread badge
+      setUnreadTurns(0);
+    }
     // Track scroll position for ScrollNavButtons
     setScrollPos({ top: container.scrollTop, height: container.scrollHeight, clientHeight: container.clientHeight });
     // If user scrolls up while streaming, latch the pause so auto-scroll stays off
-    // for the rest of this streaming turn (resets on next send).
+    // for the rest of this streaming turn (resets on next send). Also seed the
+    // unread badge so the scroll-down button is visible during streaming.
     if (isStreamingRef.current && !atBottom) {
       streamScrollPausedRef.current = true;
+      setUnreadTurns(prev => (prev === 0 ? 1 : prev));
     }
     // Cancel any pending scroll-position restore — the user is manually scrolling
     cancelRestore();
@@ -751,6 +777,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     programmaticScrollRef.current = true;
     container.scrollTop = container.scrollHeight;
     setIsScrolledUp(false);
+    setUnreadTurns(0);
     // Retry after a frame: lazy-rendered content near the bottom may change
     // scrollHeight after the first scroll, requiring a second scroll to reach
     // the true end (fixes the "stops midway" bug).
@@ -834,6 +861,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
     // Reset the streaming scroll-pause latch for the new turn
     streamScrollPausedRef.current = false;
+    // User is actively sending — they're at the bottom, clear unread badge
+    setUnreadTurns(0);
 
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
@@ -1046,6 +1075,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   return (
 
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      {/* Thread context sub-bar — title, model, categories */}
+      <ThreadContextBar thread={activeThread ?? null} />
+
       {/* Summarization Banner */}
       <ChatSummaryBanner
         isSummarized={activeThread?.isSummarized ?? false}
@@ -1193,6 +1225,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           clientHeight={scrollPos.clientHeight}
           isStreaming={streamingState.isStreaming}
           isTouchDevice={isTouchDevice}
+          unreadCount={unreadTurns}
         />
       </div>
 

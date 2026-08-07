@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -15,8 +15,6 @@ import {
   PanelRightOpen
 } from 'lucide-react';
 import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, MessageVisualization, ArtifactCanvasItem, DiagramHint } from '@/types';
-import { useResizableSidebar } from '@/hooks/useResizableSidebar';
-import ResizeHandle from '@/components/ui/ResizeHandle';
 import PodcastPlayer from './PodcastPlayer';
 
 /**
@@ -55,6 +53,8 @@ interface ArtifactsPanelProps {
   onRemoveUrlSource?: (filename: string) => void;
   onArtifactClick?: (item: ArtifactCanvasItem) => void;
   hidden?: boolean; // For mobile: hide when input is focused
+  collapsed?: boolean;
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
 function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
@@ -207,22 +207,18 @@ export default function ArtifactsPanel({
   onRemoveUrlSource,
   onArtifactClick,
   hidden = false,
+  collapsed: collapsedProp = false,
+  onCollapseChange,
 }: ArtifactsPanelProps) {
-  // Resizable sidebar hook - handles width and collapsed state
-  const {
-    width,
-    isCollapsed,
-    isResizing,
-    setIsCollapsed,
-    handleMouseDown,
-  } = useResizableSidebar({
-    storageKeyPrefix: 'artifacts-panel',
-    defaultWidth: 288,
-    minWidth: 200,
-    maxWidth: 500,
-    collapseThreshold: 120,
-    side: 'right',
-  });
+  const [internalCollapsed, setInternalCollapsed] = useState(collapsedProp);
+  const isCollapsed = onCollapseChange ? collapsedProp : internalCollapsed;
+  const setIsCollapsed = useCallback((collapsed: boolean) => {
+    if (onCollapseChange) {
+      onCollapseChange(collapsed);
+    } else {
+      setInternalCollapsed(collapsed);
+    }
+  }, [onCollapseChange]);
 
   const [expandedSections, setExpandedSections] = useState<SectionState>({
     aiGenerated: true,
@@ -263,7 +259,7 @@ export default function ArtifactsPanel({
   // Collapsed view
   if (isCollapsed) {
     return (
-      <div className="w-12 bg-white border-l flex flex-col items-center py-4 gap-3">
+      <div className="w-full h-full bg-white border-l border-gray-200 flex flex-col items-center py-4 gap-3">
         <button
           onClick={() => setIsCollapsed(false)}
           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -283,19 +279,7 @@ export default function ArtifactsPanel({
 
   // Expanded view
   return (
-    <div
-      className="bg-white border-l flex flex-col h-full relative"
-      style={{ width: `${width}px` }}
-    >
-      {/* Resize handle - desktop only */}
-      <div className="hidden md:block">
-        <ResizeHandle
-          side="left"
-          onMouseDown={handleMouseDown}
-          isResizing={isResizing}
-        />
-      </div>
-
+    <div className="w-full h-full bg-white border-l border-gray-200 flex flex-col">
       {/* Header */}
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">

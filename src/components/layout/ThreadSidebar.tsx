@@ -11,8 +11,6 @@ import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
-import { useResizableSidebar } from '@/hooks/useResizableSidebar';
-import ResizeHandle from '@/components/ui/ResizeHandle';
 
 // Color palette for subscription badges
 const SUBSCRIPTION_COLORS = [
@@ -72,6 +70,8 @@ interface ThreadSidebarProps {
   onThreadCreated?: (thread: Thread) => void;
   selectedThreadId?: string | null;
   hidden?: boolean; // For mobile: hide when input is focused
+  collapsed?: boolean;
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
 export interface ThreadSidebarRef {
@@ -83,6 +83,8 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   onThreadCreated,
   selectedThreadId,
   hidden = false,
+  collapsed: collapsedProp = false,
+  onCollapseChange,
 }, ref) {
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -119,21 +121,15 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
     return {};
   });
 
-  // Resizable sidebar hook - handles width and collapsed state
-  const {
-    width,
-    isCollapsed,
-    isResizing,
-    setIsCollapsed,
-    handleMouseDown,
-  } = useResizableSidebar({
-    storageKeyPrefix: 'thread-sidebar',
-    defaultWidth: 288,
-    minWidth: 200,
-    maxWidth: 500,
-    collapseThreshold: 120,
-    side: 'left',
-  });
+  const [internalCollapsed, setInternalCollapsed] = useState(collapsedProp);
+  const isCollapsed = onCollapseChange ? collapsedProp : internalCollapsed;
+  const setIsCollapsed = useCallback((collapsed: boolean) => {
+    if (onCollapseChange) {
+      onCollapseChange(collapsed);
+    } else {
+      setInternalCollapsed(collapsed);
+    }
+  }, [onCollapseChange]);
 
   // Expose setCollapsed for external control (e.g. swipe gestures)
   useImperativeHandle(ref, () => ({
@@ -343,7 +339,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   if (isCollapsed) {
     return (
       <>
-        <aside className="w-14 bg-white border-r flex flex-col shrink-0 h-full items-center py-4 gap-3">
+        <aside className="w-full h-full bg-white border-r border-gray-200 flex flex-col items-center py-4 gap-3">
           <button
             onClick={() => setIsCollapsed(false)}
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -438,18 +434,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   return (
     <>
       {/* Sidebar */}
-      <aside
-        className="bg-white border-r flex flex-col shrink-0 h-full relative"
-        style={{ width: `${width}px` }}
-      >
-        {/* Resize handle - desktop only */}
-        <div className="hidden md:block">
-          <ResizeHandle
-            side="right"
-            onMouseDown={handleMouseDown}
-            isResizing={isResizing}
-          />
-        </div>
+      <aside className="w-full h-full bg-white border-r border-gray-200 flex flex-col">
         {/* Header with collapse button */}
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <span className="font-medium text-gray-900">Threads</span>
