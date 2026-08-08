@@ -16,6 +16,7 @@ import {
   ChevronsRight,
   Layers,
   Wrench,
+  Bot,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -23,8 +24,8 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'settings';
-type SettingsSection = 'agent' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
+type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agents' | 'settings';
+type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -54,14 +55,18 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'tools', label: 'Tools', icon: Wrench, expandable: false },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
+  // Agents moved out of Settings into its own flat L1 item (mirrors admin).
+  { id: 'agents', label: 'Agents', icon: Bot, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
     icon: Settings,
     expandable: true,
     submenu: [
-      { id: 'agent', label: 'Agent' },
       { id: 'llm', label: 'LLM' },
+      // Autonomous Mode and Agent Registry are L2 siblings of LLM, positioned right after it (view-only for superuser).
+      { id: 'autonomous-mode', label: 'Autonomous Mode' },
+      { id: 'agent-registry', label: 'Agent Registry' },
       { id: 'rag', label: 'RAG' },
       { id: 'reranker', label: 'Reranker' },
       { id: 'ocr', label: 'Document Processing' },

@@ -234,7 +234,7 @@ function ensureExecutorProfiles(
   };
 }
 
-export default function AgentSettingsTab() {
+export default function AgentSettingsTab({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<AgentSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [isModified, setIsModified] = useState(false);
@@ -576,7 +576,7 @@ export default function AgentSettingsTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${readOnly ? '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_input]:opacity-75 [&_select]:opacity-75' : ''}`}>
       {/* Header */}
       <div className="bg-white rounded-lg border shadow-sm">
         <div className="px-6 py-4 border-b">
@@ -586,15 +586,19 @@ export default function AgentSettingsTab() {
               <p className="text-sm text-gray-500">Configure autonomous agent behavior and model assignments</p>
             </div>
             <div className="flex items-center gap-2">
-              {isModified && (
-                <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
-                  Reset
-                </Button>
+              {!readOnly && (
+                <>
+                  {isModified && (
+                    <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
+                      Reset
+                    </Button>
+                  )}
+                  <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
+                    <Save size={18} className="mr-2" />
+                    Save
+                  </Button>
+                </>
               )}
-              <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
-                <Save size={18} className="mr-2" />
-                Save
-              </Button>
             </div>
           </div>
         </div>

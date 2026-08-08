@@ -65,7 +65,7 @@ interface DetailsResult {
   sources: string[];
 }
 
-type SectionId = 'providers' | 'models' | 'auto-leaderboard' | 'overview';
+type SectionId = 'providers' | 'models' | 'auto-leaderboard';
 
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
@@ -1166,87 +1166,6 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
           subtitle="Diagnostic view — see which model the auto-selector picks for each task type" />
         {expandedSections.has('auto-leaderboard') && (
           <AutoModelLeaderboard />
-        )}
-      </div>
-
-      {/* ============ Section 3: Model Settings Overview ============ */}
-      <div className="bg-white rounded-lg border shadow-sm">
-        <SectionHeader id="overview" title="Model Settings Overview"
-          subtitle="API keys are shared across all features. Model-specific settings are in their respective sections." />
-        {expandedSections.has('overview') && (
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50">
-                <div className="p-2 rounded-lg bg-purple-100"><Database size={18} className="text-purple-600" /></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900 text-sm">Embeddings</h4>
-                    <a href="/admin?tab=settings&section=rag" className="text-xs text-blue-600 hover:underline flex items-center gap-1">RAG Settings <ExternalLink size={10} /></a>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Vector embeddings for document search</p>
-                  <p className="text-xs text-gray-400 mt-1">Default: text-embedding-3-large (OpenAI)</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50">
-                <div className="p-2 rounded-lg bg-orange-100"><Mic size={18} className="text-orange-600" /></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900 text-sm">Transcription</h4>
-                    <span className="text-xs text-gray-400">Hardcoded</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Audio to text conversion</p>
-                  <p className="text-xs text-gray-400 mt-1">Model: whisper-1 (OpenAI)</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50">
-                <div className="p-2 rounded-lg bg-pink-100"><Image size={18} className="text-pink-600" /></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900 text-sm">Image Generation</h4>
-                    <span className="text-xs text-gray-400">Tool config</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">AI image creation (DALL-E, Gemini Imagen)</p>
-                  <p className="text-xs text-gray-400 mt-1">Default: Gemini (gemini-3-pro-image-preview)</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50">
-                <div className="p-2 rounded-lg bg-green-100"><Languages size={18} className="text-green-600" /></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900 text-sm">Translation</h4>
-                    <span className="text-xs text-gray-400">Tool config</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Multi-language translation</p>
-                  <p className="text-xs text-gray-400 mt-1">Providers: OpenAI, Gemini, Mistral</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50">
-                <div className="p-2 rounded-lg bg-blue-100"><FileText size={18} className="text-blue-600" /></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900 text-sm">Document Processing</h4>
-                    <a href="/admin?tab=settings&section=ocr" className="text-xs text-blue-600 hover:underline flex items-center gap-1">OCR Settings <ExternalLink size={10} /></a>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">PDF/image text extraction (OCR)</p>
-                  <p className="text-xs text-gray-400 mt-1">Providers: Mistral, Azure DI, pdf-parse</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-gray-50">
-                <div className="p-2 rounded-lg bg-yellow-100"><Search size={18} className="text-yellow-600" /></div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900 text-sm">Reranker</h4>
-                    <a href="/admin?tab=settings&section=reranker" className="text-xs text-blue-600 hover:underline flex items-center gap-1">Reranker Settings <ExternalLink size={10} /></a>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Search result re-ranking</p>
-                  <p className="text-xs text-gray-400 mt-1">Providers: Cohere, Jina, Local</p>
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400 mt-4">
-              All features use the API keys configured in the Providers section above. Configure provider-specific API keys once to enable all related features.
-            </p>
-          </div>
         )}
       </div>
 

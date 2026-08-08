@@ -17,6 +17,8 @@ import {
   Settings,
   Palette,
   Wrench,
+  Server,
+  Bot,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -28,14 +30,16 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agent-registry' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'mcp' | 'skills' | 'workspaces' | 'agents' | 'settings';
 
 // Section types for expandable menus
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type ToolsSection = 'management' | 'slash-commands' | 'mcp-servers';
-type SettingsSection = 'agents' | 'autonomous-mode' | 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+// Tools is now a flat L1 item (management only). ToolsSection retained for backward-compat
+// but no longer used as a sidebar submenu.
+type ToolsSection = 'management';
+type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -62,34 +66,29 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
   { id: 'users', label: 'Users', icon: Users, expandable: false },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare, expandable: false },
-  {
-    id: 'tools',
-    label: 'Tools',
-    icon: Wrench,
-    expandable: true,
-    submenu: [
-      { id: 'management', label: 'Tools Management' },
-      { id: 'slash-commands', label: 'Slash Commands' },
-      { id: 'mcp-servers', label: 'MCP Servers' },
-    ]
-  },
+  // Tools is now a flat L1 item (renders tool management directly; no submenu).
+  { id: 'tools', label: 'Tools', icon: Wrench, expandable: false },
+  // MCP moved out of Tools into its own flat L1 item.
+  { id: 'mcp', label: 'MCP', icon: Server, expandable: false },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
-  { id: 'agent-registry', label: 'Agent Registry', icon: Users, expandable: false },
+  // Agents moved out of Settings into its own flat L1 item.
+  { id: 'agents', label: 'Agents', icon: Bot, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
     icon: Settings,
     expandable: true,
     submenu: [
-      { id: 'agents', label: 'Agents' },
-      { id: 'autonomous-mode', label: 'Autonomous Mode' },
       { id: 'branding', label: 'Branding' },
       { id: 'tokens', label: 'Tokens' },
       { id: 'usage', label: 'Usage' },
       { id: 'api-keys', label: 'API Keys' },
       { id: 'routes', label: 'Routes' },
       { id: 'llm', label: 'LLM' },
+      // Autonomous Mode and Agent Registry are L2 siblings of LLM, positioned right after it.
+      { id: 'autonomous-mode', label: 'Autonomous Mode' },
+      { id: 'agent-registry', label: 'Agent Registry' },
       { id: 'rag', label: 'RAG' },
       { id: 'reranker', label: 'Reranker' },
       { id: 'uploads', label: 'File Uploads' },
@@ -98,6 +97,8 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'cache', label: 'Cache' },
       { id: 'backup', label: 'Backup' },
       { id: 'display', label: 'Display' },
+      // Slash Commands moved in from Tools.
+      { id: 'slash-commands', label: 'Slash Commands' },
     ]
   },
 ];
@@ -159,14 +160,12 @@ interface AdminSidebarMenuProps {
   documentsSection: DocumentsSection;
   usersSection: UsersSection;
   promptsSection: PromptsSection;
-  toolsSection: ToolsSection;
   settingsSection: SettingsSection;
   userRole?: 'super_admin' | 'admin' | 'superuser' | 'user';
   onTabChange: (tab: TabType) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
-  onToolsChange: (section: ToolsSection) => void;
   onSettingsChange: (section: SettingsSection) => void;
 }
 
@@ -179,14 +178,12 @@ export default function AdminSidebarMenu({
   documentsSection,
   usersSection,
   promptsSection,
-  toolsSection,
   settingsSection,
   userRole = 'admin',
   onTabChange,
   onDocumentsChange,
   onUsersChange,
   onPromptsChange,
-  onToolsChange,
   onSettingsChange,
 }: AdminSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -214,7 +211,6 @@ export default function AdminSidebarMenu({
       case 'documents': return documentsSection;
       case 'users': return usersSection;
       case 'prompts': return promptsSection;
-      case 'tools': return toolsSection;
       case 'settings': return settingsSection;
       default: return '';
     }
@@ -234,9 +230,6 @@ export default function AdminSidebarMenu({
         break;
       case 'prompts':
         onPromptsChange(sectionId as PromptsSection);
-        break;
-      case 'tools':
-        onToolsChange(sectionId as ToolsSection);
         break;
       case 'settings':
         onSettingsChange(sectionId as SettingsSection);

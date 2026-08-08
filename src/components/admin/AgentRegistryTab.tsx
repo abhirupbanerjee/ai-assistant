@@ -118,7 +118,7 @@ function formFromAgent(agent: AgentRecord): AgentFormData {
 
 // ============ Component ============
 
-export default function AgentRegistryTab() {
+export default function AgentRegistryTab({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [models, setModels] = useState<EnabledModel[]>([]);
@@ -328,10 +328,12 @@ export default function AgentRegistryTab() {
             Template agents (category: Global) apply to all categories.
           </p>
         </div>
-        <Button onClick={openCreate} variant="primary" size="sm">
-          <Plus className="w-4 h-4 mr-1" />
-          New Agent
-        </Button>
+        {!readOnly && (
+          <Button onClick={openCreate} variant="primary" size="sm">
+            <Plus className="w-4 h-4 mr-1" />
+            New Agent
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -413,29 +415,33 @@ export default function AgentRegistryTab() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right text-sm">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          onClick={() => handleToggleEnabled(agent)}
-                          title={agent.enabled ? 'Disable' : 'Enable'}
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-                        >
-                          {agent.enabled ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => openEdit(agent)}
-                          title="Edit"
-                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(agent)}
-                          title="Delete"
-                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {readOnly ? (
+                        <span className="text-xs text-gray-400">View only</span>
+                      ) : (
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => handleToggleEnabled(agent)}
+                            title={agent.enabled ? 'Disable' : 'Enable'}
+                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+                          >
+                            {agent.enabled ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => openEdit(agent)}
+                            title="Edit"
+                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(agent)}
+                            title="Delete"
+                            className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

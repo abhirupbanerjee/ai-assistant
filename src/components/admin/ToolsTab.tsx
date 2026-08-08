@@ -50,10 +50,6 @@ import WebsiteAnalysisConfig from './WebsiteAnalysisConfig';
 import CodeAnalysisConfig from './CodeAnalysisConfig';
 import LoadTestConfig from './LoadTestConfig';
 import SecurityScanConfig from './SecurityScanConfig';
-import { ToolDependencyPanel } from './ToolDependencyPanel';
-import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
-import SlashCommandsTab from './SlashCommandsTab';
-import McpServersTab from './McpServersTab';
 
 // Tool interface matching API response
 interface Tool {
@@ -1703,15 +1699,13 @@ STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyph
   );
 }
 
-type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands' | 'mcp-servers';
-
 interface ToolsTabProps {
   /** If true, shows read-only view (for superusers in legacy mode) */
   readOnly?: boolean;
   /** If true, shows superuser mode with category selection and per-category config */
   isSuperuser?: boolean;
-  /** Optional controlled sub-tab from sidebar. When provided, hides internal tab UI */
-  activeSubTab?: ToolsSubTab;
+  /** Optional controlled sub-tab from sidebar. Retained for backward-compat; Tools is now flat (management only). */
+  activeSubTab?: 'management';
 }
 
 /**
@@ -1719,14 +1713,7 @@ interface ToolsTabProps {
  * @param readOnly - If true, hides all edit controls (for superuser view)
  * @param isSuperuser - If true, shows superuser mode with category-level config
  */
-export default function ToolsTab({ readOnly = false, isSuperuser = false, activeSubTab: controlledSubTab }: ToolsTabProps) {
-  // Sub-tab state (only for admin mode when not controlled from sidebar)
-  const [internalSubTab, setInternalSubTab] = useState<ToolsSubTab>('management');
-
-  // Use controlled sub-tab from sidebar if provided, otherwise use internal state
-  const activeSubTab = controlledSubTab ?? internalSubTab;
-  const isControlled = controlledSubTab !== undefined;
-
+export default function ToolsTab({ readOnly = false, isSuperuser = false }: ToolsTabProps) {
   // Admin mode state
   const [tools, setTools] = useState<Tool[]>([]);
 
@@ -2350,123 +2337,12 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
         </div>
       )}
 
-      {/* Sub-tabs (admin mode only, hidden when controlled from sidebar) */}
-      {!readOnly && !isSuperuser && !isControlled && (
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-6">
-            <button
-              onClick={() => setInternalSubTab('management')}
-              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                activeSubTab === 'management'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Wrench size={16} />
-              Tools Management
-            </button>
-            <button
-              onClick={() => setInternalSubTab('dependencies')}
-              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                activeSubTab === 'dependencies'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <AlertCircle size={16} />
-              Dependencies
-            </button>
-            <button
-              onClick={() => setInternalSubTab('routing')}
-              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                activeSubTab === 'routing'
-                  ? 'border-amber-500 text-amber-600'
-                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              <Route size={16} />
-              <span className="flex items-center gap-1">
-                Tool Routing
-                <span className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 rounded">Moved</span>
-              </span>
-            </button>
-            <button
-              onClick={() => setInternalSubTab('conflicts')}
-              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                activeSubTab === 'conflicts'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <AlertCircle size={16} />
-              Keyword Conflicts
-            </button>
-            <button
-              onClick={() => setInternalSubTab('slash-commands')}
-              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                activeSubTab === 'slash-commands'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Zap size={16} />
-              Slash Commands
-            </button>
-            <button
-              onClick={() => setInternalSubTab('mcp-servers')}
-              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-                activeSubTab === 'mcp-servers'
-                  ? 'border-purple-500 text-purple-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Server size={16} />
-              MCP Servers
-            </button>
-          </nav>
-        </div>
-      )}
+      {/* (Sub-tabs removed — Tools is now a flat L1 item rendering management only.
+           Dependencies, Tool Routing, Keyword Conflicts, Slash Commands, and MCP Servers
+           have been dropped or moved to their own L1/Settings items.) */}
 
-      {/* Tool Dependencies Sub-tab */}
-      {!readOnly && !isSuperuser && activeSubTab === 'dependencies' && (
-        <ToolDependencyPanel />
-      )}
-
-      {/* Slash Commands Sub-tab */}
-      {!readOnly && !isSuperuser && activeSubTab === 'slash-commands' && (
-        <SlashCommandsTab />
-      )}
-
-      {/* MCP Servers Sub-tab */}
-      {!readOnly && !isSuperuser && activeSubTab === 'mcp-servers' && (
-        <McpServersTab />
-      )}
-
-      {/* Tool Routing Sub-tab - DEPRECATED */}
-      {!readOnly && !isSuperuser && activeSubTab === 'routing' && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
-          <Route size={48} className="mx-auto text-amber-500 mb-4" />
-          <h3 className="text-lg font-semibold text-amber-800 mb-2">
-            Tool Routing Has Moved
-          </h3>
-          <p className="text-amber-700 mb-4">
-            Tool routing is now unified with Skills. Configure keyword-triggered tool actions
-            in the <strong>Prompts → Skills</strong> tab using the &quot;Tool Action&quot; section.
-          </p>
-          <p className="text-sm text-amber-600">
-            When creating or editing a keyword-triggered skill, you can now optionally
-            force a specific tool to be called when the keywords match.
-          </p>
-        </div>
-      )}
-
-      {/* Keyword Conflicts Sub-tab */}
-      {!readOnly && !isSuperuser && activeSubTab === 'conflicts' && (
-        <KeywordConflictAnalyzer />
-      )}
-
-      {/* Tools Management Header - only show when on management tab or in superuser/readOnly mode */}
-      {(readOnly || isSuperuser || activeSubTab === 'management') && (
+      {/* Tools Management Header — Tools is now a flat L1 item (management view only) */}
+      {(
         <>
           {/* Header */}
           <div className="flex items-center justify-between">
