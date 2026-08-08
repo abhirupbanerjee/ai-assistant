@@ -42,6 +42,7 @@ import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
 import DataSourcesTab from './DataSourcesTab';
 import FunctionAPITab from './FunctionAPITab';
+import type { FunctionAPIConfig } from '@/types/function-api';
 // ToolRoutingTab is deprecated - tool routing now handled via Skills
 import ImageGenConfig from './ImageGenConfig';
 import TranslationConfig from './TranslationConfig';
@@ -95,6 +96,106 @@ const TOOL_EXPLANATIONS = {
     title: 'Terminal Tool',
     description: 'Produces final outputs (images, documents, charts). When successful, the tool loop stops and an LLM summary is generated.',
   },
+};
+
+/**
+ * Functional category filters for the Tools Management UI.
+ *
+ * Each built-in tool is mapped to exactly ONE category (strict 1-to-1).
+ * `toolNames` lists the built-in tool identifiers that belong to the category.
+ * The `api` category is a special exception: it groups the `function_api` tool,
+ * and selecting it surfaces all configured Function APIs.
+ *
+ * Unknown / MCP / non-builtin tools fall back to the `other` category so they
+ * remain reachable in the filter bar.
+ */
+interface ToolCategorySpec {
+  id: string;
+  label: string;
+  /** Built-in tool names assigned to this category (strict 1-to-1). */
+  toolNames: string[];
+  /** Optional short description shown as a tooltip. */
+  hint?: string;
+}
+
+const TOOL_CATEGORIES: ToolCategorySpec[] = [
+  {
+    id: 'web',
+    label: 'Web & Search',
+    hint: 'Tavily web search, extract, crawl, map, website audit, YouTube',
+    toolNames: ['web_search', 'web_extract', 'web_crawl', 'web_map', 'website_analysis', 'youtube'],
+  },
+  {
+    id: 'kb',
+    label: 'Knowledge Base',
+    hint: 'RAG search, summary, and document reading over the workspace KB',
+    toolNames: ['kb_search', 'kb_summary', 'kb_read'],
+  },
+  {
+    id: 'artifacts',
+    label: 'Artifacts & Documents',
+    hint: 'HTML, PDF, DOCX, PPTX, Markdown and XLSX artifact generation',
+    toolNames: ['doc_gen', 'pptx_gen', 'html_gen', 'file_to_html', 'xlsx_gen'],
+  },
+  {
+    id: 'image',
+    label: 'Image & Media',
+    hint: 'AI image generation and podcast audio generation',
+    toolNames: ['image_gen', 'podcast_gen'],
+  },
+  {
+    id: 'diagrams',
+    label: 'Diagrams',
+    hint: 'Technical diagram generation (Mermaid, Graphviz, PlantUML, SVG)',
+    toolNames: ['diagram_gen'],
+  },
+  {
+    id: 'charts',
+    label: 'Charts',
+    hint: 'Data visualization chart generation (Recharts)',
+    toolNames: ['chart_gen'],
+  },
+  {
+    id: 'data',
+    label: 'Data & Spreadsheets',
+    hint: 'Data source queries and dataset aggregation',
+    toolNames: ['data_source', 'aggregate_data'],
+  },
+  {
+    id: 'code',
+    label: 'Code & Testing',
+    hint: 'Code analysis, load testing, and multi-page website generation',
+    toolNames: ['code_analysis', 'load_testing', 'site_gen'],
+  },
+  {
+    id: 'api',
+    label: 'API & Custom Tools',
+    hint: 'Function API tool — selecting this lists all configured Function APIs',
+    toolNames: ['function_api'],
+  },
+  {
+    id: 'utility',
+    label: 'Utility & System',
+    hint: 'Translation, sharing, email, compliance, and category handoff',
+    toolNames: ['translation', 'share_thread', 'send_email', 'compliance_checker', 'handoff_to_category'],
+  },
+  {
+    id: 'other',
+    label: 'Other',
+    hint: 'Tools not mapped to a specific category (e.g. MCP servers)',
+    toolNames: [],
+  },
+];
+
+/**
+ * Resolve the single category id for a tool name.
+ * Falls back to 'other' for unmapped tools (MCP, custom, etc.).
+ */
+const categoryForToolName = (name: string): string => {
+  for (const cat of TOOL_CATEGORIES) {
+    if (cat.toolNames.includes(name)) return cat.id;
+  }
+  return 'other';
 };
 
 interface AuditEntry {
@@ -1755,7 +1856,7 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]); // functional category filters (TOOL_CATEGORIES ids)
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]); // autonomous, processor, hybrid, terminal, builtin, mcp
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
@@ -1775,12 +1876,12 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
     return types;
   };
 
-  // Collect all unique tags from the current tool list (sorted A-Z)
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
+  // Category filter pills to render. The fixed TOOL_CATEGORIES set is always
+  // shown; the dynamic 'other' bucket only appears when unmapped tools exist.
+  const visibleCategories = useMemo(() => {
     const source = isSuperuser ? superuserTools : tools;
-    source.forEach(t => (t.tags || []).forEach(tag => tagSet.add(tag)));
-    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+    const hasOther = source.some(t => categoryForToolName(t.name) === 'other');
+    return TOOL_CATEGORIES.filter(c => c.id !== 'other' || hasOther);
   }, [tools, superuserTools, isSuperuser]);
 
   // Filtered + sorted tools (admin/readOnly mode)
@@ -1798,10 +1899,10 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
         ].join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      // Tag filter (AND logic — must have ALL selected tags)
-      if (selectedTags.length > 0) {
-        const toolTags = tool.tags || [];
-        if (!selectedTags.every(tag => toolTags.includes(tag))) return false;
+      // Category filter (OR logic — tool's category must match any selected)
+      if (selectedCategories.length > 0) {
+        const catId = categoryForToolName(tool.name);
+        if (!selectedCategories.includes(catId)) return false;
       }
       // Type filter (OR logic — match any selected type)
       if (selectedTypes.length > 0) {
@@ -1814,15 +1915,15 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
       return true;
     });
 
-    // Sort: primary tag (first tag) A-Z, then displayName A-Z
+    // Sort: category label A-Z, then displayName A-Z
     return [...filtered].sort((a, b) => {
-      const aPrimaryTag = (a.tags || [])[0] || 'zzz';
-      const bPrimaryTag = (b.tags || [])[0] || 'zzz';
-      const tagCmp = aPrimaryTag.localeCompare(bPrimaryTag);
-      if (tagCmp !== 0) return tagCmp;
+      const aCat = TOOL_CATEGORIES.find(c => c.id === categoryForToolName(a.name))?.label || 'zzz';
+      const bCat = TOOL_CATEGORIES.find(c => c.id === categoryForToolName(b.name))?.label || 'zzz';
+      const catCmp = aCat.localeCompare(bCat);
+      if (catCmp !== 0) return catCmp;
       return (a.displayName || '').localeCompare(b.displayName || '');
     });
-  }, [tools, searchQuery, selectedTags, selectedTypes, statusFilter]);
+  }, [tools, searchQuery, selectedCategories, selectedTypes, statusFilter]);
 
   // Filtered + sorted tools (superuser mode)
   const filteredSuperuserTools = useMemo(() => {
@@ -1838,10 +1939,10 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
         ].join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      // Tag filter (AND logic)
-      if (selectedTags.length > 0) {
-        const toolTags = tool.tags || [];
-        if (!selectedTags.every(tag => toolTags.includes(tag))) return false;
+      // Category filter (OR logic — tool's category must match any selected)
+      if (selectedCategories.length > 0) {
+        const catId = categoryForToolName(tool.name);
+        if (!selectedCategories.includes(catId)) return false;
       }
       // Type filter (OR logic)
       if (selectedTypes.length > 0) {
@@ -1858,20 +1959,20 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
       return true;
     });
 
-    // Sort: primary tag A-Z, then displayName A-Z
+    // Sort: category label A-Z, then displayName A-Z
     return [...filtered].sort((a, b) => {
-      const aPrimaryTag = (a.tags || [])[0] || 'zzz';
-      const bPrimaryTag = (b.tags || [])[0] || 'zzz';
-      const tagCmp = aPrimaryTag.localeCompare(bPrimaryTag);
-      if (tagCmp !== 0) return tagCmp;
+      const aCat = TOOL_CATEGORIES.find(c => c.id === categoryForToolName(a.name))?.label || 'zzz';
+      const bCat = TOOL_CATEGORIES.find(c => c.id === categoryForToolName(b.name))?.label || 'zzz';
+      const catCmp = aCat.localeCompare(bCat);
+      if (catCmp !== 0) return catCmp;
       return (a.displayName || '').localeCompare(b.displayName || '');
     });
-  }, [superuserTools, searchQuery, selectedTags, selectedTypes, statusFilter, isSuperuser]);
+  }, [superuserTools, searchQuery, selectedCategories, selectedTypes, statusFilter, isSuperuser]);
 
-  // Toggle a tag in the selected tags filter
-  const toggleTagFilter = (tag: string) => {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+  // Toggle a category in the selected categories filter
+  const toggleCategoryFilter = (catId: string) => {
+    setSelectedCategories(prev =>
+      prev.includes(catId) ? prev.filter(c => c !== catId) : [...prev, catId]
     );
   };
 
@@ -1885,13 +1986,43 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
   // Clear all filters
   const clearAllFilters = () => {
     setSearchQuery('');
-    setSelectedTags([]);
+    setSelectedCategories([]);
     setSelectedTypes([]);
     setStatusFilter('all');
   };
 
   // Whether any filter is active
-  const hasActiveFilters = searchQuery.trim() !== '' || selectedTags.length > 0 || selectedTypes.length > 0 || statusFilter !== 'all';
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategories.length > 0 || selectedTypes.length > 0 || statusFilter !== 'all';
+
+  // ── Function API listing (for the 'api' category exception) ──
+  // When the 'api' category is selected, surface all configured Function APIs
+  // alongside the function_api tool row.
+  const apiOnlySelected = selectedCategories.length === 1 && selectedCategories[0] === 'api';
+  const [functionApis, setFunctionApis] = useState<FunctionAPIConfig[]>([]);
+  const [apisLoading, setApisLoading] = useState(false);
+  const [apisError, setApisError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!apiOnlySelected || isSuperuser) return;
+    let cancelled = false;
+    setApisLoading(true);
+    setApisError(null);
+    fetch('/api/admin/function-apis')
+      .then(res => {
+        if (!res.ok) throw new Error(`Failed to load Function APIs (${res.status})`);
+        return res.json();
+      })
+      .then(data => {
+        if (!cancelled) setFunctionApis(data.functionApis || []);
+      })
+      .catch(err => {
+        if (!cancelled) setApisError(err.message || 'Failed to load Function APIs');
+      })
+      .finally(() => {
+        if (!cancelled) setApisLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [apiOnlySelected, isSuperuser]);
 
   // Fetch tools for admin mode
   const fetchTools = useCallback(async () => {
@@ -2396,7 +2527,7 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tools by name, description, or tag..."
+                placeholder="Search tools by name, description, or category..."
                 className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
               {searchQuery && (
@@ -2447,25 +2578,24 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
               ))}
             </div>
 
-            {/* Tag filter (multi-select pills) */}
-            {allTags.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-500">Tags:</span>
-                {allTags.map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => toggleTagFilter(tag)}
-                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                      selectedTags.includes(tag)
-                        ? 'bg-teal-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Category filter (multi-select pills) */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-gray-500">Category:</span>
+              {visibleCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => toggleCategoryFilter(cat.id)}
+                  title={cat.hint}
+                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                    selectedCategories.includes(cat.id)
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
 
             {/* Active filter summary & clear button */}
             {hasActiveFilters && (
@@ -2613,25 +2743,25 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                           }`}>
                             Global: {tool.globalEnabled ? 'On' : 'Off'}
                           </span>
-                          {/* Tag badges */}
-                          {(tool.tags || []).length > 0 && (
-                            <span className="flex items-center gap-1 flex-wrap">
-                              {(tool.tags || []).map(tag => (
-                                <span
-                                  key={tag}
-                                  className={`px-1.5 py-0.5 text-xs rounded-full cursor-pointer ${
-                                    selectedTags.includes(tag)
-                                      ? 'bg-teal-600 text-white'
-                                      : 'bg-gray-100 text-gray-500 hover:bg-teal-100 hover:text-teal-700'
-                                  }`}
-                                  onClick={() => toggleTagFilter(tag)}
-                                  title={`Click to filter by tag: ${tag}`}
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </span>
-                          )}
+                          {/* Category badge — click to filter by this tool's category */}
+                          {(() => {
+                            const catId = categoryForToolName(tool.name);
+                            const cat = TOOL_CATEGORIES.find(c => c.id === catId);
+                            if (!cat) return null;
+                            return (
+                              <span
+                                className={`px-1.5 py-0.5 text-xs rounded-full cursor-pointer ${
+                                  selectedCategories.includes(cat.id)
+                                    ? 'bg-teal-600 text-white'
+                                    : 'bg-gray-100 text-gray-500 hover:bg-teal-100 hover:text-teal-700'
+                                }`}
+                                onClick={() => toggleCategoryFilter(cat.id)}
+                                title={cat.hint || `Click to filter by category: ${cat.label}`}
+                              >
+                                {cat.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <p className="text-sm text-gray-500">{tool.description}</p>
                       </div>
@@ -2738,6 +2868,144 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
         </div>
       )}
 
+      {/* Function API panel — shown when the 'api' category is the only selected filter */}
+      {!isSuperuser && apiOnlySelected && (
+        <div className="bg-white rounded-lg border shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900">Configured Function APIs</h3>
+              <p className="text-sm text-gray-500">
+                The Function API tool exposes each configured API below as an individual callable function.
+              </p>
+            </div>
+            {!readOnly && (
+              <span className="text-xs text-gray-400">
+                Manage APIs in the Function APIs tab
+              </span>
+            )}
+          </div>
+
+          {apisLoading ? (
+            <div className="text-sm text-gray-500 py-4 text-center">Loading Function APIs…</div>
+          ) : apisError ? (
+            <div className="text-sm text-red-600 py-4 text-center">{apisError}</div>
+          ) : functionApis.length === 0 ? (
+            <div className="text-sm text-gray-500 py-4 text-center">
+              No Function APIs configured yet. Configure one in the Function APIs tab to expose it here.
+            </div>
+          ) : (
+            <>
+            {/* Mobile card layout */}
+            <div className="space-y-3 block sm:hidden">
+              {functionApis.map(api => {
+                const functionNames = (api.toolsSchema || [])
+                  .map(t => t?.function?.name)
+                  .filter(Boolean) as string[];
+                return (
+                  <div key={api.id} className="p-3 bg-gray-50 rounded-lg border space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-gray-900 text-sm truncate">{api.name}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] whitespace-nowrap ${
+                        api.isEnabled
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-200 text-gray-600'
+                      }`}>
+                        {api.isEnabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    {api.description && (
+                      <p className="text-gray-600 leading-relaxed">{api.description}</p>
+                    )}
+                    {api.baseUrl && (
+                      <p className="text-gray-500 truncate">
+                        <span className="font-medium text-gray-400">Base URL: </span>
+                        {api.baseUrl}
+                      </p>
+                    )}
+                    <div>
+                      <span className="text-gray-500 font-medium block mb-1">Function Tools:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {functionNames.length > 0 ? (
+                          functionNames.map(name => (
+                            <span
+                              key={name}
+                              className="px-2 py-0.5 bg-blue-100 text-blue-800 font-mono rounded text-[11px]"
+                            >
+                              {name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-gray-400 italic">No function names defined</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop table layout */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">Description</th>
+                    <th className="px-3 py-2 text-left">Base URL</th>
+                    <th className="px-3 py-2 text-left">Functions</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {functionApis.map(api => {
+                    const functionNames = (api.toolsSchema || [])
+                      .map(t => t?.function?.name)
+                      .filter(Boolean) as string[];
+                    return (
+                      <tr key={api.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-900">{api.name}</td>
+                        <td className="px-3 py-2 text-gray-600 max-w-xs truncate" title={api.description}>
+                          {api.description}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 max-w-xs truncate" title={api.baseUrl}>
+                          {api.baseUrl}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            {functionNames.length > 0 ? (
+                              functionNames.map(name => (
+                                <span
+                                  key={name}
+                                  className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 font-mono rounded"
+                                >
+                                  {name}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-gray-400 italic text-xs">No functions defined</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            api.isEnabled
+                              ? 'bg-green-50 text-green-600'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {api.isEnabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Tools List - Admin/ReadOnly Mode */}
       {!isSuperuser && (
         <div className="space-y-4">
@@ -2797,25 +3065,25 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                               terminal
                             </span>
                           )}
-                          {/* Tag badges */}
-                          {(tool.tags || []).length > 0 && (
-                            <span className="flex items-center gap-1 flex-wrap">
-                              {(tool.tags || []).map(tag => (
-                                <span
-                                  key={tag}
-                                  className={`px-1.5 py-0.5 text-xs rounded-full cursor-pointer ${
-                                    selectedTags.includes(tag)
-                                      ? 'bg-teal-600 text-white'
-                                      : 'bg-gray-100 text-gray-500 hover:bg-teal-100 hover:text-teal-700'
-                                  }`}
-                                  onClick={() => toggleTagFilter(tag)}
-                                  title={`Click to filter by tag: ${tag}`}
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </span>
-                          )}
+                          {/* Category badge — click to filter by this tool's category */}
+                          {(() => {
+                            const catId = categoryForToolName(tool.name);
+                            const cat = TOOL_CATEGORIES.find(c => c.id === catId);
+                            if (!cat) return null;
+                            return (
+                              <span
+                                className={`px-1.5 py-0.5 text-xs rounded-full cursor-pointer ${
+                                  selectedCategories.includes(cat.id)
+                                    ? 'bg-teal-600 text-white'
+                                    : 'bg-gray-100 text-gray-500 hover:bg-teal-100 hover:text-teal-700'
+                                }`}
+                                onClick={() => toggleCategoryFilter(cat.id)}
+                                title={cat.hint || `Click to filter by category: ${cat.label}`}
+                              >
+                                {cat.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <p className="text-sm text-gray-500">{tool.description}</p>
                        </div>
