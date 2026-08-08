@@ -103,7 +103,7 @@ function handleApiError(err: unknown, userId: string | undefined): OpResult {
 
 async function gitbookListSpaces(
   cfg: AppConfig,
-  args: { org_id: string; page_size?: number; userId?: string }
+  args: { org_id: string; page_size?: number; page?: number; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -111,6 +111,7 @@ async function gitbookListSpaces(
 
   const params = new URLSearchParams();
   if (args.page_size) params.set('limit', String(args.page_size));
+  if (args.page) params.set('page', String(args.page));
 
   try {
     const data = await getJson(
@@ -194,7 +195,7 @@ async function gitbookGetPage(
 
 async function gitbookSearch(
   cfg: AppConfig,
-  args: { space_id: string; query: string; page_size?: number; userId?: string }
+  args: { space_id: string; query: string; page_size?: number; page?: number; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -202,6 +203,7 @@ async function gitbookSearch(
 
   const params = new URLSearchParams({ query: args.query });
   if (args.page_size) params.set('limit', String(args.page_size));
+  if (args.page) params.set('page', String(args.page));
 
   try {
     const data = await getJson(
@@ -245,7 +247,7 @@ async function gitbookGetCollection(
 
 async function gitbookListComments(
   cfg: AppConfig,
-  args: { space_id: string; page_size?: number; userId?: string }
+  args: { space_id: string; page_size?: number; page?: number; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -253,6 +255,7 @@ async function gitbookListComments(
 
   const params = new URLSearchParams();
   if (args.page_size) params.set('limit', String(args.page_size));
+  if (args.page) params.set('page', String(args.page));
 
   try {
     const data = await getJson(

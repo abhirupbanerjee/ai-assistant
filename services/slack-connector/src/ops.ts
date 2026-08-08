@@ -99,7 +99,7 @@ function handleApiError(err: unknown, userId: string | undefined): OpResult {
 
 async function slackSearchMessages(
   cfg: AppConfig,
-  args: { query: string; limit?: number; userId?: string }
+  args: { query: string; limit?: number; page?: number; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -108,6 +108,7 @@ async function slackSearchMessages(
   const params = new URLSearchParams();
   params.set('query', args.query);
   if (args.limit) params.set('count', String(args.limit));
+  if (args.page) params.set('page', String(args.page));
 
   try {
     const data = await getJson(
@@ -123,7 +124,7 @@ async function slackSearchMessages(
 
 async function slackGetChannelHistory(
   cfg: AppConfig,
-  args: { channel: string; limit?: number; userId?: string }
+  args: { channel: string; limit?: number; cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -132,6 +133,7 @@ async function slackGetChannelHistory(
   const params = new URLSearchParams();
   params.set('channel', args.channel);
   if (args.limit) params.set('limit', String(args.limit));
+  if (args.cursor) params.set('cursor', args.cursor);
 
   try {
     const data = await getJson(
@@ -151,7 +153,7 @@ async function slackGetChannelHistory(
 
 async function slackListChannels(
   cfg: AppConfig,
-  args: { limit?: number; userId?: string }
+  args: { limit?: number; cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -160,6 +162,7 @@ async function slackListChannels(
   const params = new URLSearchParams();
   params.set('types', 'public_channel');
   if (args.limit) params.set('limit', String(args.limit));
+  if (args.cursor) params.set('cursor', args.cursor);
 
   try {
     const data = await getJson(
@@ -179,7 +182,7 @@ async function slackListChannels(
 
 async function slackListUsers(
   cfg: AppConfig,
-  args: { limit?: number; userId?: string }
+  args: { limit?: number; cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -187,6 +190,7 @@ async function slackListUsers(
 
   const params = new URLSearchParams();
   if (args.limit) params.set('limit', String(args.limit));
+  if (args.cursor) params.set('cursor', args.cursor);
 
   try {
     const data = await getJson(

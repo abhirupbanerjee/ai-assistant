@@ -44,6 +44,11 @@ export const TOOLS: ToolDef[] = [
         description: 'Maximum number of results to return.',
         default: 20,
       },
+      {
+        name: 'page',
+        type: 'number',
+        description: 'Page number for paginated results.',
+      },
     ],
   },
   {
@@ -52,8 +57,8 @@ export const TOOLS: ToolDef[] = [
     summary: 'Get message history from a Slack channel.',
     description:
       'Retrieves recent messages from a specific Slack channel. Returns ' +
-      'message text, user, timestamp, and thread info. Supports pagination ' +
-      'via the limit parameter.',
+      'message text, user, timestamp, and thread info. Supports cursor-based ' +
+      'pagination via the cursor parameter.',
     params: [
       {
         name: 'channel',
@@ -67,6 +72,11 @@ export const TOOLS: ToolDef[] = [
         description: 'Maximum number of messages to return.',
         default: 20,
       },
+      {
+        name: 'cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
+      },
     ],
   },
 
@@ -77,14 +87,18 @@ export const TOOLS: ToolDef[] = [
     summary: 'List public channels in the Slack workspace.',
     description:
       'Lists all public channels in the workspace. Returns channel ID, ' +
-      'name, topic, purpose, and member count. Supports filtering by ' +
-      'channel types and pagination.',
+      'name, topic, purpose, and member count. Supports cursor-based pagination.',
     params: [
       {
         name: 'limit',
         type: 'number',
         description: 'Maximum number of channels to return.',
         default: 20,
+      },
+      {
+        name: 'cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
       },
     ],
   },
@@ -96,13 +110,18 @@ export const TOOLS: ToolDef[] = [
     summary: 'List users in the Slack workspace.',
     description:
       'Lists all users in the Slack workspace. Returns user ID, name, ' +
-      'real name, email, and profile information.',
+      'real name, email, and profile information. Supports cursor-based pagination.',
     params: [
       {
         name: 'limit',
         type: 'number',
         description: 'Maximum number of users to return.',
         default: 20,
+      },
+      {
+        name: 'cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
       },
     ],
   },

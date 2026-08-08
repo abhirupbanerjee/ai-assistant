@@ -61,6 +61,8 @@ import {
   msOutlookGetCalendar,
   msSharepointSearch,
   msSharepointListLists,
+  driveGetUser,
+  msGetUser,
 } from './ops';
 import { getServiceAccountEmail } from './google';
 
@@ -446,6 +448,11 @@ async function dispatch(
       return msSharepointSearch(cfg, v.query as string | undefined, v.userId as string | undefined);
     case 'ms_sharepoint_list_lists':
       return msSharepointListLists(cfg, String(v.siteId), v.userId as string | undefined);
+    // ── Identity ─────────────────────────────────────────────────────────────
+    case 'drive_get_user':
+      return driveGetUser(cfg, v.userId as string | undefined);
+    case 'ms_get_user':
+      return msGetUser(cfg, v.userId as string | undefined);
     default:
       return { ok: false, error: `Unknown operation: ${op}` };
   }

@@ -116,7 +116,7 @@ function handleApiError(err: unknown, userId: string | undefined): OpResult {
 
 async function notionSearch(
   cfg: AppConfig,
-  args: { query: string; filter?: string; sort?: string; page_size?: number; userId?: string }
+  args: { query: string; filter?: string; sort?: string; page_size?: number; start_cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -126,6 +126,7 @@ async function notionSearch(
   if (args.filter) body.filter = { property: 'object', value: args.filter };
   if (args.sort) body.sort = { direction: args.sort, timestamp: 'last_edited_time' };
   if (args.page_size) body.page_size = args.page_size;
+  if (args.start_cursor) body.start_cursor = args.start_cursor;
 
   try {
     const data = await postJson(
@@ -166,7 +167,7 @@ async function notionGetPage(
 
 async function notionGetBlockChildren(
   cfg: AppConfig,
-  args: { block_id: string; page_size?: number; userId?: string }
+  args: { block_id: string; page_size?: number; start_cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -174,6 +175,7 @@ async function notionGetBlockChildren(
 
   const params = new URLSearchParams();
   if (args.page_size) params.set('page_size', String(args.page_size));
+  if (args.start_cursor) params.set('start_cursor', args.start_cursor);
 
   try {
     const data = await getJson(
@@ -213,7 +215,7 @@ async function notionGetDatabase(
 
 async function notionQueryDatabase(
   cfg: AppConfig,
-  args: { database_id: string; filter?: unknown; sorts?: unknown[]; page_size?: number; userId?: string }
+  args: { database_id: string; filter?: unknown; sorts?: unknown[]; page_size?: number; start_cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -223,6 +225,7 @@ async function notionQueryDatabase(
   if (args.filter) body.filter = args.filter;
   if (args.sorts && args.sorts.length > 0) body.sorts = args.sorts;
   if (args.page_size) body.page_size = args.page_size;
+  if (args.start_cursor) body.start_cursor = args.start_cursor;
 
   try {
     const data = await postJson(
@@ -263,7 +266,7 @@ async function notionGetUser(
 
 async function notionListUsers(
   cfg: AppConfig,
-  args: { page_size?: number; userId?: string }
+  args: { page_size?: number; start_cursor?: string; userId?: string }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
@@ -271,6 +274,7 @@ async function notionListUsers(
 
   const params = new URLSearchParams();
   if (args.page_size) params.set('page_size', String(args.page_size));
+  if (args.start_cursor) params.set('start_cursor', args.start_cursor);
 
   try {
     const data = await getJson(

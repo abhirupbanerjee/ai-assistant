@@ -11,7 +11,7 @@ import { getJson, HttpError } from './http';
 import { AppConfig } from './config';
 import { logger } from './logger';
 
-export type VaultProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'gitbook';
+export type VaultProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'slack' | 'gitbook';
 
 export interface VaultToken {
   accessToken: string;

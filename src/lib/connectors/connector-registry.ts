@@ -115,6 +115,9 @@ export async function syncConnectorTools(): Promise<void> {
             timeoutSeconds: 30,
             cacheTTLSeconds: 3600,
             isEnabled: true,
+            // Empty array = no category restrictions (available to ALL categories).
+            // getFunctionAPIConfigsForCategories uses LEFT JOIN + IS NULL to
+            // include unrestricted configs in every category-scoped query.
             categoryIds: [],
           },
           'system'

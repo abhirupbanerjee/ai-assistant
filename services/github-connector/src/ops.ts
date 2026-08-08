@@ -111,25 +111,90 @@ function handleApiError(err: unknown, userId: string | undefined): OpResult {
 
 async function githubListRepos(
   cfg: AppConfig,
-  args: { visibility?: string; type?: string; sort?: string; per_page?: number; userId?: string }
+  args: {
+    visibility?: string;
+    type?: string;
+    affiliation?: string;
+    sort?: string;
+    direction?: string;
+    per_page?: number;
+    page?: number;
+    userId?: string;
+  }
 ): Promise<OpResult<unknown>> {
   const auth = await resolveAuth(cfg, args.userId);
   if (!auth.ok) return auth;
   const { token } = auth.data!;
 
-  const params = new URLSearchParams();
-  if (args.visibility && args.visibility !== 'all') params.set('visibility', args.visibility);
-  if (args.type && args.type !== 'all') params.set('type', args.type);
-  if (args.sort) params.set('sort', args.sort);
-  if (args.per_page) params.set('per_page', String(args.per_page));
+  const perPage = Math.min(args.per_page || 30, 100);
+
+  // Build base params (same for every page)
+  const baseParams = new URLSearchParams();
+  if (args.visibility && args.visibility !== 'all') baseParams.set('visibility', args.visibility);
+  if (args.type && args.type !== 'all') baseParams.set('type', args.type);
+  if (args.sort) baseParams.set('sort', args.sort);
+  if (args.direction) baseParams.set('direction', args.direction);
+  baseParams.set('per_page', String(perPage));
+  // Explicit affiliation default: don't depend on GitHub API defaults.
+  baseParams.set('affiliation', args.affiliation || 'owner,collaborator,organization_member');
+
+  // If caller explicitly requests a page, return just that page with metadata.
+  const singlePage = args.page !== undefined && args.page > 0;
+
+  if (singlePage) {
+    baseParams.set('page', String(args.page));
+    try {
+      const data = await getJson(
+        `https://api.github.com/user/repos?${baseParams.toString()}`,
+        authHeaders(token),
+        cfg.githubTimeoutMs
+      );
+      const repos = Array.isArray(data) ? data : [];
+      return ok({
+        repositories: repos,
+        pagination: {
+          page: args.page!,
+          perPage,
+          hasNextPage: repos.length === perPage,
+          nextPage: repos.length === perPage ? args.page! + 1 : null,
+        },
+      });
+    } catch (err) {
+      return handleApiError(err, args.userId);
+    }
+  }
+
+  // Auto-pagination: fetch all pages with a safety cap.
+  const MAX_PAGES = 10; // 1000 repos max
+  const allRepos: unknown[] = [];
+  let page = 1;
+  let hasNext = true;
 
   try {
-    const data = await getJson(
-      `https://api.github.com/user/repos?${params.toString()}`,
-      authHeaders(token),
-      cfg.githubTimeoutMs
-    );
-    return ok(data);
+    while (hasNext && page <= MAX_PAGES) {
+      const pageParams = new URLSearchParams(baseParams.toString());
+      pageParams.set('page', String(page));
+      const data = await getJson(
+        `https://api.github.com/user/repos?${pageParams.toString()}`,
+        authHeaders(token),
+        cfg.githubTimeoutMs
+      );
+      const repos = Array.isArray(data) ? data : [];
+      allRepos.push(...repos);
+      hasNext = repos.length === perPage;
+      page++;
+    }
+    return ok({
+      repositories: allRepos,
+      pagination: {
+        page: 1,
+        perPage,
+        totalCount: allRepos.length,
+        hasNextPage: false, // auto-paginated — all pages included
+        nextPage: null,
+      },
+      truncated: page > MAX_PAGES && hasNext,
+    });
   } catch (err) {
     return handleApiError(err, args.userId);
   }
@@ -408,6 +473,127 @@ async function githubListPrs(
 }
 
 // ============================================================================
+// User & Organizations
+// ============================================================================
+
+async function githubGetUser(
+  cfg: AppConfig,
+  args: { userId?: string }
+): Promise<OpResult<unknown>> {
+  const auth = await resolveAuth(cfg, args.userId);
+  if (!auth.ok) return auth;
+  const { token } = auth.data!;
+
+  try {
+    const data = await getJson(
+      'https://api.github.com/user',
+      authHeaders(token),
+      cfg.githubTimeoutMs
+    );
+    return ok(data);
+  } catch (err) {
+    return handleApiError(err, args.userId);
+  }
+}
+
+async function githubListOrgs(
+  cfg: AppConfig,
+  args: { per_page?: number; userId?: string }
+): Promise<OpResult<unknown>> {
+  const auth = await resolveAuth(cfg, args.userId);
+  if (!auth.ok) return auth;
+  const { token } = auth.data!;
+
+  const params = new URLSearchParams();
+  params.set('per_page', String(Math.min(args.per_page || 30, 100)));
+
+  try {
+    const data = await getJson(
+      `https://api.github.com/user/orgs?${params.toString()}`,
+      authHeaders(token),
+      cfg.githubTimeoutMs
+    );
+    return ok(data);
+  } catch (err) {
+    return handleApiError(err, args.userId);
+  }
+}
+
+// ============================================================================
+// Branches & Releases
+// ============================================================================
+
+async function githubListBranches(
+  cfg: AppConfig,
+  args: { owner: string; repo: string; per_page?: number; userId?: string }
+): Promise<OpResult<unknown>> {
+  const auth = await resolveAuth(cfg, args.userId);
+  if (!auth.ok) return auth;
+  const { token } = auth.data!;
+
+  const params = new URLSearchParams();
+  params.set('per_page', String(Math.min(args.per_page || 30, 100)));
+
+  try {
+    const data = await getJson(
+      `https://api.github.com/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repo)}/branches?${params.toString()}`,
+      authHeaders(token),
+      cfg.githubTimeoutMs
+    );
+    return ok(data);
+  } catch (err) {
+    return handleApiError(err, args.userId);
+  }
+}
+
+async function githubListReleases(
+  cfg: AppConfig,
+  args: { owner: string; repo: string; per_page?: number; userId?: string }
+): Promise<OpResult<unknown>> {
+  const auth = await resolveAuth(cfg, args.userId);
+  if (!auth.ok) return auth;
+  const { token } = auth.data!;
+
+  const params = new URLSearchParams();
+  params.set('per_page', String(Math.min(args.per_page || 30, 100)));
+
+  try {
+    const data = await getJson(
+      `https://api.github.com/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repo)}/releases?${params.toString()}`,
+      authHeaders(token),
+      cfg.githubTimeoutMs
+    );
+    return ok(data);
+  } catch (err) {
+    return handleApiError(err, args.userId);
+  }
+}
+
+// ============================================================================
+// Pull Request Detail
+// ============================================================================
+
+async function githubGetPr(
+  cfg: AppConfig,
+  args: { owner: string; repo: string; pull_number: number; userId?: string }
+): Promise<OpResult<unknown>> {
+  const auth = await resolveAuth(cfg, args.userId);
+  if (!auth.ok) return auth;
+  const { token } = auth.data!;
+
+  try {
+    const data = await getJson(
+      `https://api.github.com/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repo)}/pulls/${args.pull_number}`,
+      authHeaders(token),
+      cfg.githubTimeoutMs
+    );
+    return ok(data);
+  } catch (err) {
+    return handleApiError(err, args.userId);
+  }
+}
+
+// ============================================================================
 // OP_HANDLERS map
 // ============================================================================
 
@@ -429,4 +615,9 @@ export const OP_HANDLERS: Record<string, OpHandler> = {
   github_get_issue: githubGetIssue as OpHandler,
   github_create_issue: githubCreateIssue as OpHandler,
   github_list_prs: githubListPrs as OpHandler,
+  github_get_user: githubGetUser as OpHandler,
+  github_list_orgs: githubListOrgs as OpHandler,
+  github_list_branches: githubListBranches as OpHandler,
+  github_list_releases: githubListReleases as OpHandler,
+  github_get_pr: githubGetPr as OpHandler,
 };

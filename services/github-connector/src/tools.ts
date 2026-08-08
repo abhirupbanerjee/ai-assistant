@@ -29,8 +29,10 @@ export const TOOLS: ToolDef[] = [
     summary: 'List your GitHub repositories.',
     description:
       'Lists repositories owned by or accessible to the authenticated user. ' +
+      'By default returns all pages automatically (up to 1000 repos). ' +
       'Supports filtering by visibility (public/private), type (owner/member/all), ' +
-      'and sorting. Returns repo name, description, language, stars, and visibility.',
+      'affiliation, and sorting. Returns repo name, description, language, stars, ' +
+      'visibility, and pagination metadata.',
     params: [
       {
         name: 'visibility',
@@ -47,12 +49,57 @@ export const TOOLS: ToolDef[] = [
         default: 'all',
       },
       {
+        name: 'affiliation',
+        type: 'string',
+        description: 'Comma-separated list: owner, collaborator, organization_member.',
+        default: 'owner,collaborator,organization_member',
+      },
+      {
         name: 'sort',
         type: 'string',
         description: 'Sort order.',
         enum: ['created', 'updated', 'pushed', 'full_name'],
         default: 'updated',
       },
+      {
+        name: 'direction',
+        type: 'string',
+        description: 'Sort direction.',
+        enum: ['asc', 'desc'],
+        default: 'desc',
+      },
+      {
+        name: 'per_page',
+        type: 'number',
+        description: 'Results per page (max 100).',
+        default: 100,
+      },
+      {
+        name: 'page',
+        type: 'number',
+        description: 'Specific page number to fetch (1-based). Omit for auto-pagination of all pages.',
+        default: undefined,
+      },
+    ],
+  },
+  {
+    name: 'github_get_user',
+    category: 'repos',
+    summary: 'Get the authenticated GitHub user profile.',
+    description:
+      'Returns the authenticated user\'s GitHub profile including login, name, ' +
+      'email, avatar URL, bio, and public/private repo counts. ' +
+      'Use this to verify which GitHub account is connected.',
+    params: [],
+  },
+  {
+    name: 'github_list_orgs',
+    category: 'repos',
+    summary: 'List organizations the authenticated user belongs to.',
+    description:
+      'Returns all organizations the authenticated user is a member of. ' +
+      'Useful for discovering repos scoped to specific organizations.',
+    params: [
       {
         name: 'per_page',
         type: 'number',
@@ -83,6 +130,24 @@ export const TOOLS: ToolDef[] = [
     params: [
       { name: 'owner', type: 'string', required: true, description: 'Repository owner (user or org).' },
       { name: 'repo', type: 'string', required: true, description: 'Repository name.' },
+    ],
+  },
+  {
+    name: 'github_list_releases',
+    category: 'repos',
+    summary: 'List releases in a GitHub repository.',
+    description:
+      'Returns published releases with tag name, release notes, assets, ' +
+      'and publication date.',
+    params: [
+      { name: 'owner', type: 'string', required: true, description: 'Repository owner.' },
+      { name: 'repo', type: 'string', required: true, description: 'Repository name.' },
+      {
+        name: 'per_page',
+        type: 'number',
+        description: 'Results per page (max 100).',
+        default: 30,
+      },
     ],
   },
 
@@ -204,6 +269,24 @@ export const TOOLS: ToolDef[] = [
       },
     ],
   },
+  {
+    name: 'github_list_branches',
+    category: 'code',
+    summary: 'List branches in a GitHub repository.',
+    description:
+      'Lists branches with their names and latest commit SHA. ' +
+      'Useful for discovering active development branches.',
+    params: [
+      { name: 'owner', type: 'string', required: true, description: 'Repository owner.' },
+      { name: 'repo', type: 'string', required: true, description: 'Repository name.' },
+      {
+        name: 'per_page',
+        type: 'number',
+        description: 'Results per page (max 100).',
+        default: 30,
+      },
+    ],
+  },
 
   // ── Issues ─────────────────────────────────────────────────────────────────
   {
@@ -302,6 +385,19 @@ export const TOOLS: ToolDef[] = [
         description: 'Results per page (max 100).',
         default: 30,
       },
+    ],
+  },
+  {
+    name: 'github_get_pr',
+    category: 'prs',
+    summary: 'Get detailed information about a specific pull request.',
+    description:
+      'Returns PR details including title, body, state, branch info, ' +
+      'additions/deletions, changed files count, merge status, and review status.',
+    params: [
+      { name: 'owner', type: 'string', required: true, description: 'Repository owner.' },
+      { name: 'repo', type: 'string', required: true, description: 'Repository name.' },
+      { name: 'pull_number', type: 'number', required: true, description: 'Pull request number.' },
     ],
   },
 ];

@@ -57,6 +57,11 @@ export const TOOLS: ToolDef[] = [
         description: 'Results per page (max 100).',
         default: 30,
       },
+      {
+        name: 'start_cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
+      },
     ],
   },
 
@@ -97,6 +102,11 @@ export const TOOLS: ToolDef[] = [
         type: 'number',
         description: 'Results per page (max 100).',
         default: 50,
+      },
+      {
+        name: 'start_cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
       },
     ],
   },
@@ -150,6 +160,11 @@ export const TOOLS: ToolDef[] = [
         description: 'Results per page (max 100).',
         default: 30,
       },
+      {
+        name: 'start_cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
+      },
     ],
   },
 
@@ -183,6 +198,11 @@ export const TOOLS: ToolDef[] = [
         type: 'number',
         description: 'Results per page (max 100).',
         default: 50,
+      },
+      {
+        name: 'start_cursor',
+        type: 'string',
+        description: 'Pagination cursor from a previous response (next_cursor).',
       },
     ],
   },

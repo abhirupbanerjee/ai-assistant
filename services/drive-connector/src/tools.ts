@@ -30,6 +30,32 @@ export interface ToolDef {
 }
 
 export const TOOLS: ToolDef[] = [
+  // ── Identity ──────────────────────────────────────────────────────────────
+  {
+    name: 'drive_get_user',
+    category: 'drive',
+    summary: 'Get the authenticated Google user profile.',
+    description:
+      'Returns the authenticated user\'s Google profile including display name, ' +
+      'email address, and profile photo link. Use this to verify which Google ' +
+      'account is connected.',
+    params: [
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_get_user',
+    category: 'onedrive',
+    summary: 'Get the authenticated Microsoft user profile.',
+    description:
+      'Returns the authenticated Microsoft user\'s profile including display name, ' +
+      'email, and user principal name. Use this to verify which Microsoft ' +
+      'account is connected.',
+    params: [
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+
   // ── Sheets ────────────────────────────────────────────────────────────────
   {
     name: 'sheets_get_values',

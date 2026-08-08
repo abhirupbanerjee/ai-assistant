@@ -208,17 +208,23 @@ export async function getFunctionAPIConfigsForCategories(
   if (!categoryIds || categoryIds.length === 0) return [];
 
   const db = await getDb();
+  // LEFT JOIN + OR fc.api_id IS NULL: configs with NO category restrictions
+  // (empty categoryIds in function_api_categories) are available to ALL categories.
   const rows = await db
     .selectFrom('function_api_configs as f')
-    .innerJoin('function_api_categories as fc', 'f.id', 'fc.api_id')
+    .leftJoin('function_api_categories as fc', 'f.id', 'fc.api_id')
     .selectAll('f')
-    .where('fc.category_id', 'in', categoryIds)
+    .where((eb) => eb.or([
+      eb('fc.category_id', 'in', categoryIds),
+      eb('fc.api_id', 'is', null),
+    ]))
     .where('f.is_enabled', '=', 1)
     .where('f.status', 'in', ['active', 'untested'])
     .orderBy('f.name', 'asc')
+    .distinct()
     .execute();
 
-  // Deduplicate by id
+  // Deduplicate by id (belt-and-suspenders with DISTINCT)
   const seen = new Set<string>();
   const unique = rows.filter(r => {
     if (seen.has(r.id)) return false;

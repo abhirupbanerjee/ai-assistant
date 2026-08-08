@@ -1547,6 +1547,56 @@ export async function msSharepointListLists(
   );
 }
 
+// ── Identity ─────────────────────────────────────────────────────────────────
+
+export interface DriveUserInfo {
+  displayName: string;
+  emailAddress: string;
+  permissionId: string;
+  photoLink?: string;
+}
+
+export async function driveGetUser(
+  cfg: AppConfig,
+  userId?: string
+): Promise<OpResult<DriveUserInfo>> {
+  return runOp<DriveUserInfo>(cfg, async (headers) => {
+    const res = (await getJson(
+      'https://www.googleapis.com/drive/v3/about?fields=user',
+      headers,
+      cfg.googleTimeoutMs
+    )) as { user?: { displayName: string; emailAddress: string; permissionId: string; photoLink?: string } };
+    const u = res.user!;
+    return {
+      displayName: u.displayName,
+      emailAddress: u.emailAddress,
+      permissionId: u.permissionId,
+      photoLink: u.photoLink,
+    };
+  }, userId);
+}
+
+export interface MsUserInfo {
+  id: string;
+  displayName: string;
+  mail: string;
+  userPrincipalName: string;
+}
+
+export async function msGetUser(
+  cfg: AppConfig,
+  userId?: string
+): Promise<OpResult<MsUserInfo>> {
+  return msRunOp<MsUserInfo>(cfg, async (headers) =>
+    (await getJson(
+      `${GRAPH_BASE}/me?$select=id,displayName,mail,userPrincipalName`,
+      headers,
+      cfg.msGraphTimeoutMs
+    )) as MsUserInfo,
+    userId
+  );
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** PUT JSON expecting JSON. */

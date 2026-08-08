@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
 
   if (!provider || !VALID_PROVIDERS.has(provider)) {
     return NextResponse.json(
-      { error: 'Missing or invalid provider (must be "google" or "microsoft")', code: 'VALIDATION_ERROR' },
+      { error: `Missing or invalid provider. Must be one of: ${[...VALID_PROVIDERS].join(', ')}`, code: 'VALIDATION_ERROR' },
       { status: 400 }
     );
   }

@@ -183,7 +183,10 @@ export function getEnabledFunctionAPIConfigs(): FunctionAPIConfig[] {
 }
 
 /**
- * Get Function API configurations accessible to specific categories
+ * Get Function API configurations accessible to specific categories.
+ *
+ * Uses LEFT JOIN so configs with NO category restrictions (empty
+ * categoryIds in function_api_categories) are available to ALL categories.
  */
 export function getFunctionAPIConfigsForCategories(categoryIds: number[]): FunctionAPIConfig[] {
   if (!categoryIds || categoryIds.length === 0) return [];
@@ -191,8 +194,8 @@ export function getFunctionAPIConfigsForCategories(categoryIds: number[]): Funct
   const placeholders = categoryIds.map(() => '?').join(',');
   const rows = queryAll<DbFunctionAPIConfig>(
     `SELECT DISTINCT f.* FROM function_api_configs f
-     INNER JOIN function_api_categories fc ON f.id = fc.api_id
-     WHERE fc.category_id IN (${placeholders})
+     LEFT JOIN function_api_categories fc ON f.id = fc.api_id
+     WHERE (fc.category_id IN (${placeholders}) OR fc.api_id IS NULL)
      AND f.is_enabled = 1
      AND f.status IN ('active', 'untested')
      ORDER BY f.name`,

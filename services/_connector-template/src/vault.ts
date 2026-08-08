@@ -33,7 +33,7 @@ import { logger } from './logger';
  * Update this union when adding a new connector/provider.
  * Must match the ConnectedAccountProvider type in the host app.
  */
-export type VaultProvider = 'google' | 'microsoft' | 'gitbook';
+export type VaultProvider = 'google' | 'microsoft' | 'github' | 'notion' | 'slack' | 'gitbook';
 
 /** A successfully retrieved per-user token. */
 export interface VaultToken {

@@ -44,6 +44,11 @@ export const TOOLS: ToolDef[] = [
         description: 'Results per page (max 100).',
         default: 30,
       },
+      {
+        name: 'page',
+        type: 'number',
+        description: 'Page number for paginated results.',
+      },
     ],
   },
   {
@@ -131,6 +136,11 @@ export const TOOLS: ToolDef[] = [
         description: 'Results per page (max 100).',
         default: 30,
       },
+      {
+        name: 'page',
+        type: 'number',
+        description: 'Page number for paginated results.',
+      },
     ],
   },
 
@@ -178,6 +188,11 @@ export const TOOLS: ToolDef[] = [
         type: 'number',
         description: 'Results per page (max 100).',
         default: 30,
+      },
+      {
+        name: 'page',
+        type: 'number',
+        description: 'Page number for paginated results.',
       },
     ],
   },
