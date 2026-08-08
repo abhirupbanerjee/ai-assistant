@@ -208,13 +208,13 @@ export default function MobileThreadsMenu({
     }
   };
 
-  const toggleGroupCollapse = (key: string) => {
-    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
   // Mobile default: collapsed (true) for any group without a persisted value.
   // This keeps the drawer compact on first load. Desktop uses ?? false.
   const isGroupCollapsed = (key: string) => collapsedGroups[key] ?? true;
+
+  const toggleGroupCollapse = (key: string) => {
+    setCollapsedGroups(prev => ({ ...prev, [key]: !isGroupCollapsed(key) }));
+  };
 
   const toggleGroupExpanded = (key: string) => {
     setExpandedGroups(prev => {

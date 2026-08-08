@@ -400,10 +400,14 @@ export default function AdminSidebarMenu({
               <button
                 key={menuItem.id}
                 onClick={() => {
-                  setIsMobileOpen(true);
-                  // If has submenu, expand it
                   if (menuItem.expandable) {
+                    // Expandable items (Settings) open the drawer with their submenu expanded
+                    setIsMobileOpen(true);
                     setExpandedMenu(menuItem.id);
+                  } else {
+                    // Non-expandable items navigate directly to their page
+                    onTabChange(menuItem.id);
+                    setIsMobileOpen(false);
                   }
                 }}
                 className={`w-full flex justify-center py-3 transition-colors ${
