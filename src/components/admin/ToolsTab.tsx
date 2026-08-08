@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Globe,
   Settings,
@@ -33,6 +33,9 @@ import {
   Cookie,
   ArrowRightLeft,
   KeyRound,
+  Search,
+  Filter,
+  X,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -59,6 +62,7 @@ interface Tool {
   description: string;
   category: 'autonomous' | 'processor';
   group: string | null;
+  tags: string[];
   enabled: boolean;
   config: Record<string, unknown>;
   configSchema: Record<string, unknown>;
@@ -137,6 +141,7 @@ interface SuperuserTool {
   displayName: string;
   description: string;
   category: string;
+  tags: string[];
   globalEnabled: boolean;
   isTerminal: boolean;
   isHybrid: boolean;
@@ -1761,6 +1766,146 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
   const [editedDescription, setEditedDescription] = useState<string>('');
   const [savingDescription, setSavingDescription] = useState(false);
 
+  // Search & filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([]); // autonomous, processor, hybrid, terminal, builtin, mcp
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // Determine effective tool type for a tool (for type filtering)
+  const getToolTypeKey = (tool: Tool | SuperuserTool): string[] => {
+    const types: string[] = [];
+    // Category-based type
+    types.push(tool.category); // 'autonomous' or 'processor'
+    if (tool.isHybrid) types.push('hybrid');
+    if (tool.isTerminal) types.push('terminal');
+    // Built-in vs MCP (admin Tool only has toolType)
+    if ('toolType' in tool && tool.toolType) {
+      types.push(tool.toolType);
+    } else if (!('toolType' in tool)) {
+      types.push('builtin');
+    }
+    return types;
+  };
+
+  // Collect all unique tags from the current tool list (sorted A-Z)
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    const source = isSuperuser ? superuserTools : tools;
+    source.forEach(t => (t.tags || []).forEach(tag => tagSet.add(tag)));
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [tools, superuserTools, isSuperuser]);
+
+  // Filtered + sorted tools (admin/readOnly mode)
+  const filteredTools = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = tools.filter(tool => {
+      // Search query match
+      if (q) {
+        const haystack = [
+          tool.name,
+          tool.displayName,
+          tool.description,
+          tool.group || '',
+          ...(tool.tags || []),
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      // Tag filter (AND logic — must have ALL selected tags)
+      if (selectedTags.length > 0) {
+        const toolTags = tool.tags || [];
+        if (!selectedTags.every(tag => toolTags.includes(tag))) return false;
+      }
+      // Type filter (OR logic — match any selected type)
+      if (selectedTypes.length > 0) {
+        const toolTypes = getToolTypeKey(tool);
+        if (!selectedTypes.some(type => toolTypes.includes(type))) return false;
+      }
+      // Status filter
+      if (statusFilter === 'active' && !tool.enabled) return false;
+      if (statusFilter === 'inactive' && tool.enabled) return false;
+      return true;
+    });
+
+    // Sort: primary tag (first tag) A-Z, then displayName A-Z
+    return [...filtered].sort((a, b) => {
+      const aPrimaryTag = (a.tags || [])[0] || 'zzz';
+      const bPrimaryTag = (b.tags || [])[0] || 'zzz';
+      const tagCmp = aPrimaryTag.localeCompare(bPrimaryTag);
+      if (tagCmp !== 0) return tagCmp;
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+  }, [tools, searchQuery, selectedTags, selectedTypes, statusFilter]);
+
+  // Filtered + sorted tools (superuser mode)
+  const filteredSuperuserTools = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = superuserTools.filter(tool => {
+      // Search query match
+      if (q) {
+        const haystack = [
+          tool.name,
+          tool.displayName,
+          tool.description,
+          ...(tool.tags || []),
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      // Tag filter (AND logic)
+      if (selectedTags.length > 0) {
+        const toolTags = tool.tags || [];
+        if (!selectedTags.every(tag => toolTags.includes(tag))) return false;
+      }
+      // Type filter (OR logic)
+      if (selectedTypes.length > 0) {
+        const toolTypes = getToolTypeKey(tool);
+        if (!selectedTypes.some(type => toolTypes.includes(type))) return false;
+      }
+      // Status filter — based on effective enabled for this category
+      const catStatus = selectedCategory
+        ? tool.categories.find(c => c.categoryId === selectedCategory)
+        : undefined;
+      const effectiveEnabled = catStatus?.effectiveEnabled ?? tool.globalEnabled;
+      if (statusFilter === 'active' && !effectiveEnabled) return false;
+      if (statusFilter === 'inactive' && effectiveEnabled) return false;
+      return true;
+    });
+
+    // Sort: primary tag A-Z, then displayName A-Z
+    return [...filtered].sort((a, b) => {
+      const aPrimaryTag = (a.tags || [])[0] || 'zzz';
+      const bPrimaryTag = (b.tags || [])[0] || 'zzz';
+      const tagCmp = aPrimaryTag.localeCompare(bPrimaryTag);
+      if (tagCmp !== 0) return tagCmp;
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+  }, [superuserTools, searchQuery, selectedTags, selectedTypes, statusFilter, isSuperuser]);
+
+  // Toggle a tag in the selected tags filter
+  const toggleTagFilter = (tag: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  // Toggle a type in the selected types filter
+  const toggleTypeFilter = (type: string) => {
+    setSelectedTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setSelectedTags([]);
+    setSelectedTypes([]);
+    setStatusFilter('all');
+  };
+
+  // Whether any filter is active
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedTags.length > 0 || selectedTypes.length > 0 || statusFilter !== 'all';
+
   // Fetch tools for admin mode
   const fetchTools = useCallback(async () => {
     setLoading(true);
@@ -2366,6 +2511,103 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
             </div>
           </div>
 
+          {/* Search & Filter Bar */}
+          <div className="bg-white rounded-lg border shadow-sm p-4 space-y-3">
+            {/* Search input */}
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search tools by name, description, or tag..."
+                className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+
+            {/* Status filter (segmented) */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                <Filter size={12} /> Status:
+              </span>
+              {(['all', 'active', 'inactive'] as const).map(status => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-1 text-xs rounded-full transition-colors capitalize ${
+                    statusFilter === status
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+
+            {/* Type filter (multi-select pills) */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-gray-500">Type:</span>
+              {['autonomous', 'processor', 'hybrid', 'terminal', 'builtin', 'mcp'].map(type => (
+                <button
+                  key={type}
+                  onClick={() => toggleTypeFilter(type)}
+                  className={`px-3 py-1 text-xs rounded-full transition-colors capitalize ${
+                    selectedTypes.includes(type)
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+
+            {/* Tag filter (multi-select pills) */}
+            {allTags.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-medium text-gray-500">Tags:</span>
+                {allTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTagFilter(tag)}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      selectedTags.includes(tag)
+                        ? 'bg-teal-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Active filter summary & clear button */}
+            {hasActiveFilters && (
+              <div className="flex items-center justify-between pt-1 border-t">
+                <span className="text-xs text-gray-500">
+                  Showing {isSuperuser ? filteredSuperuserTools.length : filteredTools.length} of{' '}
+                  {isSuperuser ? superuserTools.length : tools.length} tools
+                </span>
+                <button
+                  onClick={clearAllFilters}
+                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                >
+                  <X size={12} /> Clear all filters
+                </button>
+              </div>
+            )}
+          </div>
+
       {/* Tool Call Limits Accordion — admin mode only */}
       {!readOnly && !isSuperuser && (
         <div className="bg-white rounded-lg border shadow-sm">
@@ -2439,12 +2681,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
             <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
               No categories assigned. Contact an administrator to get category access.
             </div>
-          ) : superuserTools.length === 0 ? (
+          ) : filteredSuperuserTools.length === 0 ? (
             <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
-              No tools available. Tools will appear here when configured.
+              {hasActiveFilters
+                ? 'No tools match the current filters. Try adjusting your search or filters.'
+                : 'No tools available. Tools will appear here when configured.'}
             </div>
           ) : (
-            superuserTools.map((tool) => {
+            filteredSuperuserTools.map((tool) => {
               const Icon = getToolIcon(tool.name);
               const catStatus = getCategoryStatus(tool);
               const effectiveEnabled = catStatus?.effectiveEnabled ?? tool.globalEnabled;
@@ -2493,6 +2737,25 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                           }`}>
                             Global: {tool.globalEnabled ? 'On' : 'Off'}
                           </span>
+                          {/* Tag badges */}
+                          {(tool.tags || []).length > 0 && (
+                            <span className="flex items-center gap-1 flex-wrap">
+                              {(tool.tags || []).map(tag => (
+                                <span
+                                  key={tag}
+                                  className={`px-1.5 py-0.5 text-xs rounded-full cursor-pointer ${
+                                    selectedTags.includes(tag)
+                                      ? 'bg-teal-600 text-white'
+                                      : 'bg-gray-100 text-gray-500 hover:bg-teal-100 hover:text-teal-700'
+                                  }`}
+                                  onClick={() => toggleTagFilter(tag)}
+                                  title={`Click to filter by tag: ${tag}`}
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">{tool.description}</p>
                       </div>
@@ -2602,12 +2865,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       {/* Tools List - Admin/ReadOnly Mode */}
       {!isSuperuser && (
         <div className="space-y-4">
-          {tools.length === 0 ? (
+          {filteredTools.length === 0 ? (
             <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
-              No tools configured. Tools will appear here when available.
+              {hasActiveFilters
+                ? 'No tools match the current filters. Try adjusting your search or filters.'
+                : 'No tools configured. Tools will appear here when available.'}
             </div>
           ) : (
-            tools.map((tool) => {
+            filteredTools.map((tool) => {
               const Icon = getToolIcon(tool.name);
               const isExpanded = expandedTool === tool.name;
 
@@ -2656,10 +2921,29 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                               terminal
                             </span>
                           )}
+                          {/* Tag badges */}
+                          {(tool.tags || []).length > 0 && (
+                            <span className="flex items-center gap-1 flex-wrap">
+                              {(tool.tags || []).map(tag => (
+                                <span
+                                  key={tag}
+                                  className={`px-1.5 py-0.5 text-xs rounded-full cursor-pointer ${
+                                    selectedTags.includes(tag)
+                                      ? 'bg-teal-600 text-white'
+                                      : 'bg-gray-100 text-gray-500 hover:bg-teal-100 hover:text-teal-700'
+                                  }`}
+                                  onClick={() => toggleTagFilter(tag)}
+                                  title={`Click to filter by tag: ${tag}`}
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">{tool.description}</p>
-                      </div>
-                    </div>
+                       </div>
+                     </div>
 
                     <div className="flex items-center gap-2">
                       {/* Status Badge (read-only mode) */}

@@ -93,6 +93,7 @@ export async function GET() {
         description: tool.description,
         category: tool.category,
         group: tool.group ?? null,
+        tags: tool.tags ?? [],
         enabled: config?.isEnabled ?? defaults?.enabled ?? false,
         config: safeConfig,
         configSchema: tool.configSchema,

@@ -35,6 +35,7 @@ interface ToolWithCategories {
   displayName: string;
   description: string;
   category: string;
+  tags: string[];
   globalEnabled: boolean;
   isTerminal: boolean;
   isHybrid: boolean;
@@ -129,6 +130,7 @@ export async function GET() {
         displayName: tool.displayName,
         description: tool.description,
         category: tool.category,
+        tags: tool.tags ?? [],
         globalEnabled,
         isTerminal: TERMINAL_TOOLS.has(tool.name),
         isHybrid: HYBRID_TOOLS.has(tool.name),
