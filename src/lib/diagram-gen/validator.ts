@@ -106,6 +106,38 @@ export function validateMermaidSyntax(
     if (nodeCount > 40) {
       errors.push(`Flowchart has ~${nodeCount} node definitions — maximum is 30. Remove less important steps`);
     }
+    // Subgraph/end balance: every `subgraph` keyword must be closed by a
+    // standalone `end` keyword. An imbalance is a HARD error — mermaid throws
+    // "Expecting 'SEMI'/'NEWLINE'/'EOF'... got 'X'" when a subgraph is left
+    // open (the most common symptom of LLM output truncation mid-subgraph).
+    const subgraphCount = (cleanCode.match(/^\s*subgraph\b/gim) || []).length;
+    const endCount = (cleanCode.match(/^\s*end\s*$/gim) || []).length;
+    if (subgraphCount !== endCount) {
+      errors.push(
+        `Unbalanced subgraph/end: ${subgraphCount} subgraph, ${endCount} end — ` +
+        `every subgraph must be closed with end. This usually means the output was truncated.`
+      );
+    }
+    // Truncation heuristic: catch LLM output cut off mid-line by maxTokens.
+    // A node ID declared with NO following shape/label or edge on the same
+    // line, and which is the LAST non-empty line, is almost always a truncated
+    // subgraph/node declaration (e.g. "        Aggregator" with nothing after).
+    // We only flag the final non-empty line to avoid false positives on valid
+    // bare-ID edges like "A --> B".
+    const nonEmptyLines = cleanCode.split('\n').filter(l => l.trim().length > 0);
+    const lastLine = nonEmptyLines.length > 0 ? nonEmptyLines[nonEmptyLines.length - 1].trim() : '';
+    // A bare identifier (letters/digits/underscore) with no trailing shape,
+    // label, edge arrow, or keyword — i.e. not a complete statement.
+    const looksTruncated =
+      /^\w+$/.test(lastLine) &&                  // single bare token
+      !/^(end|subgraph|direction|style|class|classDef|linkStyle|click)\b/i.test(lastLine) && // not a keyword-only line
+      subgraphCount !== endCount;                // only treat as truncation when subgraphs are unbalanced
+    if (looksTruncated) {
+      errors.push(
+        `Output appears truncated — last line "${lastLine.substring(0, 40)}" is an incomplete ` +
+        `node/subgraph declaration. Complete it or increase the token budget.`
+      );
+    }
     // Subgraph direction validation (Phase 5). Per official mermaid docs, the
     // subgraph direction is declared on a separate `direction <DIR>` line INSIDE
     // the subgraph body (NOT `subgraph X [DIR]`, which parses `[DIR]` as a

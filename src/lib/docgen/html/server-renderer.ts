@@ -191,7 +191,9 @@ export async function renderMermaidToSvg(code: string): Promise<string | null> {
       return svg ? svg.outerHTML : null;
     });
 
-    // Fallback to mermaid.render() API directly.
+    // Fallback to mermaid.render() API directly. Capture the mermaid error
+    // detail (mermaid throws plain objects {str, message}, not Error) so the
+    // server log shows the real syntax error instead of "page.evaluate: Object".
     if (!svgHtml) {
       svgHtml = await page.evaluate(async (src) => {
         try {
@@ -201,13 +203,30 @@ export async function renderMermaidToSvg(code: string): Promise<string | null> {
           const id = 'mermaid-svg-' + Date.now();
           const { svg } = await mmd.render(id, src);
           return svg;
-        } catch { return null; }
+        } catch (e) {
+          // Return the mermaid error string so the catch below can log it.
+          // mermaid v11 throws { str, message } objects; fall back to String().
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const eAny = e as any;
+          return '__MERMAID_ERROR__:' + (eAny?.str || eAny?.message || String(e)).substring(0, 300);
+        }
       }, code);
+      // If the fallback returned our error sentinel, surface it and treat as failure.
+      if (typeof svgHtml === 'string' && svgHtml.startsWith('__MERMAID_ERROR__:')) {
+        console.warn('[ServerRenderer] mermaid.render() failed:', svgHtml.slice('__MERMAID_ERROR__:'.length));
+        svgHtml = null;
+      }
     }
 
     return svgHtml;
   } catch (err) {
-    console.warn('[ServerRenderer] renderMermaidToSvg failed:', (err as Error).message);
+    // Playwright wraps page.evaluate rejections; the real browser-side error
+    // text is embedded in err.message (after "page.evaluate:" / "Error:").
+    // Serialize the full error to avoid the opaque "page.evaluate: Object".
+    const e = err as Error & { cause?: unknown };
+    const detail = e?.message || String(e);
+    const cause = e?.cause ? `\n  cause: ${e.cause instanceof Error ? e.cause.message : String(e.cause)}` : '';
+    console.warn(`[ServerRenderer] renderMermaidToSvg failed: ${detail}${cause}`);
     return null;
   } finally {
     if (page) await page.close().catch(() => {});

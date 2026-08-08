@@ -24,7 +24,12 @@ import type {
 
 export const DIAGRAM_GEN_DEFAULTS: DiagramGenConfig = {
   temperature: 0.3, // Lower temperature for more deterministic output
-  maxTokens: 1500, // Enough for complex diagrams
+  // 2500 tokens accommodates complex multi-subgraph flowcharts (e.g. a 4-
+  // subgraph architecture diagram with ~20 nodes). 1500 was too low and caused
+  // truncation mid-subgraph, producing "Unbalanced subgraph/end" parse errors.
+  // The retry loop escalates this further (×1.5 on truncation, ×2 on empty
+  // responses) so thinking models still have reasoning headroom.
+  maxTokens: 2500,
   validateSyntax: true,
   maxRetries: 3, // 4 total attempts
   debugMode: false,
@@ -103,7 +108,13 @@ async function parseValidate(code: string): Promise<string | null> {
     // validateMermaidSyntax (regex) already ran before this and caught
     // structural errors; a false positive from a broken parse call is worse
     // than skipping it.
-    if (/DOMPurify|sanitize is not a function|jsdom|is not defined/i.test(msg)) {
+    //
+    // mermaid v11 calls DOMPurify.addHook() during initialize() even with
+    // securityLevel:'strict' (it only skips the .sanitize() call itself). In
+    // the Node standalone build DOMPurify is a no-op stub without addHook, so
+    // parse() crashes with "DOMPurify.addHook is not a function" — a false
+    // syntax error that silently rejects valid diagrams. Match addHook too.
+    if (/DOMPurify|sanitize is not a function|addHook|jsdom|is not defined/i.test(msg)) {
       logger.warn('[DiagramGen] parseValidate skipped — environment error', { error: msg.substring(0, 200) });
       return null;
     }
@@ -210,6 +221,16 @@ export async function generateMermaidDiagram(
         reasoningBudgetMultiplier *= 2;
         retryCount++;
         continue;
+      }
+
+      // Truncation guard: detect output cut off mid-diagram (most common when
+      // the model hits maxTokens mid-subgraph). A truncated flowchart typically
+      // has balanced [...] but an unbalanced subgraph/end count — the validator
+      // catches it, but we also detect it here to escalate the token budget
+      // immediately so the next attempt has room to finish the diagram.
+      const looksTruncated = /output appears truncated|unbalanced subgraph\/end/i.test(rawCode);
+      if (looksTruncated) {
+        reasoningBudgetMultiplier *= 1.5;
       }
 
       // Sanitize the code
