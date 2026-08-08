@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
-  Download, Home
+  Download, Home, ChevronDown, ChevronRight, Search, X, FolderOpen
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -13,6 +13,14 @@ import Modal from '@/components/ui/Modal';
 import MobileMenuDrawer from '@/components/ui/MobileMenuDrawer';
 import CategorySelector from '@/components/ui/CategorySelector';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
+import {
+  useThreadGroups,
+  loadCollapsedGroups,
+  saveCollapsedGroups,
+  MAX_THREADS_PER_GROUP,
+  CHATS_GROUP_KEY,
+  type ThreadGroup,
+} from '@/hooks/useThreadGroups';
 
 // Color palette for category badges
 const CATEGORY_COLORS = [
@@ -52,8 +60,22 @@ export default function MobileThreadsMenu({
   const [newThreadTitle, setNewThreadTitle] = useState('');
   const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Per-group collapse state, shared with the desktop sidebar via the same
+  // localStorage key. Mobile defaults to collapsed (true) for any group that
+  // has never been toggled — the narrow viewport benefits from a compact
+  // category-only list until the user taps to expand. Once the user interacts,
+  // the persisted value (shared with desktop) takes over.
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(loadCollapsedGroups);
+
+  // Which groups have been expanded via "Show all" (in-memory, resets on close).
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  // Refs to group header elements so we can scroll a header into view when a
+  // group is collapsed back to its latest-3 preview ("Show less").
+  const groupHeaderRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
@@ -84,6 +106,20 @@ export default function MobileThreadsMenu({
       loadThreads();
     }
   }, [isThreadsMenuOpen, loadThreads]);
+
+  // Re-read persisted collapse state whenever the drawer opens, so changes made
+  // on desktop (shared key) are reflected here.
+  useEffect(() => {
+    if (isThreadsMenuOpen) {
+      setCollapsedGroups(loadCollapsedGroups());
+      setExpandedGroups({});
+      setSearchQuery('');
+    }
+  }, [isThreadsMenuOpen]);
+
+  useEffect(() => {
+    saveCollapsedGroups(collapsedGroups);
+  }, [collapsedGroups]);
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -172,6 +208,28 @@ export default function MobileThreadsMenu({
     }
   };
 
+  const toggleGroupCollapse = (key: string) => {
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Mobile default: collapsed (true) for any group without a persisted value.
+  // This keeps the drawer compact on first load. Desktop uses ?? false.
+  const isGroupCollapsed = (key: string) => collapsedGroups[key] ?? true;
+
+  const toggleGroupExpanded = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (next[key] === false) {
+        requestAnimationFrame(() => {
+          groupHeaderRefs.current[key]?.scrollIntoView({ block: 'nearest' });
+        });
+      }
+      return next;
+    });
+  };
+
+  const isGroupExpanded = (key: string) => expandedGroups[key] ?? false;
+
   const formatDate = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -188,12 +246,83 @@ export default function MobileThreadsMenu({
     }
   };
 
-  const filteredThreads = selectedCategoryId === null
-    ? threads
-    : threads.filter(thread => thread.categories?.some(cat => cat.id === selectedCategoryId));
+  // Shared grouping + search-visibility logic (also used by the desktop sidebar).
+  const { groups, getVisibleThreads, hasAnyVisible, normalizedQuery } =
+    useThreadGroups(threads, availableCategories, searchQuery);
 
-  const pinnedThreads = filteredThreads.filter(t => t.isPinned);
-  const otherThreads = filteredThreads.filter(t => !t.isPinned);
+  // Render one category group: collapsible header + latest-3 (or all when
+  // expanded / when the category name matches the search) + "Show all" link.
+  const renderGroup = (group: ThreadGroup) => {
+    const visible = getVisibleThreads(group);
+    if (!visible || visible.length === 0) return null;
+
+    const collapsed = isGroupCollapsed(group.key);
+    // A category-name search match reveals the whole group, so bypass the
+    // latest-3 preview in that case.
+    const categoryMatched =
+      normalizedQuery.length > 0 &&
+      group.categoryId !== null &&
+      group.label.toLowerCase().includes(normalizedQuery);
+    const expanded = categoryMatched || isGroupExpanded(group.key);
+    const previewThreads = expanded
+      ? visible
+      : visible.slice(0, MAX_THREADS_PER_GROUP);
+    const hiddenCount = visible.length - previewThreads.length;
+
+    return (
+      <div key={group.key} className="mb-2">
+        <button
+          ref={(el) => { groupHeaderRefs.current[group.key] = el; }}
+          onClick={() => toggleGroupCollapse(group.key)}
+          className="w-full flex items-center gap-1.5 px-2 py-3 min-h-[44px] text-sm font-medium text-gray-500 uppercase hover:text-gray-700 active:bg-gray-100 rounded-lg transition-colors"
+        >
+          {collapsed
+            ? <ChevronRight size={16} className="shrink-0" />
+            : <ChevronDown size={16} className="shrink-0" />
+          }
+          {group.categoryId === null
+            ? <MessageSquare size={16} className="shrink-0 opacity-70" />
+            : <FolderOpen size={16} className="shrink-0 opacity-70" />
+          }
+          <span className="truncate">{group.label}</span>
+          <span className="text-xs text-gray-400 normal-case ml-1">
+            ({visible.length})
+          </span>
+        </button>
+        {!collapsed && (
+          <div className="space-y-1">
+            {previewThreads.map((thread) => (
+              <ThreadItem
+                key={thread.id}
+                thread={thread}
+                isSelected={selectedThreadId === thread.id}
+                onSelect={() => handleSelectThread(thread)}
+                onTogglePin={(e) => handleTogglePin(thread, e)}
+                onDelete={() => setDeleteThread(thread)}
+                formatDate={formatDate}
+                getCategoryColor={getCategoryColor}
+              />
+            ))}
+            {!categoryMatched && hiddenCount > 0 && (
+              <button
+                onClick={() => toggleGroupExpanded(group.key)}
+                className="w-full text-left px-3 py-2 min-h-[44px] text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                {isGroupExpanded(group.key)
+                  ? 'Show less'
+                  : `Show all (${visible.length})`}
+              </button>
+            )}
+            {categoryMatched && visible.length > MAX_THREADS_PER_GROUP && (
+              <p className="px-3 py-1 text-xs text-gray-400">
+                Showing all {visible.length} threads in this category
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -226,21 +355,28 @@ export default function MobileThreadsMenu({
           </div>
         }
       >
-        {/* Category Filter */}
-        {availableCategories.length > 0 && (
-          <div className="px-4 py-2 border-b">
-            <select
-              value={selectedCategoryId ?? ''}
-              onChange={(e) => setSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Categories</option>
-              {availableCategories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
+        {/* Search input — sticky so it stays visible while scrolling groups.
+            text-base (16px) prevents iOS Safari auto-zoom on focus. */}
+        <div className="sticky top-0 z-10 bg-white px-4 py-2 border-b">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search threads or categories..."
+              className="w-full pl-9 pr-9 py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Thread List */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
@@ -248,63 +384,29 @@ export default function MobileThreadsMenu({
             <div className="flex items-center justify-center h-32">
               <div className="animate-pulse text-gray-400">Loading...</div>
             </div>
-          ) : filteredThreads.length === 0 ? (
+          ) : !hasAnyVisible ? (
             <div className="text-center py-8 text-gray-500">
-              <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No threads yet</p>
-              <p className="text-xs">Start a new conversation</p>
+              {searchQuery ? (
+                <>
+                  <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No threads matching "{searchQuery}"</p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mt-2 text-xs text-blue-600 hover:text-blue-700 underline"
+                  >
+                    Clear search
+                  </button>
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No threads yet</p>
+                  <p className="text-xs">Start a new conversation</p>
+                </>
+              )}
             </div>
           ) : (
-            <>
-              {/* Pinned */}
-              {pinnedThreads.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 flex items-center gap-1">
-                    <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                    Favorites
-                  </h3>
-                  <div className="space-y-1">
-                    {pinnedThreads.map((thread) => (
-                      <ThreadItem
-                        key={thread.id}
-                        thread={thread}
-                        isSelected={selectedThreadId === thread.id}
-                        onSelect={() => handleSelectThread(thread)}
-                        onTogglePin={(e) => handleTogglePin(thread, e)}
-
-                        onDelete={() => setDeleteThread(thread)}
-                        formatDate={formatDate}
-                        getCategoryColor={getCategoryColor}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Others */}
-              {otherThreads.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2">
-                    {pinnedThreads.length > 0 ? 'Others' : 'Recent'}
-                  </h3>
-                  <div className="space-y-1">
-                    {otherThreads.map((thread) => (
-                      <ThreadItem
-                        key={thread.id}
-                        thread={thread}
-                        isSelected={selectedThreadId === thread.id}
-                        onSelect={() => handleSelectThread(thread)}
-                        onTogglePin={(e) => handleTogglePin(thread, e)}
-
-                        onDelete={() => setDeleteThread(thread)}
-                        formatDate={formatDate}
-                        getCategoryColor={getCategoryColor}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+            groups.map(renderGroup)
           )}
         </div>
 
@@ -356,7 +458,7 @@ export default function MobileThreadsMenu({
       {/* Delete Modal */}
       <Modal isOpen={!!deleteThread} onClose={() => setDeleteThread(null)} title="Delete Thread?">
         <p className="text-gray-600 mb-4">
-          Are you sure you want to delete &quot;{deleteThread?.title}&quot;?
+          Are you sure you want to delete "{deleteThread?.title}"?
         </p>
         <p className="text-sm text-gray-500 mb-6">
           This will permanently remove all messages and documents. This action cannot be undone.
@@ -406,7 +508,8 @@ export default function MobileThreadsMenu({
   );
 }
 
-// Thread item component
+// Thread item component — always-visible action icons (no hover gating) and
+// 48×48px min touch targets for accessibility on touch devices.
 interface ThreadItemProps {
   thread: Thread;
   isSelected: boolean;
@@ -438,6 +541,9 @@ function ThreadItem({
         <p className="text-sm font-medium truncate">{thread.title}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className="text-xs text-gray-500">{formatDate(thread.updatedAt)}</span>
+          {thread.isPinned && (
+            <Star size={10} className="fill-yellow-400 text-yellow-400" />
+          )}
           {thread.isSummarized && (
             <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">
               <BookOpen size={12} />
@@ -461,7 +567,7 @@ function ThreadItem({
       <div className="flex items-center gap-1">
         <button
           onClick={onTogglePin}
-          className={`p-1 rounded ${thread.isPinned ? 'text-yellow-500' : 'text-gray-400'}`}
+          className={`min-w-[44px] min-h-[44px] flex items-center justify-center rounded ${thread.isPinned ? 'text-yellow-500' : 'text-gray-400'}`}
         >
           <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
         </button>
@@ -469,11 +575,11 @@ function ThreadItem({
           href={`/api/threads/${thread.id}/export`}
           download
           onClick={(e) => e.stopPropagation()}
-          className="min-w-[48px] min-h-[48px] flex items-center justify-center text-gray-400"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400"
         >
           <Download size={14} />
         </a>
-        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="min-w-[48px] min-h-[48px] flex items-center justify-center text-gray-400">
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400">
           <Trash2 size={14} />
         </button>
       </div>

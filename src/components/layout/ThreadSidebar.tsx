@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
-  PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X
+  PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X, FolderOpen
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -11,6 +11,13 @@ import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
+import {
+  useThreadGroups,
+  loadCollapsedGroups,
+  saveCollapsedGroups,
+  MAX_THREADS_PER_GROUP,
+  type ThreadGroup,
+} from '@/hooks/useThreadGroups';
 
 // Color palette for subscription badges
 const SUBSCRIPTION_COLORS = [
@@ -29,40 +36,6 @@ const SUBSCRIPTION_COLORS = [
 // Get consistent color for a category based on its ID
 const getCategoryColor = (categoryId: number) => {
   return SUBSCRIPTION_COLORS[categoryId % SUBSCRIPTION_COLORS.length];
-};
-
-// Date grouping helpers
-type DateGroup = 'today' | 'yesterday' | 'lastWeek' | 'lastMonth' | 'older';
-
-const DATE_GROUP_LABELS: Record<DateGroup, string> = {
-  today: 'Today',
-  yesterday: 'Yesterday',
-  lastWeek: 'Last Week',
-  lastMonth: 'Last Month',
-  older: 'Older',
-};
-
-const DATE_GROUP_ORDER: DateGroup[] = ['today', 'yesterday', 'lastWeek', 'lastMonth', 'older'];
-
-const getDateGroup = (date: Date): DateGroup => {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 7) return 'lastWeek';
-  if (days < 30) return 'lastMonth';
-  return 'older';
-};
-
-const groupThreadsByDate = (threads: Thread[]): Record<DateGroup, Thread[]> => {
-  const groups: Record<DateGroup, Thread[]> = {
-    today: [], yesterday: [], lastWeek: [], lastMonth: [], older: [],
-  };
-  threads.forEach(thread => {
-    groups[getDateGroup(thread.updatedAt)].push(thread);
-  });
-  return groups;
 };
 
 interface ThreadSidebarProps {
@@ -95,31 +68,23 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   const [newThreadTitle, setNewThreadTitle] = useState('');
   const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Section collapse state with localStorage persistence
-  const [favoritesCollapsed, setFavoritesCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('sidebar-favorites-collapsed') === 'true';
-    }
-    return false;
-  });
-  const [othersCollapsed, setOthersCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('sidebar-others-collapsed') === 'true';
-    }
-    return false;
-  });
-  const [collapsedDateGroups, setCollapsedDateGroups] = useState<Record<string, boolean>>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        return JSON.parse(localStorage.getItem('sidebar-collapsed-date-groups') || '{}');
-      } catch { return {}; }
-    }
-    return {};
-  });
+  // Per-group collapse state (header chevron) with localStorage persistence.
+  // Keyed by CHATS_GROUP_KEY or category id as string. Desktop defaults to
+  // expanded (false) for every group until the user toggles something; the
+  // persisted state is shared with the mobile drawer via the same key.
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(loadCollapsedGroups);
+
+  // Which groups have been expanded via "Show all" (shows all threads instead
+  // of only the latest MAX_THREADS_PER_GROUP). In-memory only — resets on
+  // reload, which is the expected behaviour for a transient browse action.
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  // Refs to group header elements so we can scroll a header into view when a
+  // group is collapsed back to its latest-3 preview ("Show less").
+  const groupHeaderRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const [internalCollapsed, setInternalCollapsed] = useState(collapsedProp);
   const isCollapsed = onCollapseChange ? collapsedProp : internalCollapsed;
@@ -167,16 +132,8 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   }, [loadThreads]);
 
   useEffect(() => {
-    localStorage.setItem('sidebar-favorites-collapsed', String(favoritesCollapsed));
-  }, [favoritesCollapsed]);
-
-  useEffect(() => {
-    localStorage.setItem('sidebar-others-collapsed', String(othersCollapsed));
-  }, [othersCollapsed]);
-
-  useEffect(() => {
-    localStorage.setItem('sidebar-collapsed-date-groups', JSON.stringify(collapsedDateGroups));
-  }, [collapsedDateGroups]);
+    saveCollapsedGroups(collapsedGroups);
+  }, [collapsedGroups]);
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -280,14 +237,27 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
     }
   };
 
-  const toggleDateGroup = (section: 'favorites' | 'others', group: DateGroup) => {
-    const key = `${section}-${group}`;
-    setCollapsedDateGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleGroupCollapse = (key: string) => {
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const isDateGroupCollapsed = (section: 'favorites' | 'others', group: DateGroup) => {
-    return collapsedDateGroups[`${section}-${group}`] ?? false;
+  const isGroupCollapsed = (key: string) => collapsedGroups[key] ?? false;
+
+  const toggleGroupExpanded = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      // When collapsing back to the latest-3 preview, scroll the group header
+      // into view so the user doesn't lose context as rows above vanish.
+      if (next[key] === false) {
+        requestAnimationFrame(() => {
+          groupHeaderRefs.current[key]?.scrollIntoView({ block: 'nearest' });
+        });
+      }
+      return next;
+    });
   };
+
+  const isGroupExpanded = (key: string) => expandedGroups[key] ?? false;
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -312,23 +282,9 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
     }
   };
 
-  // Apply category filter
-  const filteredThreads = selectedCategoryId === null
-    ? threads
-    : threads.filter(thread =>
-        thread.categories?.some(cat => cat.id === selectedCategoryId)
-      );
-
-  // Apply search filter
-  const searchedThreads = searchQuery.trim()
-    ? filteredThreads.filter(thread =>
-        thread.title.toLowerCase().includes(searchQuery.trim().toLowerCase())
-      )
-    : filteredThreads;
-
-  // Then apply pin grouping
-  const pinnedThreads = searchedThreads.filter(t => t.isPinned);
-  const otherThreads = searchedThreads.filter(t => !t.isPinned);
+  // Shared grouping + search-visibility logic (also used by the mobile drawer).
+  const { groups, getVisibleThreads, hasAnyVisible, normalizedQuery } =
+    useThreadGroups(threads, availableCategories, searchQuery);
 
   // Hidden state (mobile input focused)
   if (hidden) {
@@ -455,24 +411,6 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
           </Button>
         </div>
 
-        {/* Category Filter Dropdown */}
-        {availableCategories.length > 0 && (
-          <div className="px-4 py-2 border-b">
-            <select
-              value={selectedCategoryId ?? ''}
-              onChange={(e) => setSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All Categories</option>
-              {availableCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         {/* Search Input */}
         <div className="px-4 py-2 border-b">
           <div className="relative">
@@ -481,7 +419,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search threads..."
+              placeholder="Search threads or categories..."
               className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             {searchQuery && (
@@ -501,12 +439,12 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
             <div className="flex items-center justify-center h-32">
               <div className="animate-pulse text-gray-400">Loading...</div>
             </div>
-          ) : searchedThreads.length === 0 ? (
+          ) : !hasAnyVisible ? (
             <div className="text-center py-8 text-gray-500">
               {searchQuery ? (
                 <>
                   <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No threads matching &quot;{searchQuery}&quot;</p>
+                  <p className="text-sm">No threads matching "{searchQuery}"</p>
                   <button
                     onClick={() => setSearchQuery('')}
                     className="mt-2 text-xs text-blue-600 hover:text-blue-700 underline"
@@ -517,28 +455,14 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
               ) : (
                 <>
                   <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                  {selectedCategoryId ? (
-                    <>
-                      <p className="text-sm">No threads in this category</p>
-                      <button
-                        onClick={() => setSelectedCategoryId(null)}
-                        className="mt-2 text-xs text-blue-600 hover:text-blue-700 underline"
-                      >
-                        Show all categories
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm">No threads yet</p>
-                      <p className="text-xs">Start a new conversation</p>
-                    </>
-                  )}
+                  <p className="text-sm">No threads yet</p>
+                  <p className="text-xs">Start a new conversation</p>
                 </>
               )}
             </div>
           ) : (
             <>
-              {/* Render thread item */}
+              {/* Render a single thread row */}
               {(() => {
                 const renderThread = (thread: Thread) => (
                   <div
@@ -557,6 +481,9 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
                       <p className="text-sm font-medium truncate">{thread.title}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-xs text-gray-500">{formatDate(thread.updatedAt)}</span>
+                        {thread.isPinned && (
+                          <Star size={10} className="fill-yellow-400 text-yellow-400" />
+                        )}
                         {thread.isSummarized && (
                           <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
                             <BookOpen size={10} />
@@ -613,87 +540,71 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
                   </div>
                 );
 
-                const renderDateGroups = (threads: Thread[], section: 'favorites' | 'others') => {
-                  const grouped = groupThreadsByDate(threads);
-                  return DATE_GROUP_ORDER.map(group => {
-                    const groupThreads = grouped[group];
-                    if (groupThreads.length === 0) return null;
-                    const collapsed = isDateGroupCollapsed(section, group);
-                    return (
-                      <div key={group}>
-                        <button
-                          onClick={() => toggleDateGroup(section, group)}
-                          className="w-full flex items-center gap-1 px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                          {collapsed
-                            ? <ChevronRight size={10} className="shrink-0" />
-                            : <ChevronDown size={10} className="shrink-0" />
-                          }
-                          <span>{DATE_GROUP_LABELS[group]}</span>
-                          <span className="ml-auto">({groupThreads.length})</span>
-                        </button>
-                        {!collapsed && (
-                          <div className="space-y-1">
-                            {groupThreads.map(renderThread)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  });
+                // Render one category group: collapsible header + latest-3 (or
+                // all when expanded / when the category name matches the search)
+                // + "Show all" link when there are more than the preview limit.
+                const renderGroup = (group: ThreadGroup) => {
+                  const visible = getVisibleThreads(group);
+                  if (!visible || visible.length === 0) return null;
+
+                  const collapsed = isGroupCollapsed(group.key);
+                  // A category-name search match reveals the whole group, so
+                  // bypass the latest-3 preview in that case.
+                  const categoryMatched =
+                    normalizedQuery.length > 0 &&
+                    group.categoryId !== null &&
+                    group.label.toLowerCase().includes(normalizedQuery);
+                  const expanded = categoryMatched || isGroupExpanded(group.key);
+                  const previewThreads = expanded
+                    ? visible
+                    : visible.slice(0, MAX_THREADS_PER_GROUP);
+                  const hiddenCount = visible.length - previewThreads.length;
+
+                  return (
+                    <div key={group.key} className="mb-4">
+                      <button
+                        ref={(el) => { groupHeaderRefs.current[group.key] = el; }}
+                        onClick={() => toggleGroupCollapse(group.key)}
+                        className="w-full flex items-center gap-1 px-2 mb-1 mt-3 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 transition-colors"
+                      >
+                        {collapsed
+                          ? <ChevronRight size={12} className="shrink-0" />
+                          : <ChevronDown size={12} className="shrink-0" />
+                        }
+                        {group.categoryId === null
+                          ? <MessageSquare size={12} className="shrink-0 opacity-70" />
+                          : <FolderOpen size={12} className="shrink-0 opacity-70" />
+                        }
+                        <span className="truncate">{group.label}</span>
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          ({visible.length})
+                        </span>
+                      </button>
+                      {!collapsed && (
+                        <div className="space-y-1">
+                          {previewThreads.map(renderThread)}
+                          {!categoryMatched && hiddenCount > 0 && (
+                            <button
+                              onClick={() => toggleGroupExpanded(group.key)}
+                              className="w-full text-left px-3 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                              {isGroupExpanded(group.key)
+                                ? 'Show less'
+                                : `Show all (${visible.length})`}
+                            </button>
+                          )}
+                          {categoryMatched && visible.length > MAX_THREADS_PER_GROUP && (
+                            <p className="px-3 py-1 text-[10px] text-gray-400">
+                              Showing all {visible.length} threads in this category
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
                 };
 
-                return (
-                  <>
-                    {/* Pinned Threads Section */}
-                    {pinnedThreads.length > 0 && (
-                      <div className="mb-4">
-                        <button
-                          onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
-                          className="w-full flex items-center gap-1 px-2 mb-1 mt-3 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 transition-colors"
-                        >
-                          {favoritesCollapsed
-                            ? <ChevronRight size={12} className="shrink-0" />
-                            : <ChevronDown size={12} className="shrink-0" />
-                          }
-                          <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                          Favorites
-                          <span className="text-[10px] text-gray-400 normal-case ml-1">
-                            ({pinnedThreads.length})
-                          </span>
-                        </button>
-                        {!favoritesCollapsed && (
-                          <div className="space-y-1">
-                            {renderDateGroups(pinnedThreads, 'favorites')}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Other Threads Section */}
-                    {otherThreads.length > 0 && (
-                      <div className="mb-4">
-                        <button
-                          onClick={() => setOthersCollapsed(!othersCollapsed)}
-                          className="w-full flex items-center gap-1 px-2 mb-1 mt-3 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 transition-colors"
-                        >
-                          {othersCollapsed
-                            ? <ChevronRight size={12} className="shrink-0" />
-                            : <ChevronDown size={12} className="shrink-0" />
-                          }
-                          {pinnedThreads.length > 0 ? 'Others' : 'Recent'}
-                          <span className="text-[10px] text-gray-400 normal-case ml-1">
-                            ({otherThreads.length})
-                          </span>
-                        </button>
-                        {!othersCollapsed && (
-                          <div className="space-y-1">
-                            {renderDateGroups(otherThreads, 'others')}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                );
+                return <>{groups.map(renderGroup)}</>;
               })()}
             </>
           )}
@@ -760,7 +671,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
         title="Delete Thread?"
       >
         <p className="text-gray-600 mb-4">
-          Are you sure you want to delete &quot;{deleteThread?.title}&quot;?
+          Are you sure you want to delete "{deleteThread?.title}"?
         </p>
         <p className="text-sm text-gray-500 mb-6">
           This will permanently remove all messages and uploaded documents.
