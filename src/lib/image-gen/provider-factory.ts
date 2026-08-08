@@ -48,11 +48,13 @@ export const IMAGE_GEN_DEFAULTS: ImageGenConfig = {
       proModel: 'gemini-3-pro-image-preview',
       aspectRatio: '16:9',
     },
+    // Imagen 4 is deprecated (shutdown: August 17, 2026). Disabled by default.
+    // All image generation now routes through Gemini native models.
     imagen: {
-      enabled: true,
-      fastModel: 'imagen-4.0-fast-generate-001',
-      standardModel: 'imagen-4.0-generate-001',
-      ultraModel: 'imagen-4.0-ultra-generate-001',
+      enabled: false,
+      fastModel: 'gemini-3.1-flash-image-preview',
+      standardModel: 'gemini-3-pro-image-preview',
+      ultraModel: 'gemini-3-pro-image-preview',
       aspectRatio: '16:9',
     },
   },
@@ -104,14 +106,17 @@ interface ProviderSelection {
 }
 
 /**
- * Categories where Imagen 4 is the PRIMARY choice (photorealism specialist)
+ * Categories where Gemini Nano Banana Pro is the PRIMARY choice.
+ * These styles benefit from the Pro model's superior quality:
+ * - Text-heavy styles (infographic, poster)
+ * - Photorealism styles (photo, product-mockup) — previously handled by Imagen 4
  */
-const IMAGEN_PRIMARY_CATEGORIES: ImageStyle[] = ['photo', 'product-mockup'];
-
-/**
- * Categories where Gemini Nano Banana Pro is the PRIMARY choice (text-heavy)
- */
-const GEMINI_PRO_CATEGORIES: ImageStyle[] = ['infographic', 'poster'];
+const GEMINI_PRO_CATEGORIES: ImageStyle[] = [
+  'infographic',
+  'poster',
+  'photo',
+  'product-mockup',
+];
 
 /**
  * Classify a prompt into the best image style when LLM selects "auto".
@@ -181,38 +186,23 @@ export function classifyPromptToStyle(prompt: string, defaultStyle: ImageStyle):
 }
 
 function selectPrimaryProvider(style: ImageStyle, config: ImageGenConfig): ProviderSelection | null {
-  if (IMAGEN_PRIMARY_CATEGORIES.includes(style)) {
-    if (config.providers.imagen.enabled) {
-      return { provider: 'imagen', model: getImagenModelForCategory(style, config.providers.imagen) };
-    }
-    if (config.providers.gemini.enabled) {
-      return { provider: 'gemini', model: getGeminiModelForCategory(style, config.providers.gemini) };
-    }
-  } else {
-    if (config.providers.gemini.enabled) {
-      return { provider: 'gemini', model: getGeminiModelForCategory(style, config.providers.gemini) };
-    }
-    if (config.providers.imagen.enabled) {
-      return { provider: 'imagen', model: getImagenModelForCategory(style, config.providers.imagen) };
-    }
+  // Imagen 4 is deprecated (shutdown: August 17, 2026).
+  // All image generation now routes exclusively through Gemini native models.
+  if (config.providers.gemini.enabled) {
+    return { provider: 'gemini', model: getGeminiModelForCategory(style, config.providers.gemini) };
   }
   return null;
 }
 
+/**
+ * No fallback provider needed — Imagen 4 is deprecated and Gemini is the sole provider.
+ * Kept as a stub that always returns null for backward compatibility with call sites.
+ */
 function selectFallbackProvider(
-  primary: ProviderSelection,
-  style: ImageStyle,
-  config: ImageGenConfig
+  _primary: ProviderSelection,
+  _style: ImageStyle,
+  _config: ImageGenConfig
 ): ProviderSelection | null {
-  if (primary.provider === 'imagen') {
-    if (config.providers.gemini.enabled) {
-      return { provider: 'gemini', model: getGeminiModelForCategory(style, config.providers.gemini) };
-    }
-  } else {
-    if (config.providers.imagen.enabled) {
-      return { provider: 'imagen', model: getImagenModelForCategory(style, config.providers.imagen) };
-    }
-  }
   return null;
 }
 
@@ -226,6 +216,11 @@ function getGeminiModelForCategory(
   return config.defaultModel;
 }
 
+/**
+ * @deprecated Imagen 4 is sunset (August 17, 2026). This function is retained
+ * for backward compatibility with DB-stored configs but is no longer called
+ * by the routing logic. All styles now use getGeminiModelForCategory().
+ */
 function getImagenModelForCategory(
   style: ImageStyle,
   config: ImagenProviderConfig
@@ -571,10 +566,13 @@ async function callGoogleProvider(
   selection: ProviderSelection,
   config: ImageGenConfig
 ): Promise<{ buffer: Buffer; enhancedPrompt?: string }> {
-  if (selection.provider === 'gemini') {
-    return generateWithGoogle(args, selection.model, config.providers.gemini);
-  }
-  return generateWithGoogle(args, selection.model, config.providers.imagen);
+  // All image generation now routes through Gemini native models.
+  // The generateWithGoogle() function transparently redirects any
+  // legacy Imagen model names to their Gemini equivalents.
+  const aspectConfig = selection.provider === 'gemini'
+    ? config.providers.gemini
+    : config.providers.imagen;
+  return generateWithGoogle(args, selection.model, aspectConfig);
 }
 
 async function buildAsciiFallbackResult(

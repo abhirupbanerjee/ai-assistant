@@ -530,7 +530,12 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 total={message.generatedImages!.length}
                 defaultCollapsed={message.generatedImages!.length > 1}
               >
-                <ImageDisplay image={image} />
+                <ImageDisplay
+                  image={image}
+                  onOpenCanvas={onOpenCanvas
+                    ? (item) => onOpenCanvas(item)
+                    : undefined}
+                />
               </CollapsibleArtifactCard>
             ))}
           </div>

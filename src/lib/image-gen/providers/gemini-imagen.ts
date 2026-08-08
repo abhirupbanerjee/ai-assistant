@@ -4,10 +4,10 @@
  * Unified handler for Google's image generation APIs:
  * - Gemini Native Models (Nano Banana series): gemini-3.1-flash-image-preview, gemini-3-pro-image-preview
  *   Endpoint: :generateContent
- * - Imagen 4 Models: imagen-4.0-fast-generate-001, imagen-4.0-generate-001, imagen-4.0-ultra-generate-001
- *   Endpoint: :predict
+ * - Imagen 4 Models (DEPRECATED): All Imagen 4 models are sunset (August 17, 2026).
+ *   Calls to Imagen models are transparently redirected to Gemini native.
  *
- * Both families share the same API base URL and key but use different request/response schemas.
+ * Both families share the same API base URL and key.
  */
 
 import type {
@@ -51,22 +51,33 @@ export async function generateWithGoogle(
 ): Promise<GoogleGenerationResult> {
   const apiKey = await getGoogleApiKey();
 
+  // Imagen 4 is deprecated (shutdown: August 17, 2026).
+  // Transparently redirect Imagen model calls to Gemini native.
+  let effectiveModel = model;
+  if (model.includes('imagen')) {
+    console.warn(
+      `[ImageGen:Google] Imagen model "${model}" is deprecated — redirecting to Gemini native. ` +
+      'Update your image_gen config to use gemini-3.1-flash-image-preview or gemini-3-pro-image-preview.'
+    );
+    // Map Imagen tiers to Gemini equivalents:
+    // - fast → flash (speed-optimized)
+    // - generate/standard → pro (quality)
+    // - ultra → pro (max quality)
+    effectiveModel = model.includes('fast')
+      ? 'gemini-3.1-flash-image-preview'
+      : 'gemini-3-pro-image-preview';
+  }
+
   console.log(
     `[ImageGen:Google] Generating image: "${args.prompt.substring(0, 50)}..."`
   );
   console.log(
-    `[ImageGen:Google] Model: ${model}, Aspect: ${args.aspectRatio || config.aspectRatio}`
+    `[ImageGen:Google] Model: ${effectiveModel}${effectiveModel !== model ? ` (redirected from ${model})` : ''}, Aspect: ${args.aspectRatio || config.aspectRatio}`
   );
 
   const startTime = Date.now();
 
-  let result: GoogleGenerationResult;
-
-  if (model.includes('imagen')) {
-    result = await generateWithImagen(args, model, config.aspectRatio, apiKey);
-  } else {
-    result = await generateWithGeminiNative(args, model, config.aspectRatio, apiKey);
-  }
+  const result = await generateWithGeminiNative(args, effectiveModel, config.aspectRatio, apiKey);
 
   const latency = Date.now() - startTime;
   console.log(`[ImageGen:Google] Generation completed in ${latency}ms`);
@@ -148,45 +159,31 @@ function extractFromGeminiResponse(response: GeminiResponse): GoogleGenerationRe
   };
 }
 
-// ===== Imagen 4 Endpoint (:predict) =====
+// ===== Imagen 4 Endpoint (:predict) — DEPRECATED =====
+//
+// Google is sunsetting all Imagen 4 models (shutdown: August 17, 2026).
+// Calls are now transparently redirected to Gemini native in generateWithGoogle().
+// These functions are retained for reference but are no longer called.
 
+/** @deprecated Use generateWithGeminiNative() instead. Calls are redirected in generateWithGoogle(). */
 async function generateWithImagen(
   args: ImageGenToolArgs,
   model: string,
   defaultAspectRatio: AspectRatio,
   apiKey: string
 ): Promise<GoogleGenerationResult> {
-  const aspectRatio = args.aspectRatio || defaultAspectRatio;
-  const resolution = args.resolution || '1K';
-  const promptWithAspect = buildPromptWithAspectRatio(args.prompt, aspectRatio, resolution);
-
-  const requestBody = {
-    instances: [{ prompt: promptWithAspect }],
-    parameters: {
-      sampleCount: 1,
-      aspectRatio,
-    },
-  };
-
-  const response = await fetch(
-    `${GEMINI_API_BASE}/models/${model}:predict?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    }
+  console.warn(
+    `[ImageGen:Google] generateWithImagen() called directly for model "${model}" — ` +
+    'this endpoint is deprecated. Redirecting to Gemini native.'
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[ImageGen:Google] Imagen API Error:', errorText);
-    throw parseApiError(response.status, errorText, 'Imagen 4');
-  }
-
-  const data: ImagenResponse = await response.json();
-  return extractFromImagenResponse(data);
+  // Map Imagen model to Gemini equivalent and delegate
+  const geminiModel = model.includes('fast')
+    ? 'gemini-3.1-flash-image-preview'
+    : 'gemini-3-pro-image-preview';
+  return generateWithGeminiNative(args, geminiModel, defaultAspectRatio, apiKey);
 }
 
+/** @deprecated Imagen response format is no longer used. */
 function extractFromImagenResponse(response: ImagenResponse): GoogleGenerationResult {
   const prediction = response.predictions?.[0];
 
@@ -272,8 +269,12 @@ export async function testGeminiConnection(): Promise<ConnectionTestResult> {
   return testGoogleConnection('gemini', ['gemini-3.1-flash-image', 'gemini-3-pro-image']);
 }
 
+/** @deprecated Imagen 4 is deprecated. Use testGeminiConnection() instead. */
 export async function testImagenConnection(): Promise<ConnectionTestResult> {
-  return testGoogleConnection('imagen', ['imagen-4.0-fast-generate', 'imagen-4.0-generate', 'imagen-4.0-ultra-generate']);
+  return {
+    success: false,
+    message: 'Imagen 4 is deprecated (shutdown: August 17, 2026). Use Gemini native image generation instead.',
+  };
 }
 
 async function testGoogleConnection(
@@ -334,8 +335,10 @@ export async function isGoogleConfigured(): Promise<boolean> {
 export function getGoogleCost(model: string): number {
   if (model.includes('gemini-3.1-flash-image')) return 0.067;
   if (model.includes('gemini-3-pro-image')) return 0.134;
-  if (model.includes('imagen-4.0-fast')) return 0.02;
-  if (model.includes('imagen-4.0-ultra')) return 0.06;
-  if (model.includes('imagen-4.0')) return 0.04;
-  return 0.04;
+  // Imagen 4 models are deprecated — all redirected to Gemini native.
+  // Keep cost estimates for backward compatibility with DB-stored configs.
+  if (model.includes('imagen-4.0-fast')) return 0.067;   // → gemini-3.1-flash-image
+  if (model.includes('imagen-4.0-ultra')) return 0.134;   // → gemini-3-pro-image
+  if (model.includes('imagen-4.0')) return 0.134;          // → gemini-3-pro-image
+  return 0.067;
 }

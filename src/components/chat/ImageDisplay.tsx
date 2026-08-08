@@ -3,8 +3,9 @@
 import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { Download, Maximize2, X, ImageIcon, Sparkles, Cpu } from 'lucide-react';
-import type { GeneratedImageInfo } from '@/types';
+import { Download, Maximize2, X, ImageIcon, Sparkles, Cpu, Eye } from 'lucide-react';
+import type { ArtifactCanvasItem, GeneratedImageInfo } from '@/types';
+import { buildImageCanvasItem } from '@/lib/artifact-builders';
 
 const SaveToCloudButtons = dynamic(() => import('./SaveToDriveButton').then((m) => m.SaveToCloudButtons), {
   ssr: false,
@@ -12,6 +13,13 @@ const SaveToCloudButtons = dynamic(() => import('./SaveToDriveButton').then((m) 
 
 interface ImageDisplayProps {
   image: GeneratedImageInfo;
+  /**
+   * Open this image in the Artifact Canvas side panel. When provided, the
+   * primary action button becomes "Open" (Eye icon) instead of "Download" —
+   * the user can download locally from the Canvas toolbar after previewing.
+   * Falls back to a direct download when omitted (e.g. workspace cards).
+   */
+  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
 }
 
 /**
@@ -37,7 +45,7 @@ function getProviderInfo(provider?: string): { icon: React.ReactNode; label: str
   }
 }
 
-export default function ImageDisplay({ image }: ImageDisplayProps) {
+export default function ImageDisplay({ image, onOpenCanvas }: ImageDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [modalImageError, setModalImageError] = useState(false);
@@ -51,6 +59,15 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
   const handleDownload = () => {
     // Open download URL in new tab
     window.open(fullUrl, '_blank');
+  };
+
+  const handleOpen = () => {
+    if (onOpenCanvas) {
+      onOpenCanvas(buildImageCanvasItem(image));
+    } else {
+      // No canvas wiring (e.g. workspace card) — fall back to a direct open.
+      window.open(fullUrl, '_blank');
+    }
   };
 
   // Lazy byte capture for Save-to-Drive — only fetches when the user saves.
@@ -162,13 +179,25 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
               label="Drive"
               tooltip="Save image to Google Drive"
             />
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-            >
-              <Download size={14} />
-              Download
-            </button>
+            {onOpenCanvas ? (
+              <button
+                onClick={handleOpen}
+                title="Open in canvas"
+                aria-label="Open in canvas"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+              >
+                <Eye size={14} />
+                Open
+              </button>
+            ) : (
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+              >
+                <Download size={14} />
+                Download
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -31,11 +31,23 @@ export interface GeminiProviderConfig {
   aspectRatio: AspectRatio;
 }
 
+/**
+ * Imagen 4 provider configuration.
+ *
+ * @deprecated Google is sunsetting all Imagen 4 models (shutdown: August 17, 2026).
+ * The recommended replacement is Gemini native image generation
+ * (gemini-3.1-flash-image-preview / gemini-3-pro-image-preview).
+ * This config is retained for backward compatibility with existing DB-stored configs
+ * but is no longer used for provider routing.
+ */
 export interface ImagenProviderConfig {
   enabled: boolean;
-  fastModel: 'imagen-4.0-fast-generate-001';
-  standardModel: 'imagen-4.0-generate-001';
-  ultraModel: 'imagen-4.0-ultra-generate-001';
+  /** @deprecated Use gemini-3.1-flash-image-preview instead */
+  fastModel: string;
+  /** @deprecated Use gemini-3-pro-image-preview instead */
+  standardModel: string;
+  /** @deprecated Use gemini-3-pro-image-preview instead */
+  ultraModel: string;
   aspectRatio: AspectRatio;
 }
 

@@ -484,11 +484,13 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
           proModel: 'gemini-3-pro-image-preview',
           aspectRatio: '16:9',
         },
+        // Imagen 4 is deprecated (shutdown: August 17, 2026).
+        // Disabled by default; all image generation routes through Gemini native.
         imagen: {
-          enabled: true,
-          fastModel: 'imagen-4.0-fast-generate-001',
-          standardModel: 'imagen-4.0-generate-001',
-          ultraModel: 'imagen-4.0-ultra-generate-001',
+          enabled: false,
+          fastModel: 'gemini-3.1-flash-image-preview',
+          standardModel: 'gemini-3-pro-image-preview',
+          ultraModel: 'gemini-3-pro-image-preview',
           aspectRatio: '16:9',
         },
       },

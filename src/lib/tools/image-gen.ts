@@ -66,28 +66,33 @@ const imageGenConfigSchema = {
             },
           },
         },
+        // Imagen 4 is deprecated (shutdown: August 17, 2026).
+        // All image generation now routes through Gemini native models.
+        // This config section is retained for backward compatibility with
+        // existing DB-stored configurations but is no longer used for routing.
         imagen: {
           type: 'object',
-          title: 'Google Imagen 4',
+          title: 'Google Imagen 4 (Deprecated)',
+          description: 'Imagen 4 is deprecated. All models redirect to Gemini native. Update your config to use the Gemini provider above.',
           properties: {
-            enabled: { type: 'boolean', title: 'Enable Imagen 4', default: true },
+            enabled: { type: 'boolean', title: 'Enable Imagen 4', default: false },
             fastModel: {
               type: 'string',
-              title: 'Fast Model',
-              enum: ['imagen-4.0-fast-generate-001'],
-              default: 'imagen-4.0-fast-generate-001',
+              title: 'Fast Model (→ Gemini Flash)',
+              enum: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+              default: 'gemini-3.1-flash-image-preview',
             },
             standardModel: {
               type: 'string',
-              title: 'Standard Model',
-              enum: ['imagen-4.0-generate-001'],
-              default: 'imagen-4.0-generate-001',
+              title: 'Standard Model (→ Gemini Pro)',
+              enum: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+              default: 'gemini-3-pro-image-preview',
             },
             ultraModel: {
               type: 'string',
-              title: 'Ultra Model (max quality)',
-              enum: ['imagen-4.0-ultra-generate-001'],
-              default: 'imagen-4.0-ultra-generate-001',
+              title: 'Ultra Model (→ Gemini Pro)',
+              enum: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+              default: 'gemini-3-pro-image-preview',
             },
             aspectRatio: {
               type: 'string',
@@ -241,7 +246,7 @@ export const imageGenTool: ToolDefinition = {
   name: 'image_gen',
   displayName: 'Image Generation',
   description:
-    'Generate images, infographics, diagrams, and photos using Google AI (Gemini Nano Banana or Imagen 4)',
+    'Generate images, infographics, diagrams, and photos using Google AI (Gemini Nano Banana)',
   category: 'autonomous',
 
   definition: {
