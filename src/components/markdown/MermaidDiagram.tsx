@@ -34,6 +34,10 @@ interface MermaidDiagramProps {
   code: string;
   /** Optional className for the container */
   className?: string;
+  /** Open this diagram in the Artifact Canvas when its rendered body is activated. */
+  onOpenCanvas?: () => void;
+  /** Accessible name for the optional Canvas-open interaction. */
+  openCanvasLabel?: string;
 }
 
 // Mermaid is loaded dynamically to reduce initial bundle size
@@ -289,7 +293,12 @@ function mermaidToTextFallback(code: string): string {
 }
 
 
-export default function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
+export default function MermaidDiagram({
+  code,
+  className = '',
+  onOpenCanvas,
+  openCanvasLabel = 'Open diagram in canvas',
+}: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const uniqueId = useId().replace(/:/g, '-');
   const [svgContent, setSvgContent] = useState<string | null>(null);
@@ -426,6 +435,12 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
   const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 3));
   const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
   const handleResetZoom = () => setScale(1);
+
+  const handlePreviewKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onOpenCanvas || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    onOpenCanvas();
+  };
 
   const handleDownloadSvg = () => {
     if (!svgContent) return;
@@ -661,8 +676,14 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
       {/* Diagram container */}
       <div
         ref={containerRef}
-        className="p-4 overflow-auto"
+        className={`p-4 overflow-auto ${onOpenCanvas ? 'cursor-pointer hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500' : ''}`}
         style={{ maxHeight: '500px' }}
+        onClick={onOpenCanvas}
+        onKeyDown={handlePreviewKeyDown}
+        role={onOpenCanvas ? 'button' : undefined}
+        tabIndex={onOpenCanvas ? 0 : undefined}
+        aria-label={onOpenCanvas ? openCanvasLabel : undefined}
+        title={onOpenCanvas ? openCanvasLabel : undefined}
       >
         <div
           style={{

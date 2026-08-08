@@ -64,11 +64,11 @@ interface ChatWindowProps {
   // share sheet. Passed through to MessageInput.initialDraft.
   initialDraft?: string;
   /**
-   * Open a document artifact in the Artifact Canvas side panel. Threaded down
-   * to MessageBubble → DocumentResultCard so chat-feed document cards show an
-   * "Open" button instead of "Download" (download remains in the Canvas toolbar).
+   * Open a chat artifact in the Artifact Canvas side panel. Threaded down to
+   * MessageBubble for document actions and rendered diagram-body activation.
+   * Diagram callers may provide message-local siblings for Canvas navigation.
    */
-  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
+  onOpenCanvas?: (item: ArtifactCanvasItem, siblings?: ArtifactCanvasItem[]) => void;
 }
 
 // Ref interface for external control
@@ -1175,7 +1175,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             so the user can scroll freely while the response grows (single-container model).
             .streaming-live overrides contain-intrinsic-size so the growing bubble
             doesn't get a fixed 200px placeholder that causes scroll-anchor micro-jitter. */}
-        {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (
+        {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent || streamingState.diagrams.length > 0) && (
           <div className="streaming-live" ref={streamingLiveRef}>
             <MessageBubble
               message={{
@@ -1186,6 +1186,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                 visualizations: streamingState.visualizations,
                 generatedDocuments: streamingState.documents,
                 generatedImages: streamingState.images,
+                generatedDiagrams: streamingState.diagrams,
                 agentResponses: streamingState.agentResponses.length > 0 ? streamingState.agentResponses : undefined,
                 timestamp: new Date(),
                 thinkingContent: streamingState.currentThinkingContent || undefined,

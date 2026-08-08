@@ -1,17 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import hljs from 'highlight.js';
 import { Columns2, Eye, Code2, Copy, Check } from 'lucide-react';
 import type { ArtifactCanvasItem } from '@/types';
+import { sanitizeMermaidCode } from '@/lib/diagram-gen/sanitize';
+import { MERMAID_INIT_CONFIG } from '@/lib/diagram-gen/mermaid-config';
 
 async function loadMermaid() {
   const m = await import('mermaid');
-  m.default.initialize({
-    startOnLoad: false,
-    securityLevel: 'loose',
-    theme: 'default',
-  });
+  m.default.initialize(MERMAID_INIT_CONFIG);
   return m.default;
 }
 
@@ -23,6 +21,8 @@ interface DiagramViewerProps {
 
 export default function DiagramViewer({ artifact }: DiagramViewerProps) {
   const code = artifact.mermaidCode || '';
+  const cleanCode = useMemo(() => sanitizeMermaidCode(code), [code]);
+  const instanceId = useId().replace(/:/g, '-');
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
@@ -40,23 +40,27 @@ export default function DiagramViewer({ artifact }: DiagramViewerProps) {
 
     async function render() {
       try {
+        setError(null);
+        setSvg(null);
         const mermaid = await loadMermaid();
-        const id = `mermaid-canvas-${artifact.artifactId.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        const { svg: renderedSvg } = await mermaid.render(id, code);
+        await mermaid.parse(cleanCode);
+        const artifactId = artifact.artifactId.replace(/[^a-zA-Z0-9]/g, '-');
+        const id = `mermaid-canvas-${artifactId}-${instanceId}`;
+        const { svg: renderedSvg } = await mermaid.render(id, cleanCode);
         if (!cancelled) setSvg(renderedSvg);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to render diagram');
       }
     }
 
-    if (code.trim()) {
+    if (cleanCode.trim()) {
       render();
     } else {
       setError('No Mermaid code available');
     }
 
     return () => { cancelled = true; };
-  }, [code, artifact.artifactId]);
+  }, [cleanCode, artifact.artifactId, instanceId]);
 
   const handleCopy = async () => {
     try {

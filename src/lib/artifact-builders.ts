@@ -61,12 +61,17 @@ export function buildPodcastCanvasItem(podcast: PodcastHint): ArtifactCanvasItem
   };
 }
 
-export function buildDiagramCanvasItem(diagram: DiagramHint, index: number): ArtifactCanvasItem {
+export function buildDiagramCanvasItem(
+  diagram: DiagramHint,
+  index: number,
+  scope?: string
+): ArtifactCanvasItem {
+  const safeScope = scope?.replace(/[^a-zA-Z0-9_-]/g, '-');
   return {
     // Stable, index-based ID so the siblings list and the click handler
     // produce identical artifactIds (Date.now() would differ between calls
     // and break the currentIndex lookup in the canvas navigation).
-    artifactId: `diagram-${index}-${diagram.title || 'diagram'}`,
+    artifactId: `diagram-${safeScope ? `${safeScope}-` : ''}${index}-${diagram.title || 'diagram'}`,
     artifactType: 'diagram',
     title: diagram.title || 'Diagram',
     downloadUrl: '',

@@ -188,11 +188,14 @@ function HomeContent() {
     return items;
   }, [artifactsData.generatedDocs, artifactsData.generatedImages, artifactsData.generatedPodcasts]);
 
-  // Open a document/image/podcast artifact in the Canvas side panel. Threaded
-  // down to ChatWindow → MessageBubble → DocumentResultCard so the chat-feed
-  // "Open" button previews the artifact in-app instead of downloading.
-  const handleOpenCanvas = useCallback((item: ArtifactCanvasItem) => {
-    openCanvas(item, viewableCanvasSiblings);
+  // Open a chat artifact in the Canvas side panel. Diagram cards provide their
+  // message-local siblings; other artifact cards use the page-level list.
+  const handleOpenCanvas = useCallback((item: ArtifactCanvasItem, siblings?: ArtifactCanvasItem[]) => {
+    const requestedSiblings = siblings?.length ? siblings : viewableCanvasSiblings;
+    const canvasSiblings = requestedSiblings.some((sibling) => sibling.artifactId === item.artifactId)
+      ? requestedSiblings
+      : [...requestedSiblings, item];
+    openCanvas(item, canvasSiblings);
   }, [openCanvas, viewableCanvasSiblings]);
 
   const handleRemoveUpload = useCallback(async (filename: string) => {

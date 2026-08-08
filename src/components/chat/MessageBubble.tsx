@@ -14,6 +14,8 @@ import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
 import AgentResponseCard from './AgentResponseCard';
 import CollapsibleArtifactCard from './CollapsibleArtifactCard';
+import { buildDiagramCanvasItem } from '@/lib/artifact-builders';
+import { sanitizeMermaidCode } from '@/lib/diagram-gen/sanitize';
 
 // Shared remark plugins — defined at module level so the reference is stable
 // and accessible by FrozenBlock / StreamingMarkdown before the main export.
@@ -179,6 +181,27 @@ const MermaidDiagram = dynamic(() => import('@/components/markdown/MermaidDiagra
 
 const MAX_SOURCES_DISPLAYED = 5;
 
+/**
+ * `diagram_gen` persists a Mermaid fence in message prose as a compatibility
+ * fallback. The main chat also has richer generated-diagram cards, so remove
+ * only fences that exactly match those cards to avoid rendering each result
+ * twice. Hand-written/non-tool Mermaid fences remain untouched.
+ */
+function suppressGeneratedDiagramFences(
+  content: string,
+  diagrams: Message['generatedDiagrams']
+): string {
+  if (!diagrams?.length) return content;
+
+  const generatedCodes = new Set(diagrams.map((diagram) => sanitizeMermaidCode(diagram.code)));
+  return content
+    .replace(/```mermaid\s*\n([\s\S]*?)```/gi, (fence, code: string) =>
+      generatedCodes.has(sanitizeMermaidCode(code)) ? '' : fence
+    )
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -233,10 +256,10 @@ interface MessageBubbleProps {
   /** Workspace ID for feedback scoping */
   workspaceId?: string | null;
   /**
-   * Open a document artifact in the Artifact Canvas side panel. When provided,
-   * document cards in this message show an "Open" button instead of "Download".
+   * Open an artifact in the Artifact Canvas side panel. Diagram callers may
+   * provide their message-local siblings for previous/next navigation.
    */
-  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
+  onOpenCanvas?: (item: ArtifactCanvasItem, siblings?: ArtifactCanvasItem[]) => void;
 }
 
 const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onRegenerateWithModel, onFork, onEdit, threadId, showSources = true, showCitationTrajectory = true, query, workspaceId, onOpenCanvas }: MessageBubbleProps) {
@@ -268,6 +291,18 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
     };
   }, [message.content, message.thinkingContent]);
 
+  const visibleDisplayContent = useMemo(
+    () => suppressGeneratedDiagramFences(displayContent, message.generatedDiagrams),
+    [displayContent, message.generatedDiagrams]
+  );
+
+  const diagramCanvasItems = useMemo(
+    () => (message.generatedDiagrams || []).map((diagram, index) =>
+      buildDiagramCanvasItem(diagram, index, message.id)
+    ),
+    [message.generatedDiagrams, message.id]
+  );
+
   // Measure user-message content height to decide if collapse toggle is needed
   useLayoutEffect(() => {
     if (!isUser || isStreaming || !contentRef.current) return;
@@ -278,7 +313,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
     const lineHeight = computedLineHeight || parseFloat(getComputedStyle(el).fontSize) * 1.5;
     const clampHeight = Math.round(lineHeight * 3);
     setNeedsClamp(fullHeight > clampHeight + 4);
-  }, [displayContent, isUser, isStreaming]);
+  }, [visibleDisplayContent, isUser, isStreaming]);
 
   // Sort sources by score (highest first) and limit to top sources
   const sortedSources = useMemo(() => {
@@ -305,7 +340,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
     (message.visualizations && message.visualizations.length > 0) ||
     (message.agentResponses && message.agentResponses.length > 0)
   );
-  const suppressEmptyProse = !isUser && !displayContent.trim() && hasArtifacts;
+  const suppressEmptyProse = !isUser && !visibleDisplayContent.trim() && hasArtifacts;
 
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString('en-US', {
@@ -410,7 +445,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
               style={isUser && needsClamp && collapsed ? { maxHeight: '4.5em', overflow: 'hidden' } : undefined}
             >
               <StreamingMarkdown
-                content={displayContent}
+                content={visibleDisplayContent}
                 isStreaming={isStreaming}
                 isUser={isUser}
               />
@@ -569,14 +604,21 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           <div className="mt-4 space-y-2">
             {message.generatedDiagrams.map((diagram, index) => (
               <CollapsibleArtifactCard
-                key={index}
+                key={diagramCanvasItems[index]?.artifactId || index}
                 kind="diagram"
                 title={diagram.title || `${diagram.type} diagram`}
                 subtitle={diagram.type}
                 index={index}
                 total={message.generatedDiagrams!.length}
+                defaultCollapsed={message.generatedDiagrams!.length > 1}
               >
-                <MermaidDiagram code={diagram.code} />
+                <MermaidDiagram
+                  code={diagram.code}
+                  onOpenCanvas={onOpenCanvas && diagramCanvasItems[index]
+                    ? () => onOpenCanvas(diagramCanvasItems[index], diagramCanvasItems)
+                    : undefined}
+                  openCanvasLabel={`Open ${diagram.title || `${diagram.type} diagram`} in canvas`}
+                />
               </CollapsibleArtifactCard>
             ))}
           </div>
