@@ -482,7 +482,24 @@ export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI
     }
   }
 
-  return tools;
+  // Deduplicate by function name. Built-in tools, function APIs, agent tools,
+  // and MCP tools are assembled from independent sources that may define
+  // overlapping names (e.g., a connector's toolsSchema and a manually
+  // registered function API config both expose "search_repos"). DeepSeek and
+  // other strict providers reject duplicate tool names with HTTP 400.
+  const seen = new Set<string>();
+  const deduped = tools.filter(t => {
+    const name = t.function?.name;
+    if (!name) return true; // keep malformed defs (let the API reject them)
+    if (seen.has(name)) {
+      logger.warn('Dropping duplicate tool definition', { tool: name });
+      return false;
+    }
+    seen.add(name);
+    return true;
+  });
+
+  return deduped;
 }
 
 /**

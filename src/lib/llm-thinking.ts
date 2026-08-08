@@ -275,7 +275,6 @@ export function isUnsupportedThinkingParamError(error: unknown): boolean {
     message.includes('think') ||
     message.includes('unsupported') ||
     message.includes('unknown parameter') ||
-    message.includes('extra inputs') ||
-    message.includes('400')
+    message.includes('extra inputs')
   );
 }

@@ -72,7 +72,19 @@ async function getToolDefinitionsForSubagent(enabledToolNames: string[]): Promis
     }
   }
 
-  return tools;
+  // Deduplicate by function name. Built-in tools and MCP tools come from
+  // independent sources that may define overlapping names. Strict providers
+  // (e.g., DeepSeek) reject duplicate tool names with HTTP 400.
+  const seen = new Set<string>();
+  const deduped = tools.filter(t => {
+    const name = (t as { function?: { name?: string } }).function?.name;
+    if (!name) return true; // keep malformed defs (let the API reject them)
+    if (seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+
+  return deduped;
 }
 
 async function getEnabledToolsForPlan(plan: AgentPlan): Promise<string[]> {
