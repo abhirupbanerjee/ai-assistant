@@ -136,14 +136,34 @@ export async function POST(
 
       functionsTested.push(functionToTest);
 
-      // Bad auth
+      // Bad auth — distinguish connector identity errors from generic token failures
       if (authResponse.status === 401) {
         const errorText = await authResponse.text().catch(() => '');
-        const errorMessage = `Authentication failed: invalid or missing credentials. ${errorText.substring(0, 200)}`;
-        await updateFunctionAPITestStatus(id, false, errorMessage);
+        let userMessage = 'Server is reachable but authentication failed (401). Check your token.';
+        let detailMessage = `Authentication failed: invalid or missing credentials. ${errorText.substring(0, 200)}`;
+        try {
+          const parsed = JSON.parse(errorText) as { error?: string; code?: string };
+          if (parsed.code === 'IDENTITY_UNVERIFIED') {
+            userMessage = 'Server reachable but user identity verification failed (HMAC signature mismatch). The CONNECTOR_HMAC_SECRET in the container must match CONNECTOR_HMAC_SECRET in the host app .env.';
+            detailMessage = `Identity verification failed: ${parsed.error || 'HMAC signature mismatch'}`;
+          } else if (parsed.code === 'IDENTITY_REQUIRED') {
+            userMessage = 'Server reachable and bearer token accepted, but no user identity was provided. This indicates the connector received the request but could not determine which user account to use (the admin Test button does not send user identity). Try invoking the tool from a chat thread instead.';
+            detailMessage = `Identity required: ${parsed.error || 'No user identity provided'}`;
+          } else if (parsed.code === 'NOT_CONNECTED') {
+            userMessage = 'Server reachable and authenticated, but no account is connected for this user. Connect the account in Settings → Connected Accounts first.';
+            detailMessage = `Not connected: ${parsed.error || 'No account connected'}`;
+          } else if (parsed.code === 'RECONNECT_REQUIRED') {
+            userMessage = 'Server reachable and authenticated, but the connected account token has expired or been revoked. Reconnect the account in Settings → Connected Accounts.';
+            detailMessage = `Reconnect required: ${parsed.error || 'Token expired/revoked'}`;
+          } else if (parsed.error && parsed.error.includes('bearer token')) {
+            userMessage = 'Server reachable but the bearer token was rejected. Ensure the connector container\'s CONNECTOR_BEARER_TOKEN matches the host app\'s <PROVIDER>_CONNECTOR_BEARER_TOKEN in .env.';
+            detailMessage = `Bearer auth failed: ${parsed.error}`;
+          }
+        } catch { /* not JSON — keep generic message */ }
+        await updateFunctionAPITestStatus(id, false, detailMessage);
         return NextResponse.json({
           success: false,
-          message: 'Server is reachable but authentication failed (401). Check your token.',
+          message: userMessage,
           functionsTested,
           latencyMs: Date.now() - startTime,
         } as FunctionAPITestResult);

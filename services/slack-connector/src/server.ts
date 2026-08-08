@@ -250,6 +250,14 @@ async function handleRequest(
       sendJson(req, res, cfg, 400, { ok: false, error: validated.error });
       return;
     }
+    // Preserve HMAC-verified userId through validation. validateArgs only
+    // keeps declared tool params, but userId is server-injected (not
+    // LLM-controlled) and must reach dispatch() so resolveAuth can fetch
+    // the per-user vault token. Without this, every tool call fails with
+    // IDENTITY_REQUIRED (401).
+    if (userId) {
+      validated.values = { ...validated.values, userId };
+    }
 
     logger.info('Invoke', { op, userId: userId || null, identityVerified: identity.verified });
     try {

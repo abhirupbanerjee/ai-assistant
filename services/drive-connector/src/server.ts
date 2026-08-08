@@ -588,6 +588,14 @@ async function handleRequest(
       sendJson(req, res, cfg, 400, { ok: false, error: validated.error });
       return;
     }
+    // Preserve HMAC-verified userId through validation. validateArgs only
+    // keeps declared tool params, but userId is server-injected (not
+    // LLM-controlled) and must reach dispatch() so runOp/withRetry can
+    // fetch the per-user vault token. Without this, userId is lost and
+    // per-user calls silently fall back to the service account or fail.
+    if (userId) {
+      validated.values = { ...validated.values, userId };
+    }
 
     logger.info('Invoke', { op, userId: userId || null, identityVerified: identity.verified });
     try {
