@@ -23,6 +23,8 @@ import MobileFABs from '@/components/mobile/MobileFABs';
 import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt, ArtifactCanvasItem } from '@/types';
 import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
 
+const COLLAPSED_PANEL_WIDTH_PX = 56;
+
 interface WelcomeConfig {
   title?: string;
   message?: string;
@@ -37,6 +39,7 @@ function HomeContent() {
   const chatMainPanelRef = useRef<ImperativePanelHandle>(null);
   const artifactsPanelRef = useRef<ImperativePanelHandle>(null);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+  const desktopLayoutRef = useRef<HTMLDivElement>(null);
 
   // Phase 2.3: read a shared payload from the Android share sheet
   // (redirected here by /api/share-target). Memoize so the value is stable
@@ -59,6 +62,7 @@ function HomeContent() {
   const [threadCount, setThreadCount] = useState(0);
   const [isThreadSidebarCollapsed, setIsThreadSidebarCollapsed] = useState(false);
   const [isArtifactsPanelCollapsed, setIsArtifactsPanelCollapsed] = useState(false);
+  const [collapsedPanelSize, setCollapsedPanelSize] = useState(3);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
   const canvasState = useCanvasState();
@@ -67,6 +71,88 @@ function HomeContent() {
   // would recreate handleOpenCanvas each render and break MessageBubble's
   // memoization. openCanvas is individually stable (useCallback with []).
   const { openCanvas } = canvasState;
+
+  // react-resizable-panels uses percentages. Convert the fixed icon-rail width
+  // to a responsive percentage so both collapsed panels remain about 56px.
+  useEffect(() => {
+    const layout = desktopLayoutRef.current;
+    if (!layout || isMobile) return;
+
+    const updateCollapsedSize = () => {
+      const width = layout.getBoundingClientRect().width;
+      if (width <= 0) return;
+
+      setCollapsedPanelSize((current) => {
+        const next = (COLLAPSED_PANEL_WIDTH_PX / width) * 100;
+        return Math.abs(current - next) > 0.01 ? next : current;
+      });
+    };
+
+    updateCollapsedSize();
+    const resizeObserver = new ResizeObserver(updateCollapsedSize);
+    resizeObserver.observe(layout);
+    return () => resizeObserver.disconnect();
+  }, [isMobile]);
+
+  // Re-apply collapse when the viewport changes so the percentage continues
+  // to resolve to the fixed-width icon rail.
+  useEffect(() => {
+    if (isThreadSidebarCollapsed) threadSidebarPanelRef.current?.collapse();
+    if (isArtifactsPanelCollapsed) artifactsPanelRef.current?.collapse();
+  }, [collapsedPanelSize, isThreadSidebarCollapsed, isArtifactsPanelCollapsed]);
+
+  const logPanelCollapseResult = useCallback((
+    panel: 'threads' | 'artifacts',
+    collapsed: boolean,
+    panelRef: React.RefObject<ImperativePanelHandle | null>
+  ) => {
+    if (process.env.NODE_ENV === 'production') return;
+
+    window.requestAnimationFrame(() => {
+      console.debug('[ChatLayout] collapse result', {
+        panel,
+        collapsed,
+        targetWidthPx: COLLAPSED_PANEL_WIDTH_PX,
+        actualPanelSizePercent: panelRef.current?.getSize(),
+      });
+    });
+  }, []);
+
+  const handleThreadSidebarCollapseChange = useCallback((collapsed: boolean) => {
+    if (collapsed) {
+      threadSidebarPanelRef.current?.collapse();
+    } else {
+      threadSidebarPanelRef.current?.expand();
+    }
+  }, []);
+
+  const handleArtifactsPanelCollapseChange = useCallback((collapsed: boolean) => {
+    if (collapsed) {
+      artifactsPanelRef.current?.collapse();
+    } else {
+      artifactsPanelRef.current?.expand();
+    }
+  }, []);
+
+  const handleThreadSidebarCollapsed = useCallback(() => {
+    setIsThreadSidebarCollapsed(true);
+    logPanelCollapseResult('threads', true, threadSidebarPanelRef);
+  }, [logPanelCollapseResult]);
+
+  const handleThreadSidebarExpanded = useCallback(() => {
+    setIsThreadSidebarCollapsed(false);
+    logPanelCollapseResult('threads', false, threadSidebarPanelRef);
+  }, [logPanelCollapseResult]);
+
+  const handleArtifactsPanelCollapsed = useCallback(() => {
+    setIsArtifactsPanelCollapsed(true);
+    logPanelCollapseResult('artifacts', true, artifactsPanelRef);
+  }, [logPanelCollapseResult]);
+
+  const handleArtifactsPanelExpanded = useCallback(() => {
+    setIsArtifactsPanelCollapsed(false);
+    logPanelCollapseResult('artifacts', false, artifactsPanelRef);
+  }, [logPanelCollapseResult]);
 
   // Imperatively collapse/expand panels when canvas mode changes
   useEffect(() => {
@@ -284,7 +370,7 @@ function HomeContent() {
       />
 
       {/* Content area */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div ref={desktopLayoutRef} className="flex flex-1 min-h-0 overflow-hidden">
         <PanelGroup
           direction="horizontal"
           autoSaveId="chat-layout"
@@ -300,9 +386,9 @@ function HomeContent() {
                 minSize={15}
                 maxSize={35}
                 collapsible
-                collapsedSize={0}
-                onCollapse={() => setIsThreadSidebarCollapsed(true)}
-                onExpand={() => setIsThreadSidebarCollapsed(false)}
+                collapsedSize={collapsedPanelSize}
+                onCollapse={handleThreadSidebarCollapsed}
+                onExpand={handleThreadSidebarExpanded}
               >
                 <ThreadSidebar
                   ref={sidebarRef}
@@ -310,7 +396,7 @@ function HomeContent() {
                   onThreadCreated={handleThreadCreated}
                   selectedThreadId={activeThread?.id}
                   collapsed={isThreadSidebarCollapsed}
-                  onCollapseChange={setIsThreadSidebarCollapsed}
+                  onCollapseChange={handleThreadSidebarCollapseChange}
                 />
               </Panel>
               <PanelResizeHandle
@@ -364,9 +450,9 @@ function HomeContent() {
                 minSize={15}
                 maxSize={75}
                 collapsible
-                collapsedSize={0}
-                onCollapse={() => setIsArtifactsPanelCollapsed(true)}
-                onExpand={() => setIsArtifactsPanelCollapsed(false)}
+                collapsedSize={collapsedPanelSize}
+                onCollapse={handleArtifactsPanelCollapsed}
+                onExpand={handleArtifactsPanelExpanded}
               >
                 {canvasState.mode === 'canvas' && canvasState.artifact ? (
                   <ArtifactCanvas
@@ -390,7 +476,7 @@ function HomeContent() {
                       canvasState.openCanvas(item, siblings)
                     }
                     collapsed={isArtifactsPanelCollapsed}
-                    onCollapseChange={setIsArtifactsPanelCollapsed}
+                    onCollapseChange={handleArtifactsPanelCollapseChange}
                   />
                 )}
               </Panel>
