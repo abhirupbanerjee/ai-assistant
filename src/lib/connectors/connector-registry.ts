@@ -102,6 +102,15 @@ export async function syncConnectorTools(): Promise<void> {
         const bearerToken =
           process.env[`${meta.provider.toUpperCase()}_CONNECTOR_BEARER_TOKEN`] || '';
 
+        // Connector category assignment: categories are no longer open-ended.
+        // The query uses an inner join on function_api_categories, so a config
+        // with an empty categoryIds array is unreachable by any thread. The
+        // admin must explicitly link each connector to categories via the
+        // Function API admin UI after first registration. We register with an
+        // empty array (disabled-by-default) and log a warning so the operator
+        // knows a manual linking step is required.
+        const connectorCategoryIds: number[] = [];
+
         await createFunctionAPIConfig(
           {
             name: configName,
@@ -115,16 +124,18 @@ export async function syncConnectorTools(): Promise<void> {
             timeoutSeconds: 30,
             cacheTTLSeconds: 3600,
             isEnabled: true,
-            // Empty array = no category restrictions (available to ALL categories).
-            // getFunctionAPIConfigsForCategories uses LEFT JOIN + IS NULL to
-            // include unrestricted configs in every category-scoped query.
-            categoryIds: [],
+            // Registered without categories — admin must link via UI before use.
+            // An empty array means the inner-join query returns no rows, so the
+            // connector is effectively dormant until explicitly assigned.
+            categoryIds: connectorCategoryIds,
           },
           'system'
         );
-        logger.info(`Registered new connector: ${meta.provider}`, {
-          toolCount: toolsData.count,
-        });
+        logger.warn(
+          `Registered new connector "${configName}" with NO categories — ` +
+          `link it to categories in the Function API admin UI before it becomes available.`,
+          { provider: meta.provider, toolCount: toolsData.count }
+        );
       }
     } catch (error) {
       logger.error(`Failed to sync connector ${meta.provider}`, {

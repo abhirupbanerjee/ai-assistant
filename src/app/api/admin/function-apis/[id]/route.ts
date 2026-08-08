@@ -139,6 +139,18 @@ export async function PUT(
       }
     }
 
+    // Validate categoryIds when provided: must be a non-empty array.
+    // A Function API with no categories is unreachable (inner-join query), so
+    // prevent admins from orphaning a config by clearing all categories.
+    if (body.categoryIds !== undefined) {
+      if (!Array.isArray(body.categoryIds) || body.categoryIds.length === 0) {
+        return NextResponse.json(
+          { error: 'At least one category must be selected', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Update the Function API config
     const updated = await updateFunctionAPIConfig(id, body, user.email);
 

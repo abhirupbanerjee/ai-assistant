@@ -113,6 +113,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!body.categoryIds || !Array.isArray(body.categoryIds) || body.categoryIds.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one category must be selected', code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      );
+    }
 
     // Validate tools schema
     const schemaValidation = validateToolsSchema(body.toolsSchema);

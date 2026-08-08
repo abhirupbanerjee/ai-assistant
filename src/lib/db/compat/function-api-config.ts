@@ -208,16 +208,15 @@ export async function getFunctionAPIConfigsForCategories(
   if (!categoryIds || categoryIds.length === 0) return [];
 
   const db = await getDb();
-  // LEFT JOIN + OR fc.api_id IS NULL: configs with NO category restrictions
-  // (empty categoryIds in function_api_categories) are available to ALL categories.
+  // INNER JOIN: a Function API is only returned for categories it has been
+  // explicitly linked to via function_api_categories. A config with NO
+  // category rows is NOT available to any category — there is no "unrestricted"
+  // fallback. This enforces the security boundary: no access unless linked.
   const rows = await db
     .selectFrom('function_api_configs as f')
-    .leftJoin('function_api_categories as fc', 'f.id', 'fc.api_id')
+    .innerJoin('function_api_categories as fc', 'f.id', 'fc.api_id')
     .selectAll('f')
-    .where((eb) => eb.or([
-      eb('fc.category_id', 'in', categoryIds),
-      eb('fc.api_id', 'is', null),
-    ]))
+    .where('fc.category_id', 'in', categoryIds)
     .where('f.is_enabled', '=', 1)
     .where('f.status', 'in', ['active', 'untested'])
     .orderBy('f.name', 'asc')
