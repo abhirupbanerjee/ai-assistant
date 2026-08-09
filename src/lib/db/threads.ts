@@ -372,13 +372,14 @@ export function addMessage(
     visualizations?: MessageVisualization[];
     generatedImages?: GeneratedImageInfo[];
     generatedPodcasts?: PodcastHint[];
+    metadataJson?: string;
   }
 ): ParsedMessage {
   const messageId = options?.messageId || uuidv4();
 
   execute(`
-    INSERT INTO messages (id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json, generated_podcasts_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json, generated_podcasts_json, metadata_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     messageId,
     threadId,
@@ -393,6 +394,7 @@ export function addMessage(
     options?.visualizations ? JSON.stringify(options.visualizations) : null,
     options?.generatedImages ? JSON.stringify(options.generatedImages) : null,
     options?.generatedPodcasts ? JSON.stringify(options.generatedPodcasts) : null,
+    options?.metadataJson || null,
   ]);
 
   return getMessageById(messageId)!;
@@ -403,7 +405,7 @@ export function addMessage(
  */
 export function getMessageById(messageId: string): ParsedMessage | undefined {
   const msg = queryOne<DbMessage>(`
-    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json, generated_podcasts_json, created_at
+    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json, generated_podcasts_json, metadata_json, created_at
     FROM messages
     WHERE id = ?
   `, [messageId]);
@@ -418,7 +420,7 @@ export function getMessageById(messageId: string): ParsedMessage | undefined {
  */
 export function getMessagesForThread(threadId: string): ParsedMessage[] {
   const messages = queryAll<DbMessage>(`
-    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json, generated_podcasts_json, created_at
+    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json, generated_podcasts_json, metadata_json, created_at
     FROM messages
     WHERE thread_id = ?
     ORDER BY created_at ASC

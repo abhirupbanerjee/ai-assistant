@@ -30,7 +30,7 @@ import {
 import { saveTrajectoryEntries } from '@/lib/db/citation-trajectory';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, ArtifactComment } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { executeAgentTool } from '@/lib/agent-registry/agent-tools';
@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
           agentMention,
           pipelineMode,
           truncateFromMessageId,
+          artifactComments,
         } = body;
 
         // `pipeline` is client-supplied (untrusted). Keep it mutable so it can
@@ -205,6 +206,9 @@ export async function POST(request: NextRequest) {
           content: message,
           attachments: attachmentFilenames.length > 0 ? attachmentFilenames : undefined,
           timestamp: new Date(),
+          metadata: artifactComments?.length
+            ? { artifactComments }
+            : undefined,
         };
         await addMessage(user.id, threadId, userMessage);
         await updateThreadTokenCount(threadId, countTokens(message));
@@ -634,7 +638,18 @@ export async function POST(request: NextRequest) {
         // Load images as base64 for multimodal visual content (only if vision is supported)
         const imageContents: ImageContent[] = [];
 
-        if (uploadDetails.images.length > 0) {
+        // Phase 2a Path A: attach base64 images from artifact comments so vision models
+        // can see the referenced image(s) inline with the user's question.
+        const imageCommentArtifactIds = new Set<string>();
+        const imageCommentArtifacts: ArtifactComment[] = [];
+        for (const comment of artifactComments ?? []) {
+          if (comment.imageUrl && !imageCommentArtifactIds.has(comment.artifactId)) {
+            imageCommentArtifactIds.add(comment.artifactId);
+            imageCommentArtifacts.push(comment);
+          }
+        }
+
+        if (uploadDetails.images.length > 0 || imageCommentArtifacts.length > 0) {
           if (!imageCapabilities.canProcessImages) {
             // Scenario 1: No vision, no OCR - warn user
             send({
@@ -663,6 +678,34 @@ export async function POST(request: NextRequest) {
                 });
               } catch (err) {
                 console.warn(`Failed to load image ${img.filename}:`, err);
+              }
+            }
+
+            // Phase 2a Path A: fetch artifact comment images by download URL and
+            // push them as base64 so the vision model sees them inline.
+            // downloadUrl stored on the artifact is relative (e.g. /api/documents/.../download),
+            // so resolve it against the request origin for server-side fetch.
+            const requestOrigin = request.nextUrl.origin;
+            for (const comment of imageCommentArtifacts) {
+              try {
+                const imageUrl = comment.imageUrl!.startsWith('http')
+                  ? comment.imageUrl!
+                  : new URL(comment.imageUrl!, requestOrigin).toString();
+                const response = await fetch(imageUrl);
+                if (!response.ok) {
+                  console.warn(`[Artifact Comment] Failed to fetch image for comment ${comment.commentId}: ${response.status}`);
+                  continue;
+                }
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                const contentType = response.headers.get('content-type') || 'image/png';
+                imageContents.push({
+                  base64: buffer.toString('base64'),
+                  mimeType: contentType,
+                  filename: comment.artifactTitle || `comment-${comment.artifactId}`,
+                });
+              } catch (err) {
+                console.warn(`[Artifact Comment] Failed to load image for comment ${comment.commentId}:`, err);
               }
             }
           }
@@ -871,6 +914,38 @@ export async function POST(request: NextRequest) {
             // Append clarification instruction when preflight skill is active
             if (enableClarification) {
               effectiveSystemPrompt += '\n\nIf the user\'s request is genuinely ambiguous after reviewing all documents and conversation history, call request_clarification with 2-4 specific options. Do not ask about topics already covered in the documents or prior conversation.';
+            }
+
+            // Phase 2a Path A: inject artifact comments into the system prompt so the
+            // model can reference the selected text / page / image context.
+            if (artifactComments && artifactComments.length > 0) {
+              const textComments = artifactComments.filter(c => !c.imageUrl);
+              const imageComments = artifactComments.filter(c => c.imageUrl);
+              const lines: string[] = ['\n\n[ARTIFACT COMMENTS — The user has attached the following comments to this question. Address them in your response.]'];
+
+              if (textComments.length > 0) {
+                lines.push('\nText selections:');
+                for (const comment of textComments) {
+                  lines.push(`- Artifact: ${comment.artifactTitle} (${comment.artifactType}${comment.pageNumber ? `, page ${comment.pageNumber}` : ''})`);
+                  if (comment.selectedText) {
+                    lines.push(`  Selected text: "${comment.selectedText}"`);
+                  }
+                  if (comment.surroundingContext) {
+                    lines.push(`  Context: ${comment.surroundingContext}`);
+                  }
+                  lines.push(`  Comment: ${comment.commentText}`);
+                }
+              }
+
+              if (imageComments.length > 0) {
+                lines.push('\nImage comments (attached inline as images):');
+                for (const comment of imageComments) {
+                  lines.push(`- Image: ${comment.artifactTitle}`);
+                  lines.push(`  Comment: ${comment.commentText}`);
+                }
+              }
+
+              effectiveSystemPrompt += lines.join('\n');
             }
 
             // Determine which tools to exclude based on user preferences

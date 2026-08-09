@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
-import type { ArtifactCanvasItem } from '@/types';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useIsMobile } from '@/hooks/useMediaQuery';
+import type { ArtifactCanvasItem, ArtifactComment } from '@/types';
+import { useArtifactComments } from '@/hooks/useArtifactComments';
+import { useTextSelection } from '@/hooks/useTextSelection';
 import CanvasToolbar from './CanvasToolbar';
 import HtmlViewer from './viewers/HtmlViewer';
 import DocumentViewer from './viewers/DocumentViewer';
@@ -13,6 +16,8 @@ import PodcastViewer from './viewers/PodcastViewer';
 import PdfViewer from './viewers/PdfViewer';
 import ZipViewer from './viewers/ZipViewer';
 import SkeletonArtifact from './SkeletonArtifact';
+import CommentSidebar from './CommentSidebar';
+import CommentInputBox from './CommentInputBox';
 import { useDriveUpload } from '@/hooks/useDriveUpload';
 
 interface ArtifactCanvasProps {
@@ -23,9 +28,23 @@ interface ArtifactCanvasProps {
   siblings?: ArtifactCanvasItem[];
   /** Navigate to a sibling by absolute index. */
   onNavigate?: (index: number) => void;
+  /** Called when the user clicks "Send All" so the parent can attach comments to the composer. */
+  onSendComments?: (comments: ArtifactComment[]) => void;
 }
 
-function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; threadId: string | null }) {
+const TEXT_SELECTABLE_TYPES: ArtifactCanvasItem['artifactType'][] = ['md', 'pdf', 'docx'];
+
+function ArtifactViewer({
+  artifact,
+  threadId,
+  containerRef,
+  onAddImageComment,
+}: {
+  artifact: ArtifactCanvasItem;
+  threadId: string | null;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  onAddImageComment?: () => void;
+}) {
   // Drive-hosted artifacts (PPTX/XLSX/DOCX) may need upload+embed
   const { embedUrl, needsConsent, requestConsent, loading, error } = useDriveUpload({
     artifact,
@@ -40,9 +59,17 @@ function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; 
       return <HtmlViewer artifact={artifact} />;
     case 'docx':
     case 'md':
-      return <DocumentViewer artifact={artifact} />;
+      return (
+        <div ref={containerRef} className="w-full h-full">
+          <DocumentViewer artifact={artifact} />
+        </div>
+      );
     case 'pdf':
-      return <PdfViewer artifact={artifact} />;
+      return (
+        <div ref={containerRef} className="w-full h-full">
+          <PdfViewer artifact={artifact} selectable />
+        </div>
+      );
     case 'pptx':
     case 'xlsx':
       if (loading) {
@@ -92,9 +119,13 @@ function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; 
       }
       return <DriveEmbedViewer artifact={driveArtifact} />;
     case 'image':
-      return <ImageViewer artifact={artifact} />;
+      return <ImageViewer artifact={artifact} onAddImageComment={onAddImageComment} />;
     case 'diagram':
-      return <DiagramViewer artifact={artifact} />;
+      return (
+        <div ref={containerRef} className="w-full h-full">
+          <DiagramViewer artifact={artifact} />
+        </div>
+      );
     case 'chart':
       return <ChartViewer artifact={artifact} />;
     case 'podcast':
@@ -110,7 +141,14 @@ function ArtifactViewer({ artifact, threadId }: { artifact: ArtifactCanvasItem; 
   }
 }
 
-export default function ArtifactCanvas({ artifact, onClose, threadId, siblings, onNavigate }: ArtifactCanvasProps) {
+export default function ArtifactCanvas({
+  artifact,
+  onClose,
+  threadId,
+  siblings,
+  onNavigate,
+  onSendComments,
+}: ArtifactCanvasProps) {
   const hasNav = Boolean(siblings && siblings.length > 1 && onNavigate);
   const currentIndex = siblings && siblings.length > 0
     ? siblings.findIndex((s) => s.artifactId === artifact.artifactId)
@@ -119,6 +157,22 @@ export default function ArtifactCanvas({ artifact, onClose, threadId, siblings, 
   const indexText = hasNav && siblings ? `${safeIndex + 1} / ${siblings.length}` : undefined;
   const hasPrev = hasNav && safeIndex > 0;
   const hasNext = hasNav && siblings ? safeIndex < siblings.length - 1 : false;
+
+  const { comments, addTextComment, addImageComment, removeComment, clearComments, commentCount } =
+    useArtifactComments(artifact);
+
+  const isMobile = useIsMobile();
+  const [commentInputOpen, setCommentInputOpen] = useState(false);
+  const [commentInputPosition, setCommentInputPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(isMobile);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isTextSelectable = TEXT_SELECTABLE_TYPES.includes(artifact.artifactType);
+  const isDiagram = artifact.artifactType === 'diagram';
+  const selectionContainerRef = isDiagram
+    ? (containerRef as React.RefObject<HTMLElement>)
+    : (containerRef as React.RefObject<HTMLElement>);
+  const { selection, showButton, clearSelection } = useTextSelection(selectionContainerRef);
 
   const handlePrev = () => {
     if (hasPrev && onNavigate) onNavigate(safeIndex - 1);
@@ -155,6 +209,53 @@ export default function ArtifactCanvas({ artifact, onClose, threadId, siblings, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, hasPrev, hasNext, safeIndex, siblings, onNavigate]);
 
+  const handleAddTextCommentClick = useCallback(() => {
+    if (!selection) return;
+    setCommentInputPosition(selection.position);
+    setCommentInputOpen(true);
+  }, [selection]);
+
+  const handleSaveTextComment = useCallback(
+    (commentText: string) => {
+      if (!selection) return;
+      addTextComment({
+        selectedText: selection.selectedText,
+        surroundingContext: selection.surroundingContext,
+        commentText,
+        pageNumber: selection.pageNumber,
+      });
+      clearSelection();
+      setCommentInputOpen(false);
+      setSidebarCollapsed(false);
+    },
+    [selection, addTextComment, clearSelection]
+  );
+
+  const handleAddImageComment = useCallback(() => {
+    setCommentInputPosition(undefined);
+    setCommentInputOpen(true);
+  }, []);
+
+  const handleSaveImageComment = useCallback(
+    (commentText: string) => {
+      addImageComment({ commentText });
+      setCommentInputOpen(false);
+      setSidebarCollapsed(false);
+    },
+    [addImageComment]
+  );
+
+  const handleCancelComment = useCallback(() => {
+    setCommentInputOpen(false);
+  }, []);
+
+  const handleSendAll = useCallback(() => {
+    if (comments.length === 0) return;
+    onSendComments?.(comments);
+    clearComments();
+    onClose();
+  }, [comments, onSendComments, clearComments, onClose]);
+
   return (
     <div className="flex flex-col h-full bg-white">
       <CanvasToolbar
@@ -167,9 +268,50 @@ export default function ArtifactCanvas({ artifact, onClose, threadId, siblings, 
         indexText={indexText}
         onPrev={handlePrev}
         onNext={handleNext}
+        commentCount={commentCount}
+        onAddImageComment={artifact.artifactType === 'image' ? handleAddImageComment : undefined}
+        showImageCommentButton={artifact.artifactType === 'image'}
       />
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <ArtifactViewer artifact={artifact} threadId={threadId} />
+      <div className="flex-1 min-h-0 overflow-hidden flex">
+        <div ref={containerRef} className="flex-1 min-w-0 min-h-0 relative">
+          <ArtifactViewer
+            artifact={artifact}
+            threadId={threadId}
+            containerRef={containerRef}
+            onAddImageComment={handleAddImageComment}
+          />
+
+          {showButton && selection && (isTextSelectable || isDiagram) && !commentInputOpen && (
+            <button
+              onClick={handleAddTextCommentClick}
+              className="absolute z-40 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-full shadow-lg transition-colors"
+              style={{
+                left: selection.position.x,
+                top: selection.position.y,
+                transform: 'translate(-50%, -100%)',
+              }}
+            >
+              Add comment
+            </button>
+          )}
+
+          {commentInputOpen && (
+            <CommentInputBox
+              position={commentInputPosition}
+              onSave={commentInputPosition ? handleSaveTextComment : handleSaveImageComment}
+              onCancel={handleCancelComment}
+              placeholder={commentInputPosition ? 'Comment on selected text…' : 'Comment on image…'}
+            />
+          )}
+        </div>
+
+        <CommentSidebar
+          comments={comments}
+          onRemove={removeComment}
+          onSendAll={handleSendAll}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+        />
       </div>
     </div>
   );

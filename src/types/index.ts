@@ -11,6 +11,7 @@ export * from './artifact-canvas';
 export type { DiagramHint, MermaidDiagramType, DiagramGenConfig } from './diagram-gen';
 import type { DiagramHint } from './diagram-gen';
 import type { AgentResponseInfo } from './stream';
+import type { ArtifactComment } from './artifact-canvas';
 
 // ============ Podcast Types (re-exported) ============
 
@@ -107,6 +108,8 @@ export interface MessageMetadata {
   tokensEstimated?: boolean; // True when completionTokens is a heuristic estimate
   /** Set to true when the user clicked Stop mid-stream; partial content was preserved */
   stopped?: boolean;
+  /** Artifact comments attached to this message (Phase 2a Path A). */
+  artifactComments?: ArtifactComment[];
 }
 
 export interface Message {

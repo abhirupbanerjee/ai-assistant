@@ -17,6 +17,29 @@ export interface ArtifactCanvasItem {
   zipEntries?: { name: string; size?: number }[];
 }
 
+/** A single comment attached to an artifact (Phase 2a Path A). */
+export interface ArtifactComment {
+  commentId: string;
+  artifactId: string;
+  artifactType: string;
+  artifactTitle: string;
+  commentText: string;
+
+  // Path A text selection fields:
+  selectedText?: string;
+  surroundingContext?: string;
+  pageNumber?: number;
+
+  // Image-only field:
+  imageUrl?: string;
+
+  createdAt: number;
+}
+
+export interface ArtifactCommentContext {
+  comments: ArtifactComment[];
+}
+
 export interface ArtifactContext {
   artifactId: string;
   artifactType: string;

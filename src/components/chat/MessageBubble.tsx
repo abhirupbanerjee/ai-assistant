@@ -6,8 +6,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
-import type { Message, MessageMetadata, ArtifactCanvasItem } from '@/types';
+import type { Message, MessageMetadata, ArtifactCanvasItem, ArtifactComment } from '@/types';
 import SourceCard from './SourceCard';
+import ArtifactContextChip from './ArtifactContextChip';
 import FeedbackButtons from './FeedbackButtons';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
@@ -327,6 +328,9 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
 
   const hasMoreSources = sortedSources.length > MAX_SOURCES_DISPLAYED;
 
+  // Artifact comments attached to this message (Phase 2a Path A).
+  const artifactComments: ArtifactComment[] = message.metadata?.artifactComments ?? [];
+
   // Pure-artifact assistant turn: no prose text, only generated artifacts.
   // The backend streams a one-line status marker into content for these turns,
   // so displayContent is normally non-empty. This guard handles any legacy
@@ -489,6 +493,20 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Artifact comment chips (Phase 2a Path A) */}
+        {artifactComments.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            {artifactComments.map((comment, idx) => (
+              <ArtifactContextChip
+                key={comment.commentId}
+                comment={comment}
+                index={idx}
+                total={artifactComments.length}
+              />
+            ))}
           </div>
         )}
 

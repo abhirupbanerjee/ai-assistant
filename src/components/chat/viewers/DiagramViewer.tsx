@@ -28,6 +28,7 @@ export default function DiagramViewer({ artifact }: DiagramViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [copied, setCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
+  const sourceContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (codeRef.current && (viewMode === 'source' || viewMode === 'split')) {
@@ -131,7 +132,11 @@ export default function DiagramViewer({ artifact }: DiagramViewerProps) {
               )}
             </div>
           </div>
-          <div className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col min-h-0">
+          <div
+            ref={sourceContainerRef}
+            data-mode="source"
+            className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col min-h-0"
+          >
             <div className="flex-1 overflow-auto p-3">
               <pre className="m-0 h-full">
                 <code ref={codeRef} className="language-mermaid text-xs">{code}</code>
@@ -140,7 +145,11 @@ export default function DiagramViewer({ artifact }: DiagramViewerProps) {
           </div>
         </div>
       ) : viewMode === 'source' ? (
-        <div className="flex-1 min-h-0 overflow-auto p-3">
+        <div
+          ref={sourceContainerRef}
+          data-mode="source"
+          className="flex-1 min-h-0 overflow-auto p-3"
+        >
           <pre className="m-0 h-full">
             <code ref={codeRef} className="language-mermaid text-xs">{code}</code>
           </pre>

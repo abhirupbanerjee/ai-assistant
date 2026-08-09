@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { RefreshCw } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem, ArtifactComment } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
@@ -69,6 +69,11 @@ interface ChatWindowProps {
    * Diagram callers may provide message-local siblings for Canvas navigation.
    */
   onOpenCanvas?: (item: ArtifactCanvasItem, siblings?: ArtifactCanvasItem[]) => void;
+  /** Artifact comments attached to the pending message (Phase 2a Path A). */
+  artifactComments?: ArtifactComment[];
+  onRemoveArtifactComment?: (commentId: string) => void;
+  /** Called after a message is sent so the parent can clear pending comments. */
+  onClearArtifactComments?: () => void;
 }
 
 // Ref interface for external control
@@ -113,6 +118,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   onInputBlur,
   initialDraft,
   onOpenCanvas,
+  artifactComments = [],
+  onRemoveArtifactComment,
+  onClearArtifactComments,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -838,7 +846,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     return null;
   }, [onThreadCreated, pendingCategoryId, pendingModelId]);
 
-  const sendMessage = useCallback(async (content: string, mode?: ChatMode, preferences?: ChatPreferences, options?: { truncateFromMessageId?: string }) => {
+  const sendMessage = useCallback(async (content: string, mode?: ChatMode, preferences?: ChatPreferences, options?: { truncateFromMessageId?: string; artifactComments?: ArtifactComment[] }) => {
     setError(null);
 
     // Set sending flag BEFORE createThread (which may trigger onThreadCreated → activeThread change)
@@ -859,6 +867,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       role: 'user',
       content,
       timestamp: new Date(),
+      metadata: options?.artifactComments?.length
+        ? { artifactComments: options.artifactComments }
+        : undefined,
     };
 
     // Pre-measure spacer so the auto-scroll effect sees bottomSpacerHeight > 0 on the first render
@@ -880,16 +891,21 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       ...(preferences || chatPreferences),
       activeCategoryId: activeThread?.categories?.[0]?.id,
     };
+    const sendOptions = {
+      truncateFromMessageId: options?.truncateFromMessageId,
+      artifactComments: options?.artifactComments?.length ? options.artifactComments : artifactComments,
+    };
     try {
-      await sendStreamingMessage(content, currentThreadId, mode, prefsToUse, options);
+      await sendStreamingMessage(content, currentThreadId, mode, prefsToUse, sendOptions);
     } finally {
       isSendingRef.current = false;
     }
 
-    // Clear pending uploads/sources after sending — they've been sent to the LLM
+    // Clear pending uploads/sources and artifact comments after sending
     setPendingUploads([]);
     setPendingUrlSources([]);
-  }, [threadId, createThread, sendStreamingMessage, chatPreferences]);
+    onClearArtifactComments?.();
+  }, [threadId, createThread, sendStreamingMessage, chatPreferences, artifactComments, onClearArtifactComments]);
 
 
 
@@ -1477,6 +1493,13 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            attachmentChipsSlot={attachmentChipsSlot}
            lastAutoPick={lastAutoPick}
            initialDraft={initialDraft}
+           artifactComments={artifactComments}
+           onRemoveArtifactComment={onRemoveArtifactComment}
+           onSendOptions={
+             artifactComments.length > 0
+               ? { artifactComments }
+               : undefined
+           }
          />
        </ErrorBoundary>
 

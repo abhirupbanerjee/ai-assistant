@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, Maximize2, Minimize2, Copy, Check, MessageSquarePlus, MessageSquare } from 'lucide-react';
 import type { ArtifactCanvasItem } from '@/types';
 
 interface CanvasToolbarProps {
@@ -14,6 +14,9 @@ interface CanvasToolbarProps {
   indexText?: string;
   onPrev?: () => void;
   onNext?: () => void;
+  commentCount?: number;
+  onAddImageComment?: () => void;
+  showImageCommentButton?: boolean;
 }
 
 /**
@@ -31,6 +34,9 @@ export default function CanvasToolbar({
   indexText,
   onPrev,
   onNext,
+  commentCount = 0,
+  onAddImageComment,
+  showImageCommentButton = false,
 }: CanvasToolbarProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -124,6 +130,25 @@ export default function CanvasToolbar({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {showImageCommentButton && onAddImageComment && (
+          <button
+            onClick={onAddImageComment}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            title="Comment on image"
+            aria-label="Comment on image"
+          >
+            <MessageSquarePlus size={15} />
+            <span className="hidden sm:inline">Comment</span>
+          </button>
+        )}
+
+        {commentCount > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg">
+            <MessageSquare size={15} />
+            <span>{commentCount}</span>
+          </div>
+        )}
+
         {hasRawCode && (
           <button
             onClick={handleCopyCode}

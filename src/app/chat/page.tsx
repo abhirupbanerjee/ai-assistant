@@ -20,7 +20,7 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt, ArtifactCanvasItem } from '@/types';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt, ArtifactCanvasItem, ArtifactComment } from '@/types';
 import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
 
 const COLLAPSED_PANEL_WIDTH_PX = 56;
@@ -71,6 +71,8 @@ function HomeContent() {
   // would recreate handleOpenCanvas each render and break MessageBubble's
   // memoization. openCanvas is individually stable (useCallback with []).
   const { openCanvas } = canvasState;
+
+  const [pendingArtifactComments, setPendingArtifactComments] = useState<ArtifactComment[]>([]);
 
   // react-resizable-panels uses percentages. Convert the fixed icon-rail width
   // to a responsive percentage so both collapsed panels remain about 56px.
@@ -284,6 +286,29 @@ function HomeContent() {
     openCanvas(item, canvasSiblings);
   }, [openCanvas, viewableCanvasSiblings]);
 
+  const handleSendComments = useCallback((comments: ArtifactComment[]) => {
+    setPendingArtifactComments(prev => [...prev, ...comments]);
+  }, []);
+
+  const handleRemoveArtifactComment = useCallback((commentId: string) => {
+    setPendingArtifactComments(prev => prev.filter(c => c.commentId !== commentId));
+  }, []);
+
+  const handleClearArtifactComments = useCallback(() => {
+    setPendingArtifactComments([]);
+  }, []);
+
+  // Clear pending comments once the user sends a message.
+  useEffect(() => {
+    if (pendingArtifactComments.length === 0) return;
+    // We only know the message was sent if the canvas closes (comments were
+    // attached). For simplicity, rely on the send path clearing via ChatWindow
+    // sending artifactComments. As a safety net, clear when thread changes.
+    return () => {
+      setPendingArtifactComments([]);
+    };
+  }, [activeThread?.id]);
+
   const handleRemoveUpload = useCallback(async (filename: string) => {
     if (!artifactsData.threadId) return;
 
@@ -430,6 +455,9 @@ function HomeContent() {
                   onInputBlur={handleInputBlur}
                   initialDraft={shareDraft}
                   onOpenCanvas={handleOpenCanvas}
+                  artifactComments={pendingArtifactComments}
+                  onRemoveArtifactComment={handleRemoveArtifactComment}
+                  onClearArtifactComments={handleClearArtifactComments}
                 />
               </ErrorBoundary>
             </main>
@@ -461,6 +489,7 @@ function HomeContent() {
                     threadId={artifactsData.threadId}
                     siblings={canvasState.siblings}
                     onNavigate={canvasState.navigateTo}
+                    onSendComments={handleSendComments}
                   />
                 ) : (
                   <ArtifactsPanel
@@ -504,6 +533,7 @@ function HomeContent() {
               onClose={canvasState.closeCanvas}
               siblings={canvasState.siblings}
               onNavigate={canvasState.navigateTo}
+              onSendComments={handleSendComments}
             />
           ) : (
             <MobileArtifactsMenu

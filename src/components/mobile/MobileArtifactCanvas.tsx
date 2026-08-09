@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowLeft, ChevronLeft, ChevronRight, Download } from 'lucide-react';
-import type { ArtifactCanvasItem } from '@/types';
+import type { ArtifactCanvasItem, ArtifactComment } from '@/types';
 import ArtifactCanvas from '@/components/chat/ArtifactCanvas';
 
 interface MobileArtifactCanvasProps {
@@ -9,9 +9,10 @@ interface MobileArtifactCanvasProps {
   onClose: () => void;
   siblings?: ArtifactCanvasItem[];
   onNavigate?: (index: number) => void;
+  onSendComments?: (comments: ArtifactComment[]) => void;
 }
 
-export default function MobileArtifactCanvas({ artifact, onClose, siblings, onNavigate }: MobileArtifactCanvasProps) {
+export default function MobileArtifactCanvas({ artifact, onClose, siblings, onNavigate, onSendComments }: MobileArtifactCanvasProps) {
   const hasNav = Boolean(siblings && siblings.length > 1 && onNavigate);
   const currentIndex = siblings && siblings.length > 0
     ? siblings.findIndex((s) => s.artifactId === artifact.artifactId)
@@ -88,6 +89,7 @@ export default function MobileArtifactCanvas({ artifact, onClose, siblings, onNa
           threadId={null}
           siblings={siblings}
           onNavigate={onNavigate}
+          onSendComments={onSendComments}
         />
       </div>
     </div>

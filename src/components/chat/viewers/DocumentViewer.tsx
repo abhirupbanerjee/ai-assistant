@@ -18,6 +18,57 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
+  // Tag docx-preview page wrappers with data-page-number after async render.
+  useEffect(() => {
+    if (artifact.artifactType !== 'docx') return;
+    const container = docxContainerRef.current;
+    if (!container) return;
+
+    // docx-preview may render in a microtask; use a short timeout + MutationObserver
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let observer: MutationObserver | null = null;
+
+    const tagPages = () => {
+      // Heuristic: look for elements whose class contains "page" or that are direct
+      // children of the wrapper and look like paper pages.
+      const pages = container.querySelectorAll('[class*="page"], [class*="document"] > div');
+      if (pages.length === 0) return false;
+      pages.forEach((page, idx) => {
+        if (!page.hasAttribute('data-page-number')) {
+          page.setAttribute('data-page-number', String(idx + 1));
+        }
+      });
+      return true;
+    };
+
+    const tryTag = () => {
+      if (tagPages()) {
+        observer?.disconnect();
+        return true;
+      }
+      return false;
+    };
+
+    if (!tryTag()) {
+      observer = new MutationObserver(() => {
+        if (tryTag()) {
+          if (timeoutId) clearTimeout(timeoutId);
+          observer?.disconnect();
+        }
+      });
+      observer.observe(container, { childList: true, subtree: true });
+      timeoutId = setTimeout(() => {
+        tryTag();
+        observer?.disconnect();
+      }, 2000);
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      observer?.disconnect();
+    };
+  }, [artifact.artifactType]);
+
   // ── DOCX: render natively via docx-preview (preserves headings, tables,
   //    page margins, headers/footers, and custom fonts — mammoth stripped all
   //    of these, which is why headings appeared as plain body text).

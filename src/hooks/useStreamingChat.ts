@@ -153,6 +153,8 @@ export interface SendMessageOptions {
    * DB history consistent with the client's truncated view.
    */
   truncateFromMessageId?: string;
+  /** Artifact comments attached to this user message (Phase 2a Path A). */
+  artifactComments?: import('@/types').ArtifactComment[];
 }
 
 export interface UseStreamingChatReturn {
@@ -1118,6 +1120,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           pipeline: preferences?.pipeline,
           pipelineMode: preferences?.pipelineMode,
           truncateFromMessageId: options?.truncateFromMessageId,
+          artifactComments: options?.artifactComments,
         }),
         signal: abortControllerRef.current.signal,
       });

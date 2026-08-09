@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { MessageSquarePlus } from 'lucide-react';
 import type { ArtifactCanvasItem } from '@/types';
 
 interface ImageViewerProps {
   artifact: ArtifactCanvasItem;
+  onAddImageComment?: () => void;
 }
 
-export default function ImageViewer({ artifact }: ImageViewerProps) {
+export default function ImageViewer({ artifact, onAddImageComment }: ImageViewerProps) {
   const [scale, setScale] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -22,8 +24,19 @@ export default function ImageViewer({ artifact }: ImageViewerProps) {
     <div
       ref={containerRef}
       onWheel={handleWheel}
-      className="w-full h-full overflow-auto flex items-center justify-center bg-gray-100 p-4"
+      className="relative w-full h-full overflow-auto flex items-center justify-center bg-gray-100 p-4"
     >
+      {onAddImageComment && (
+        <button
+          onClick={onAddImageComment}
+          className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white/90 hover:bg-white border border-gray-200 rounded-lg shadow-sm transition-colors"
+          title="Comment on image"
+          aria-label="Comment on image"
+        >
+          <MessageSquarePlus size={15} />
+          <span className="hidden sm:inline">Comment on image</span>
+        </button>
+      )}
       {error ? (
         <p className="text-sm text-red-600">{error}</p>
       ) : (

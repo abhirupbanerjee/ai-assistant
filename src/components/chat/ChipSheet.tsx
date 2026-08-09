@@ -16,6 +16,7 @@ interface ChipSheetProps {
   /** Chip slots from MessageInput */
   categoryChipSlot?: React.ReactNode;
   attachmentChipsSlot?: React.ReactNode;
+  artifactCommentsSlot?: React.ReactNode;
   /** Inline mode chips (desktop inline chips, shown inside sheet on mobile) */
   modeChips?: React.ReactNode;
   languageToneChips?: React.ReactNode;
@@ -34,6 +35,7 @@ export default function ChipSheet({
   activeFeatures,
   categoryChipSlot,
   attachmentChipsSlot,
+  artifactCommentsSlot,
   modeChips,
   languageToneChips,
 }: ChipSheetProps) {
@@ -80,7 +82,7 @@ export default function ChipSheet({
     firstFocusable?.focus();
   }, [isOpen]);
 
-  const hasAnyContent = categoryChipSlot || attachmentChipsSlot || modeChips || languageToneChips;
+  const hasAnyContent = categoryChipSlot || attachmentChipsSlot || artifactCommentsSlot || modeChips || languageToneChips;
   const hasActiveFeatures = activeFeatures.length > 0;
 
   return (
@@ -145,11 +147,12 @@ export default function ChipSheet({
 
             {/* Content */}
             <div ref={contentRef} className="px-4 pb-6 pt-3 space-y-3">
-              {/* Category + Attachment chips */}
-              {(categoryChipSlot || attachmentChipsSlot) && (
+              {/* Category + Attachment + Artifact comment chips */}
+              {(categoryChipSlot || attachmentChipsSlot || artifactCommentsSlot) && (
                 <div className="flex flex-wrap items-center gap-2 transition-all duration-200">
                   {categoryChipSlot}
                   {attachmentChipsSlot}
+                  {artifactCommentsSlot}
                 </div>
               )}
 

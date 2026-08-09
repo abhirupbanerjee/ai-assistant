@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 
-import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain, BookOpen } from 'lucide-react';
+import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain, BookOpen, MessageSquareQuote } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import SlashCommandMenu from './SlashCommandMenu';
@@ -11,10 +11,12 @@ import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
 import InlineLanguageToneChips from './InlineLanguageToneChips';
 import ChipSheet, { type ActiveFeatureBadge } from './ChipSheet';
+import ArtifactContextChip from './ArtifactContextChip';
 
 import { ChatMode } from './ModeToggle';
 import { useToast } from '@/contexts/ToastContext';
 import type { ChatPreferences, PipelineMode } from '@/types/stream';
+import type { ArtifactComment } from '@/types';
 import { parsePipelinePrompt } from '@/lib/pipeline-parser';
 import { buildSubmitPayload } from '@/lib/message-input-parser';
 import { type TriggerSpan } from '@/lib/trigger-span';
@@ -32,7 +34,7 @@ interface UrlSourceInfo {
 }
 
 interface MessageInputProps {
-  onSend: (message: string, mode?: ChatMode, preferences?: ChatPreferences) => void;
+  onSend: (message: string, mode?: ChatMode, preferences?: ChatPreferences, options?: { artifactComments?: ArtifactComment[] }) => void;
   disabled?: boolean;
   threadId: string | null;
   currentUploads: string[];
@@ -66,6 +68,11 @@ interface MessageInputProps {
   // when the app is opened via the Android share sheet. Cleared after first
   // use so it does not re-apply on subsequent re-renders.
   initialDraft?: string;
+  // Artifact comments attached to the pending message (Phase 2a Path A).
+  artifactComments?: ArtifactComment[];
+  onRemoveArtifactComment?: (commentId: string) => void;
+  // Optional send-time options consumed by the parent ChatWindow.
+  onSendOptions?: { artifactComments?: ArtifactComment[] };
 }
 
 interface CurrentModelInfo {
@@ -107,6 +114,9 @@ const MessageInput = memo(function MessageInput({
   attachmentChipsSlot,
   lastAutoPick,
   initialDraft,
+  artifactComments = [],
+  onRemoveArtifactComment,
+  onSendOptions,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   // Mode defaults to normal on every page load.
@@ -226,8 +236,14 @@ const MessageInput = memo(function MessageInput({
         label: `${currentUploads.length} file${currentUploads.length !== 1 ? 's' : ''}`,
       });
     }
+    if (artifactComments.length > 0) {
+      features.push({
+        icon: <MessageSquareQuote size={12} />,
+        label: `${artifactComments.length} comment${artifactComments.length !== 1 ? 's' : ''}`,
+      });
+    }
     return features;
-  }, [mode, preferences.webSearchEnabled, preferences.thinkingEnabled, preferences.targetLanguage, preferences.showSources, currentUploads.length, currentModelInfo?.thinkingCapable]);
+  }, [mode, preferences.webSearchEnabled, preferences.thinkingEnabled, preferences.targetLanguage, preferences.showSources, currentUploads.length, currentModelInfo?.thinkingCapable, artifactComments.length]);
 
 
   // aria-live state announcements — announce input state transitions to screen readers
@@ -324,7 +340,7 @@ const MessageInput = memo(function MessageInput({
         maxSlashCommands: MAX_SLASH_COMMANDS,
       });
 
-    onSend(finalMessage, mode, { ...preferences, toolHints, agentMention, pipeline, pipelineMode });
+    onSend(finalMessage, mode, { ...preferences, toolHints, agentMention, pipeline, pipelineMode }, onSendOptions);
     setMessage('');
     setActiveSlashCommands([]);
     clearDraft();
@@ -341,7 +357,25 @@ const MessageInput = memo(function MessageInput({
     knownAgentIds,
     knownCommandKeys,
     pipelineModeState,
+    onSendOptions,
   ]);
+
+  const artifactCommentsSlot = useMemo(() => {
+    if (artifactComments.length === 0) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        {artifactComments.map((comment, idx) => (
+          <ArtifactContextChip
+            key={comment.commentId}
+            comment={comment}
+            index={idx}
+            total={artifactComments.length}
+            onRemove={onRemoveArtifactComment}
+          />
+        ))}
+      </div>
+    );
+  }, [artifactComments, onRemoveArtifactComment]);
 
   // Memoized keyboard shortcut callbacks to prevent listener re-binding
   const focusTextarea = useCallback(() => {
@@ -463,9 +497,9 @@ const MessageInput = memo(function MessageInput({
       </span>
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 transition-all duration-300 relative">
 
-        {/* Chip slots: CategoryChip + AttachmentChipsRow (visible in EXPANDED state) */}
+        {/* Chip slots: CategoryChip + AttachmentChipsRow + ArtifactComments (visible in EXPANDED state) */}
         {/* On mobile FOCUSED-WRITE, chips are shown in the ChipSheet instead */}
-        {(categoryChipSlot || attachmentChipsSlot) && inputState !== 'compact' && (
+        {(categoryChipSlot || attachmentChipsSlot || artifactCommentsSlot) && inputState !== 'compact' && (
           <div className="mb-3 flex flex-wrap items-center gap-2 transition-all duration-300">
             {/* On mobile focused-write, show ChipSheet collapsed pill instead of inline chips */}
             {isMobile && inputState === 'focused-write' ? (
@@ -475,6 +509,7 @@ const MessageInput = memo(function MessageInput({
                 activeFeatures={activeFeatures}
                 categoryChipSlot={categoryChipSlot}
                 attachmentChipsSlot={attachmentChipsSlot}
+                artifactCommentsSlot={artifactCommentsSlot}
                 modeChips={
                   <InlineModeChips
                     mode={mode}
@@ -499,6 +534,7 @@ const MessageInput = memo(function MessageInput({
               <>
                 {categoryChipSlot}
                 {attachmentChipsSlot}
+                {artifactCommentsSlot}
               </>
             )}
           </div>

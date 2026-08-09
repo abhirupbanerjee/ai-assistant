@@ -14,6 +14,7 @@ import type {
   DiagramHint,
   PodcastHint,
 } from './index';
+import type { ArtifactComment } from './artifact-canvas';
 import type {
   ComplianceDecision,
   HitlClarificationEvent,
@@ -518,6 +519,8 @@ export interface StreamChatRequest {
    * client's truncated view (no ghost turns on reload).
    */
   truncateFromMessageId?: string;
+  /** Artifact comments attached to this user message (Phase 2a Path A). */
+  artifactComments?: ArtifactComment[];
 }
 
 /**
