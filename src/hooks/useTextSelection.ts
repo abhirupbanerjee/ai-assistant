@@ -17,44 +17,12 @@ export function useTextSelection(containerRef: React.RefObject<HTMLElement | nul
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const readSelection = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      const captured = captureSelection();
+      if (!captured) {
         setShowButton(false);
         return;
       }
-
-      const container = containerRef.current;
-      if (!container) return;
-
-      const range = sel.getRangeAt(0);
-      if (!container.contains(range.commonAncestorContainer)) {
-        setShowButton(false);
-        return;
-      }
-
-      let node: Node | null = range.commonAncestorContainer;
-      let pageNumber: number | undefined;
-      while (node) {
-        if (node instanceof HTMLElement && node.dataset.pageNumber) {
-          pageNumber = Number(node.dataset.pageNumber);
-          break;
-        }
-        node = node.parentNode;
-      }
-
-      const rect = range.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      const selectedText = sel.toString();
-
-      setSelection({
-        selectedText,
-        surroundingContext: getSurroundingContext(range, container),
-        position: {
-          x: rect.left + rect.width / 2,
-          y: rect.top - containerRect.top - 40 + container.scrollTop,
-        },
-        pageNumber,
-      });
+      setSelection(captured);
       setShowButton(true);
     };
 
@@ -83,7 +51,42 @@ export function useTextSelection(containerRef: React.RefObject<HTMLElement | nul
     window.getSelection()?.removeAllRanges();
   }, []);
 
-  return { selection, showButton, clearSelection };
+  const captureSelection = useCallback((): TextSelection | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) return null;
+
+    const container = containerRef.current;
+    if (!container) return null;
+
+    const range = sel.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) return null;
+
+    let node: Node | null = range.commonAncestorContainer;
+    let pageNumber: number | undefined;
+    while (node) {
+      if (node instanceof HTMLElement && node.dataset.pageNumber) {
+        pageNumber = Number(node.dataset.pageNumber);
+        break;
+      }
+      node = node.parentNode;
+    }
+
+    const rect = range.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const selectedText = sel.toString();
+
+    return {
+      selectedText,
+      surroundingContext: getSurroundingContext(range, container),
+      position: {
+        x: rect.left + rect.width / 2,
+        y: rect.top - containerRect.top - 40 + container.scrollTop,
+      },
+      pageNumber,
+    };
+  }, [containerRef]);
+
+  return { selection, showButton, clearSelection, captureSelection };
 }
 
 function getSurroundingContext(range: Range, container: HTMLElement): string {

@@ -5,6 +5,7 @@ import { X, CornerDownLeft } from 'lucide-react';
 
 interface CommentInputBoxProps {
   position?: { x: number; y: number };
+  flipBelow?: boolean;
   onSave: (text: string) => void;
   onCancel: () => void;
   placeholder?: string;
@@ -12,6 +13,7 @@ interface CommentInputBoxProps {
 
 export default function CommentInputBox({
   position,
+  flipBelow = false,
   onSave,
   onCancel,
   placeholder = 'Add a comment…',
@@ -47,7 +49,7 @@ export default function CommentInputBox({
           ? {
               left: position.x,
               top: position.y,
-              transform: 'translate(-50%, -100%)',
+              transform: flipBelow ? 'translate(-50%, 0%)' : 'translate(-50%, -100%)',
             }
           : undefined
       }
@@ -55,7 +57,11 @@ export default function CommentInputBox({
       <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-3">
         {position && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-3 h-3 bg-white border-b border-r border-gray-200 rotate-45"
+            className={
+              flipBelow
+                ? 'absolute left-1/2 -translate-x-1/2 -top-2 w-3 h-3 bg-white border-t border-l border-gray-200 rotate-45'
+                : 'absolute left-1/2 -translate-x-1/2 -bottom-2 w-3 h-3 bg-white border-b border-r border-gray-200 rotate-45'
+            }
             aria-hidden="true"
           />
         )}

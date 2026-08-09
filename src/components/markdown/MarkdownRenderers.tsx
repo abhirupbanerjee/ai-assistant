@@ -1,8 +1,9 @@
 'use client';
 
 import React, { Suspense, lazy, useRef, useState } from 'react';
-import { Copy, Check, ExternalLink } from 'lucide-react';
+import { Copy, Check, ExternalLink, Maximize2 } from 'lucide-react';
 import type { Components } from 'react-markdown';
+import type { ArtifactCanvasItem } from '@/types';
 
 // Lazy load MermaidDiagram to avoid loading Mermaid.js until needed
 const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
@@ -283,7 +284,11 @@ const CodeWithMermaid: Components['code'] = ({ children, className }) => {
  * Only used in the main chat assistant responses (via MarkdownComponentsWithCodeCopy).
  * For non-Mermaid blocks, delegates to the standard CodeWithMermaid behavior.
  */
-const CodeWithMermaidAndCopy: Components['code'] = ({ children, className }) => {
+const CodeWithMermaidAndCopy: React.FC<{
+  children: React.ReactNode;
+  className?: string;
+  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
+}> = ({ children, className, onOpenCanvas }) => {
   const [copied, setCopied] = useState(false);
   const isInline = !className;
   const language = parseLanguage(className);
@@ -301,21 +306,48 @@ const CodeWithMermaidAndCopy: Components['code'] = ({ children, className }) => 
       }
     };
 
+    const handleOpen = () => {
+      if (!onOpenCanvas) return;
+      const titleMatch = codeContent.match(/^\s*title\s+(.+)$/m);
+      const title = titleMatch?.[1]?.trim() || 'Diagram';
+      const item: ArtifactCanvasItem = {
+        artifactId: `inline-diagram-${codeContent.length}-${Date.now()}`,
+        artifactType: 'diagram',
+        title,
+        downloadUrl: '',
+        mermaidCode: codeContent,
+      };
+      onOpenCanvas(item);
+    };
+
     return (
       <div className="relative group/mermaid my-3">
-        <button
-          onClick={handleCopy}
-          className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/mermaid:opacity-100 focus:opacity-100"
-          title={copied ? 'Copied' : 'Copy source'}
-          aria-label={copied ? 'Copied' : 'Copy source'}
-          type="button"
-        >
-          {copied ? (
-            <Check size={14} className="text-green-600" />
-          ) : (
-            <Copy size={14} />
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+          {onOpenCanvas && (
+            <button
+              onClick={handleOpen}
+              className="p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/mermaid:opacity-100 focus:opacity-100"
+              title="Open in canvas"
+              aria-label="Open in canvas"
+              type="button"
+            >
+              <Maximize2 size={14} />
+            </button>
           )}
-        </button>
+          <button
+            onClick={handleCopy}
+            className="p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/mermaid:opacity-100 focus:opacity-100"
+            title={copied ? 'Copied' : 'Copy source'}
+            aria-label={copied ? 'Copied' : 'Copy source'}
+            type="button"
+          >
+            {copied ? (
+              <Check size={14} className="text-green-600" />
+            ) : (
+              <Copy size={14} />
+            )}
+          </button>
+        </div>
         <Suspense
           fallback={
             <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 my-3">
@@ -608,10 +640,33 @@ const CopyableTable: Components['table'] = ({ children }) => {
 /**
  * Markdown components WITH Mermaid support AND per-code-block copy buttons.
  * Use this for: Main Chat assistant messages only.
+ *
+ * The factory form lets callers pass an `onOpenCanvas` handler so inline
+ * Mermaid diagrams can be opened in the Artifact Canvas.
  */
-export const MarkdownComponentsWithCodeCopy: Components = {
-  ...MarkdownComponents,
-  code: CodeWithMermaidAndCopy,
-  pre: CopyablePre,
-  table: CopyableTable,
-} as Components;
+export function getMarkdownComponentsWithCodeCopy(options?: {
+  onOpenCanvas?: (item: ArtifactCanvasItem) => void;
+}): Components {
+  const CodeWithOpen: Components['code'] = ({ children, className }) => (
+    <CodeWithMermaidAndCopy
+      className={className}
+      onOpenCanvas={options?.onOpenCanvas}
+    >
+      {children}
+    </CodeWithMermaidAndCopy>
+  );
+
+  return {
+    ...MarkdownComponents,
+    code: CodeWithOpen,
+    pre: CopyablePre,
+    table: CopyableTable,
+  } as Components;
+}
+
+/**
+ * Default markdown components with Mermaid + copy buttons.
+ * Inline diagrams rendered with this object cannot be opened in the canvas;
+ * use `getMarkdownComponentsWithCodeCopy` when canvas opening is required.
+ */
+export const MarkdownComponentsWithCodeCopy: Components = getMarkdownComponentsWithCodeCopy();

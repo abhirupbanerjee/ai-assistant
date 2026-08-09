@@ -55,6 +55,7 @@ interface ChatWindowProps {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }) => void;
   // Callbacks for input focus (mobile sidebar hiding)

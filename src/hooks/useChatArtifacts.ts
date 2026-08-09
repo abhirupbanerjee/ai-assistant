@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useEffect } from 'react';
-import type { Message, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ThreadOutputItem } from '@/types';
+import type { Message, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ThreadOutputItem, DiagramHint } from '@/types';
 import type { StreamingState } from './useStreamingChat';
 
 interface UseChatArtifactsOptions {
@@ -18,6 +18,7 @@ interface UseChatArtifactsOptions {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }) => void;
 }
@@ -77,6 +78,7 @@ interface ArtifactsData {
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
   generatedPodcasts: PodcastHint[];
+  generatedDiagrams: DiagramHint[];
 }
 
 /**
@@ -95,15 +97,17 @@ export function useChatArtifacts({
   threadOutputs,
   onArtifactsChange,
 }: UseChatArtifactsOptions): ArtifactsData {
-  const { generatedDocs, generatedImages, generatedPodcasts } = useMemo(() => {
+  const { generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams } = useMemo(() => {
     const docs: GeneratedDocumentInfo[] = [];
     const images: GeneratedImageInfo[] = [];
     const podcasts: PodcastHint[] = [];
+    const diagrams: DiagramHint[] = [];
 
     // Track IDs to avoid duplicates
     const docIds = new Set<string>();
     const imageIds = new Set<string>();
     const podcastIds = new Set<string>();
+    const diagramIds = new Set<string>();
 
     // 1. Include artifacts from thread_outputs (durable, survives summarization)
     // These take priority as the authoritative source with expiration data.
@@ -125,6 +129,8 @@ export function useChatArtifacts({
           const podcast = outputToPodcast(output);
           podcasts.push(podcast);
           podcastIds.add(podcast.id);
+        } else if (output.fileType === 'diagram') {
+          // Thread outputs don't currently store diagram code; skip until backend supports it.
         }
       }
     }
@@ -155,6 +161,14 @@ export function useChatArtifacts({
           }
         }
       }
+      if (msg.generatedDiagrams) {
+        for (const diagram of msg.generatedDiagrams) {
+          if (!diagramIds.has(diagram.code)) {
+            diagrams.push(diagram);
+            diagramIds.add(diagram.code);
+          }
+        }
+      }
     }
 
     // 3. Include real-time streaming artifacts (for sidebar updates during generation)
@@ -182,9 +196,17 @@ export function useChatArtifacts({
         }
       }
     }
+    if (streamingState.diagrams) {
+      for (const diagram of streamingState.diagrams) {
+        if (!diagramIds.has(diagram.code)) {
+          diagrams.push(diagram);
+          diagramIds.add(diagram.code);
+        }
+      }
+    }
 
-    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts };
-  }, [messages, threadOutputs, streamingState.documents, streamingState.images, streamingState.podcasts]);
+    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts, generatedDiagrams: diagrams };
+  }, [messages, threadOutputs, streamingState.documents, streamingState.images, streamingState.podcasts, streamingState.diagrams]);
 
   // Notify parent of artifacts changes
   useEffect(() => {
@@ -194,9 +216,10 @@ export function useChatArtifacts({
       generatedDocs,
       generatedImages,
       generatedPodcasts,
+      generatedDiagrams,
       urlSources,
     });
-  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, urlSources, onArtifactsChange]);
+  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams, urlSources, onArtifactsChange]);
 
-  return { generatedDocs, generatedImages, generatedPodcasts };
+  return { generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams };
 }

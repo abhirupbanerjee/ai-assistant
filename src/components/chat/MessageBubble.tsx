@@ -10,7 +10,7 @@ import type { Message, MessageMetadata, ArtifactCanvasItem, ArtifactComment } fr
 import SourceCard from './SourceCard';
 import ArtifactContextChip from './ArtifactContextChip';
 import FeedbackButtons from './FeedbackButtons';
-import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
+import { MarkdownComponents, getMarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
 import AgentResponseCard from './AgentResponseCard';
@@ -41,11 +41,15 @@ const REHYPE_PLUGINS = [rehypeHighlight];
 // ---------------------------------------------------------------------------
 
 /** A single frozen block — content never changes so the memo always bails out */
-const FrozenBlock = memo(function FrozenBlock({ content, isUser }: { content: string; isUser: boolean }) {
+const FrozenBlock = memo(function FrozenBlock({ content, isUser, onOpenCanvas }: { content: string; isUser: boolean; onOpenCanvas?: MessageBubbleProps['onOpenCanvas'] }) {
+  const components = useMemo(
+    () => isUser ? MarkdownComponents : getMarkdownComponentsWithCodeCopy({ onOpenCanvas }),
+    [isUser, onOpenCanvas]
+  );
   return (
     <ReactMarkdown
       remarkPlugins={REMARK_PLUGINS}
-      components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
+      components={components}
     >
       {content}
     </ReactMarkdown>
@@ -101,14 +105,19 @@ function splitAtSafeBoundary(content: string): [string, string] {
   return [content.slice(0, lastSafeEnd), content.slice(lastSafeEnd)];
 }
 
-function StreamingMarkdown({ content, isStreaming, isUser }: { content: string; isStreaming: boolean; isUser: boolean }) {
+function StreamingMarkdown({ content, isStreaming, isUser, onOpenCanvas }: { content: string; isStreaming: boolean; isUser: boolean; onOpenCanvas?: MessageBubbleProps['onOpenCanvas'] }) {
+  const components = useMemo(
+    () => isUser ? MarkdownComponents : getMarkdownComponentsWithCodeCopy({ onOpenCanvas }),
+    [isUser, onOpenCanvas]
+  );
+
   if (!isStreaming) {
     // Final pass — full parse once with syntax highlighting on code blocks
     return (
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={isUser ? [] : REHYPE_PLUGINS}
-        components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
+        components={components}
       >
         {content}
       </ReactMarkdown>
@@ -146,13 +155,13 @@ function StreamingMarkdown({ content, isStreaming, isUser }: { content: string; 
     <>
       {/* Frozen completed content — never re-renders */}
       {frozenContent && (
-        <FrozenBlock content={frozenContent} isUser={isUser} />
+        <FrozenBlock content={frozenContent} isUser={isUser} onOpenCanvas={onOpenCanvas} />
       )}
       {/* Active tail: small, cheap single-block re-parse each frame */}
       {renderLiveTail && (
         <ReactMarkdown
           remarkPlugins={REMARK_PLUGINS}
-          components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
+          components={components}
         >
           {renderLiveTail}
         </ReactMarkdown>
@@ -452,6 +461,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 content={visibleDisplayContent}
                 isStreaming={isStreaming}
                 isUser={isUser}
+                onOpenCanvas={onOpenCanvas}
               />
             </div>
             )}

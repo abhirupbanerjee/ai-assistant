@@ -20,8 +20,8 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt, ArtifactCanvasItem, ArtifactComment } from '@/types';
-import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, DiagramHint, StarterPrompt, ArtifactCanvasItem, ArtifactComment } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildDiagramCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
 
 const COLLAPSED_PANEL_WIDTH_PX = 56;
 
@@ -190,6 +190,7 @@ function HomeContent() {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }>({
     threadId: null,
@@ -197,6 +198,7 @@ function HomeContent() {
     generatedDocs: [],
     generatedImages: [],
     generatedPodcasts: [],
+    generatedDiagrams: [],
     urlSources: [],
   });
 
@@ -253,6 +255,7 @@ function HomeContent() {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }) => {
     setArtifactsData(data);
@@ -273,18 +276,28 @@ function HomeContent() {
     for (const podcast of artifactsData.generatedPodcasts) {
       if (getExpirationVariant(podcast.expiresAt) !== 'expired') items.push(buildPodcastCanvasItem(podcast));
     }
+    artifactsData.generatedDiagrams.forEach((diagram, idx) => {
+      items.push(buildDiagramCanvasItem(diagram, idx));
+    });
     return items;
-  }, [artifactsData.generatedDocs, artifactsData.generatedImages, artifactsData.generatedPodcasts]);
+  }, [artifactsData.generatedDocs, artifactsData.generatedImages, artifactsData.generatedPodcasts, artifactsData.generatedDiagrams]);
+
+  // Keep a ref to the latest siblings so handleOpenCanvas identity stays stable
+  // and MessageBubble memoization isn't invalidated every time a new artifact is generated.
+  const viewableCanvasSiblingsRef = useRef(viewableCanvasSiblings);
+  useEffect(() => {
+    viewableCanvasSiblingsRef.current = viewableCanvasSiblings;
+  }, [viewableCanvasSiblings]);
 
   // Open a chat artifact in the Canvas side panel. Diagram cards provide their
   // message-local siblings; other artifact cards use the page-level list.
   const handleOpenCanvas = useCallback((item: ArtifactCanvasItem, siblings?: ArtifactCanvasItem[]) => {
-    const requestedSiblings = siblings?.length ? siblings : viewableCanvasSiblings;
+    const requestedSiblings = siblings?.length ? siblings : viewableCanvasSiblingsRef.current;
     const canvasSiblings = requestedSiblings.some((sibling) => sibling.artifactId === item.artifactId)
       ? requestedSiblings
       : [...requestedSiblings, item];
     openCanvas(item, canvasSiblings);
-  }, [openCanvas, viewableCanvasSiblings]);
+  }, [openCanvas]);
 
   const handleSendComments = useCallback((comments: ArtifactComment[]) => {
     setPendingArtifactComments(prev => [...prev, ...comments]);
@@ -498,6 +511,7 @@ function HomeContent() {
                     generatedDocs={artifactsData.generatedDocs}
                     generatedImages={artifactsData.generatedImages}
                     generatedPodcasts={artifactsData.generatedPodcasts}
+                    generatedDiagrams={artifactsData.generatedDiagrams}
                     urlSources={artifactsData.urlSources}
                     onRemoveUpload={handleRemoveUpload}
                     onRemoveUrlSource={handleRemoveUrlSource}

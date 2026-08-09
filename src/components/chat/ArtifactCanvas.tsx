@@ -5,6 +5,7 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 import type { ArtifactCanvasItem, ArtifactComment } from '@/types';
 import { useArtifactComments } from '@/hooks/useArtifactComments';
 import { useTextSelection } from '@/hooks/useTextSelection';
+import type { TextSelection } from '@/hooks/useTextSelection';
 import CanvasToolbar from './CanvasToolbar';
 import HtmlViewer from './viewers/HtmlViewer';
 import DocumentViewer from './viewers/DocumentViewer';
@@ -164,15 +165,15 @@ export default function ArtifactCanvas({
   const isMobile = useIsMobile();
   const [commentInputOpen, setCommentInputOpen] = useState(false);
   const [commentInputPosition, setCommentInputPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [flipCommentInput, setFlipCommentInput] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(isMobile);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isTextSelectable = TEXT_SELECTABLE_TYPES.includes(artifact.artifactType);
   const isDiagram = artifact.artifactType === 'diagram';
-  const selectionContainerRef = isDiagram
-    ? (containerRef as React.RefObject<HTMLElement>)
-    : (containerRef as React.RefObject<HTMLElement>);
-  const { selection, showButton, clearSelection } = useTextSelection(selectionContainerRef);
+  const { selection, showButton, clearSelection, captureSelection } = useTextSelection(
+    containerRef as React.RefObject<HTMLElement>
+  );
 
   const handlePrev = () => {
     if (hasPrev && onNavigate) onNavigate(safeIndex - 1);
@@ -209,32 +210,45 @@ export default function ArtifactCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, hasPrev, hasNext, safeIndex, siblings, onNavigate]);
 
+  const [pendingSelection, setPendingSelection] = useState<TextSelection | null>(null);
+
   const handleAddTextCommentClick = useCallback(() => {
-    if (!selection) return;
-    setCommentInputPosition(selection.position);
+    // Capture selection synchronously at click time so debounced
+    // selectionchange events don't wipe it before the comment is saved.
+    const captured = captureSelection();
+    if (!captured) return;
+    // If the selection is near the top of the viewer, render the comment box
+    // below the selection so the user can see both the selected text and input.
+    setFlipCommentInput(captured.position.y < 90);
+    setPendingSelection(captured);
+    setCommentInputPosition(captured.position);
     setCommentInputOpen(true);
-  }, [selection]);
+  }, [captureSelection]);
+
+  const handleAddImageComment = useCallback(() => {
+    setFlipCommentInput(false);
+    setCommentInputPosition(undefined);
+    setCommentInputOpen(true);
+  }, []);
 
   const handleSaveTextComment = useCallback(
     (commentText: string) => {
-      if (!selection) return;
+      const source = pendingSelection ?? selection;
+      if (!source) return;
       addTextComment({
-        selectedText: selection.selectedText,
-        surroundingContext: selection.surroundingContext,
+        selectedText: source.selectedText,
+        surroundingContext: source.surroundingContext,
         commentText,
-        pageNumber: selection.pageNumber,
+        pageNumber: source.pageNumber,
       });
+      setPendingSelection(null);
       clearSelection();
       setCommentInputOpen(false);
       setSidebarCollapsed(false);
     },
-    [selection, addTextComment, clearSelection]
+    [pendingSelection, selection, addTextComment, clearSelection]
   );
 
-  const handleAddImageComment = useCallback(() => {
-    setCommentInputPosition(undefined);
-    setCommentInputOpen(true);
-  }, []);
 
   const handleSaveImageComment = useCallback(
     (commentText: string) => {
@@ -246,6 +260,7 @@ export default function ArtifactCanvas({
   );
 
   const handleCancelComment = useCallback(() => {
+    setPendingSelection(null);
     setCommentInputOpen(false);
   }, []);
 
@@ -298,6 +313,7 @@ export default function ArtifactCanvas({
           {commentInputOpen && (
             <CommentInputBox
               position={commentInputPosition}
+              flipBelow={commentInputPosition ? flipCommentInput : false}
               onSave={commentInputPosition ? handleSaveTextComment : handleSaveImageComment}
               onCancel={handleCancelComment}
               placeholder={commentInputPosition ? 'Comment on selected text…' : 'Comment on image…'}
