@@ -14,8 +14,8 @@ import {
   PanelRightClose,
   PanelRightOpen
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, MessageVisualization, ArtifactCanvasItem, DiagramHint } from '@/types';
-import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildDiagramCanvasItem, buildChartCanvasItem } from '@/lib/artifact-builders';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, MessageVisualization, ArtifactCanvasItem, DiagramHint, ThreadUploadItem } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildDiagramCanvasItem, buildChartCanvasItem, buildUploadCanvasItem } from '@/lib/artifact-builders';
 import PodcastPlayer from './PodcastPlayer';
 
 /**
@@ -42,7 +42,7 @@ function getExpirationBadge(expiresAt: string | null): { show: boolean; text: st
 
 interface ArtifactsPanelProps {
   threadId: string | null;
-  uploads: string[];
+  uploads: ThreadUploadItem[];
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
   generatedPodcasts: PodcastHint[];
@@ -71,6 +71,7 @@ function buildViewableArtifacts(params: {
   generatedDiagrams: DiagramHint[];
   visualizations: MessageVisualization[];
   messageId: string;
+  uploads: ThreadUploadItem[];
 }): ArtifactCanvasItem[] {
   const items: ArtifactCanvasItem[] = [];
   for (const doc of params.generatedDocs) {
@@ -94,6 +95,9 @@ function buildViewableArtifacts(params: {
   params.visualizations.forEach((viz, idx) => {
     items.push(buildChartCanvasItem(viz, params.messageId, idx));
   });
+  for (const upload of params.uploads) {
+    items.push(buildUploadCanvasItem(upload));
+  }
   return items;
 }
 
@@ -224,7 +228,7 @@ export default function ArtifactsPanel({
 
   // Filter uploads to exclude files that are already shown in URL sources sections
   // (youtube-*.txt and web-*.txt files have their own dedicated sections with more metadata)
-  const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
+  const fileUploads = uploads.filter(upload => !urlSourceFilenames.has(upload.filename));
 
   // Count totals (use filtered fileUploads to avoid double-counting)
   const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length + generatedDiagrams.length + visualizations.length;
@@ -240,8 +244,9 @@ export default function ArtifactsPanel({
         generatedDiagrams,
         visualizations,
         messageId,
+        uploads: fileUploads,
       }),
-    [generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams, visualizations, messageId]
+    [generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams, visualizations, messageId, fileUploads]
   );
 
   const handleArtifactClick = useCallback(
@@ -440,26 +445,21 @@ export default function ArtifactsPanel({
                 </button>
                 {expandedSections.userUploads && (
                   <div className="px-3 py-2 space-y-1.5 bg-white">
-                    {fileUploads.map((filename) => (
-                      <div
-                        key={filename}
-                        className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group"
-                      >
-                        {getFileIcon(filename)}
-                        <span className="text-xs text-gray-700 truncate flex-1" title={filename}>
-                          {filename}
-                        </span>
-                        {onRemoveUpload && (
-                          <button
-                            onClick={() => onRemoveUpload(filename)}
-                            className="p-0.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Remove file"
-                          >
-                            <X size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {fileUploads.map((upload) => {
+                      const item = buildUploadCanvasItem(upload);
+                      return (
+                        <ArtifactRow
+                          key={upload.filename}
+                          icon={getFileIcon(upload.filename)}
+                          label={upload.filename}
+                          title={upload.filename}
+                          badge={{ show: false, text: '', variant: 'none' }}
+                          isExpired={false}
+                          onClick={onArtifactClick ? () => handleArtifactClick(item) : undefined}
+                          downloadUrl={item.downloadUrl}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>

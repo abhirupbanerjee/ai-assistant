@@ -30,7 +30,7 @@ import {
 import { saveTrajectoryEntries } from '@/lib/db/citation-trajectory';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, ArtifactComment } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, ArtifactComment, ArtifactContext } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { executeAgentTool } from '@/lib/agent-registry/agent-tools';
@@ -923,6 +923,43 @@ export async function POST(request: NextRequest) {
               const imageComments = artifactComments.filter(c => c.imageUrl);
               const lines: string[] = ['\n\n[ARTIFACT COMMENTS — The user has attached the following comments to this question. Address them in your response.]'];
 
+              // Collect referenced upload-backed artifacts so we can inject full
+              // document text for comments on user uploads (where the document is
+              // not otherwise guaranteed to be in the RAG context).
+              const uploadArtifactIds = new Set(
+                textComments
+                  .filter(c => c.artifactId?.startsWith('upload-'))
+                  .map(c => c.artifactId)
+              );
+              const uploadArtifactContexts = new Map<string, ArtifactContext>();
+              const requestOrigin = request.nextUrl.origin;
+              for (const artifactId of uploadArtifactIds) {
+                try {
+                  // Guard against slow/hanging text extraction (large docs,
+                  // slow providers) stalling the entire chat response. Abort
+                  // after 10s and continue without the upload context.
+                  const uploadAbortController = new AbortController();
+                  const uploadTimeout = setTimeout(() => uploadAbortController.abort(), 10_000);
+                  const response = await fetch(new URL(`/api/artifacts/${encodeURIComponent(artifactId)}/text`, requestOrigin).toString(), {
+                    headers: { cookie: request.headers.get('cookie') || '' },
+                    signal: uploadAbortController.signal,
+                  });
+                  clearTimeout(uploadTimeout);
+                  if (!response.ok) continue;
+                  const data = await response.json() as { pages?: { pageNumber: number; text: string }[] };
+                  const textContent = data.pages?.map(p => p.text).join('\n\n') || '';
+                  uploadArtifactContexts.set(artifactId, {
+                    artifactId,
+                    artifactType: 'upload',
+                    artifactTitle: textComments.find(c => c.artifactId === artifactId)?.artifactTitle || artifactId,
+                    textContent,
+                    userQuestion: message,
+                  });
+                } catch (err) {
+                  console.warn(`[Artifact Comment] Failed to load upload text for ${artifactId}:`, err);
+                }
+              }
+
               if (textComments.length > 0) {
                 lines.push('\nText selections:');
                 for (const comment of textComments) {
@@ -932,6 +969,11 @@ export async function POST(request: NextRequest) {
                   }
                   if (comment.surroundingContext) {
                     lines.push(`  Context: ${comment.surroundingContext}`);
+                  }
+                  const uploadContext = uploadArtifactContexts.get(comment.artifactId);
+                  if (uploadContext?.textContent) {
+                    const snippet = uploadContext.textContent;
+                    lines.push(`  Document text (user upload):\n${snippet.slice(0, 16000)}${snippet.length > 16000 ? '\n... (truncated)' : ''}`);
                   }
                   lines.push(`  Comment: ${comment.commentText}`);
                 }

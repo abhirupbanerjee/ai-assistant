@@ -7,6 +7,7 @@ import type { ArtifactCanvasItem } from '@/types';
 
 interface HtmlViewerProps {
   artifact: ArtifactCanvasItem;
+  containerRef?: React.RefObject<HTMLElement | null>;
 }
 
 type ViewMode = 'preview' | 'source' | 'split';
@@ -43,12 +44,17 @@ const BASE_CSS = `
   img { max-width: 100%; height: auto; }
 `;
 
-export default function HtmlViewer({ artifact }: HtmlViewerProps) {
+export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) {
   const [rawHtml, setRawHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [copied, setCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
+  const localContainerRef = useRef<HTMLDivElement>(null);
+  // Prefer the parent-supplied ref (so useTextSelection in ArtifactCanvas can
+  // detect selections inside this viewer), falling back to a local ref when
+  // rendered standalone. Cast to HTMLDivElement for the wrapping <div> refs.
+  const activeContainerRef = (containerRef ?? localContainerRef) as React.RefObject<HTMLDivElement | null>;
 
   useEffect(() => {
     let cancelled = false;
@@ -162,7 +168,7 @@ export default function HtmlViewer({ artifact }: HtmlViewerProps) {
 
       {/* Content */}
       {viewMode === 'split' ? (
-        <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+        <div ref={activeContainerRef} className="flex-1 min-h-0 flex flex-col md:flex-row">
           <div className="w-full md:w-1/2 h-1/2 md:h-full border-b md:border-b-0 md:border-r min-h-0">
             <iframe
               title={`${artifact.title} — preview`}
@@ -180,18 +186,20 @@ export default function HtmlViewer({ artifact }: HtmlViewerProps) {
           </div>
         </div>
       ) : viewMode === 'source' ? (
-        <div className="flex-1 min-h-0 overflow-auto p-3">
+        <div ref={activeContainerRef} className="flex-1 min-h-0 overflow-auto p-3">
           <pre className="m-0 h-full">
             <code ref={codeRef} className="language-html text-xs">{rawHtml}</code>
           </pre>
         </div>
       ) : (
-        <iframe
-          title={artifact.title}
-          sandbox="allow-scripts"
-          srcDoc={srcDoc}
-          className="flex-1 min-h-0 w-full border-0 bg-white"
-        />
+        <div ref={activeContainerRef} className="flex-1 min-h-0 w-full">
+          <iframe
+            title={artifact.title}
+            sandbox="allow-scripts"
+            srcDoc={srcDoc}
+            className="w-full h-full border-0 bg-white"
+          />
+        </div>
       )}
     </div>
   );

@@ -1,20 +1,20 @@
 'use client';
 
 import { useMemo, useEffect } from 'react';
-import type { Message, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ThreadOutputItem, DiagramHint } from '@/types';
+import type { Message, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ThreadOutputItem, DiagramHint, ThreadUploadItem } from '@/types';
 import type { StreamingState } from './useStreamingChat';
 
 interface UseChatArtifactsOptions {
   threadId: string | null;
   messages: Message[];
-  uploads: string[];
+  uploads: ThreadUploadItem[];
   urlSources: UrlSource[];
   streamingState: StreamingState;
   /** Thread outputs from durable storage (survives summarization) */
   threadOutputs?: ThreadOutputItem[];
   onArtifactsChange?: (data: {
     threadId: string | null;
-    uploads: string[];
+    uploads: ThreadUploadItem[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];

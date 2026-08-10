@@ -16,6 +16,7 @@ import type {
   GeneratedImageInfo,
   MessageVisualization,
   PodcastHint,
+  ThreadUploadItem,
 } from '@/types';
 
 /**
@@ -91,5 +92,35 @@ export function buildChartCanvasItem(
     downloadUrl: '',
     chartData: viz.data,
     chartType: viz.chartType,
+  };
+}
+
+function mapUploadArtifactType(fileType: string): ArtifactCanvasItem['artifactType'] {
+  if (fileType.startsWith('image/')) return 'image';
+  if (fileType === 'application/pdf') return 'pdf';
+  if (fileType === 'text/html') return 'html';
+  if (fileType === 'text/markdown') return 'md';
+  if (
+    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    fileType === 'application/msword'
+  ) return 'docx';
+  if (
+    fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    fileType === 'application/vnd.ms-excel'
+  ) return 'xlsx';
+  if (
+    fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+    fileType === 'application/vnd.ms-powerpoint'
+  ) return 'pptx';
+  return 'md';
+}
+
+export function buildUploadCanvasItem(upload: ThreadUploadItem): ArtifactCanvasItem {
+  const artifactType = mapUploadArtifactType(upload.fileType);
+  return {
+    artifactId: `upload-${upload.id}`,
+    artifactType,
+    title: upload.filename,
+    downloadUrl: `/api/threads/${upload.threadId}/uploads/${encodeURIComponent(upload.filename)}/download`,
   };
 }

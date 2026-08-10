@@ -1,10 +1,10 @@
 'use client';
 
 import { X, FileText, Globe, Youtube } from 'lucide-react';
-import type { UrlSource } from '@/types';
+import type { UrlSource, ThreadUploadItem } from '@/types';
 
 interface AttachmentChipsRowProps {
-  uploads: string[];
+  uploads: ThreadUploadItem[];
   urlSources: UrlSource[];
   pendingUploads: string[];
   pendingUrlSources: UrlSource[];
@@ -22,7 +22,7 @@ export default function AttachmentChipsRow({
 }: AttachmentChipsRowProps) {
   // Combine all attachments, deduplicating by filename
   // (uploads and pendingUploads may overlap since handleUploadComplete adds to both)
-  const allUploads = [...new Set([...uploads, ...pendingUploads])];
+  const allUploads = [...new Set([...uploads.map((u) => u.filename), ...pendingUploads])];
   // Deduplicate URL sources by filename (later entry wins for pending status)
   const allUrlSources = [...new Map(
     [...urlSources, ...pendingUrlSources].map(s => [s.filename, s])

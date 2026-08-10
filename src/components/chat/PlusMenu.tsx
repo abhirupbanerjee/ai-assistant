@@ -25,7 +25,7 @@ interface PlusMenuProps {
   // FileUpload props
   threadId: string | null;
   currentUploads: string[];
-  onUploadComplete: (filename: string) => void;
+  onUploadComplete: (result: { filename: string; item?: import('@/types').ThreadUploadItem }) => void;
   onUrlSourceAdded?: (source: UrlSourceInfo) => void;
   // ModeToggle props
   mode: ChatMode;

@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { RefreshCw } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem, ArtifactComment } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem, ArtifactComment, ThreadUploadItem } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
@@ -51,7 +51,7 @@ interface ChatWindowProps {
   // Callbacks for artifacts data
   onArtifactsChange?: (data: {
     threadId: string | null;
-    uploads: string[];
+    uploads: ThreadUploadItem[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
@@ -124,7 +124,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   onClearArtifactComments,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [uploads, setUploads] = useState<string[]>([]);
+  const [uploads, setUploads] = useState<ThreadUploadItem[]>([]);
   const [pendingUploads, setPendingUploads] = useState<string[]>([]);
   const [urlSources, setUrlSources] = useState<UrlSource[]>([]);
   const [pendingUrlSources, setPendingUrlSources] = useState<UrlSource[]>([]);
@@ -179,7 +179,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     removeUpload: (filename: string) => {
-      setUploads(prev => prev.filter(f => f !== filename));
+      setUploads(prev => prev.filter(f => f.filename !== filename));
       setPendingUploads(prev => prev.filter(f => f !== filename));
     },
     removeUrlSource: (filename: string) => {
@@ -462,7 +462,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         })));
         prevMessageCountRef.current = data.messages.length;
         setUnreadTurns(0);
-        setUploads(data.uploads || []);
+        setUploads(Array.isArray(data.uploads) ? data.uploads : []);
 
         // Task plan info is now shown via per-task progressive updates in the chat (Phase 1.4)
       }
@@ -1017,9 +1017,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   }, [streamingState.isStreaming, threadId, onThreadCreated]);
 
-  const handleUploadComplete = useCallback((filename: string) => {
-    setUploads((prev) => [...prev, filename]);
-    setPendingUploads((prev) => [...prev, filename]);
+  const handleUploadComplete = useCallback((result: { filename: string; item?: ThreadUploadItem }) => {
+    if (result.item) {
+      setUploads((prev) => [...prev, result.item!]);
+    }
+    setPendingUploads((prev) => [...prev, result.filename]);
   }, []);
 
   const handleUrlSourceAdded = useCallback((source: {
@@ -1035,7 +1037,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const handleRemoveUpload = useCallback((filename: string) => {
     setPendingUploads(prev => prev.filter(f => f !== filename));
-    setUploads(prev => prev.filter(f => f !== filename));
+    setUploads(prev => prev.filter(f => f.filename !== filename));
   }, []);
 
   const handleRemoveUrlSource = useCallback((filename: string) => {

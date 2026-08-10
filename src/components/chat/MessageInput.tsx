@@ -16,7 +16,7 @@ import ArtifactContextChip from './ArtifactContextChip';
 import { ChatMode } from './ModeToggle';
 import { useToast } from '@/contexts/ToastContext';
 import type { ChatPreferences, PipelineMode } from '@/types/stream';
-import type { ArtifactComment } from '@/types';
+import type { ArtifactComment, ThreadUploadItem } from '@/types';
 import { parsePipelinePrompt } from '@/lib/pipeline-parser';
 import { buildSubmitPayload } from '@/lib/message-input-parser';
 import { type TriggerSpan } from '@/lib/trigger-span';
@@ -38,7 +38,7 @@ interface MessageInputProps {
   disabled?: boolean;
   threadId: string | null;
   currentUploads: string[];
-  onUploadComplete: (filename: string) => void;
+  onUploadComplete: (result: { filename: string; item?: ThreadUploadItem }) => void;
   onUrlSourceAdded?: (source: UrlSourceInfo) => void;
   // Chat preferences
   preferences: ChatPreferences;
@@ -447,7 +447,18 @@ const MessageInput = memo(function MessageInput({
 
       if (response.ok) {
         const data = await response.json();
-        onUploadComplete(data.filename);
+        const threadUploadItem: ThreadUploadItem | undefined =
+          typeof data.id === 'number' && typeof data.size === 'number'
+            ? {
+                id: data.id as number,
+                threadId,
+                filename: data.filename as string,
+                fileType: data.fileType as string,
+                fileSize: data.size as number,
+                uploadedAt: new Date().toISOString(),
+              }
+            : undefined;
+        onUploadComplete({ filename: data.filename as string, item: threadUploadItem });
       } else {
         const errorData = await response.json();
         const errorMsg = errorData.error || 'Failed to upload file';

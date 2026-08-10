@@ -13,8 +13,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ArtifactCanvasItem } from '@/types';
-import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem } from '@/lib/artifact-builders';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ArtifactCanvasItem, ThreadUploadItem } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildUploadCanvasItem } from '@/lib/artifact-builders';
 import MobileMenuDrawer from '@/components/ui/MobileMenuDrawer';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
 import PodcastPlayer from '@/components/chat/PodcastPlayer';
@@ -36,7 +36,7 @@ function getExpirationBadge(expiresAt: string | null): { show: boolean; text: st
 
 interface MobileArtifactsMenuProps {
   threadId: string | null;
-  uploads: string[];
+  uploads: ThreadUploadItem[];
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
   generatedPodcasts: PodcastHint[];
@@ -53,7 +53,8 @@ interface MobileArtifactsMenuProps {
 function buildMobileViewableArtifacts(
   docs: GeneratedDocumentInfo[],
   images: GeneratedImageInfo[],
-  podcasts: PodcastHint[]
+  podcasts: PodcastHint[],
+  uploads: ThreadUploadItem[]
 ): ArtifactCanvasItem[] {
   const items: ArtifactCanvasItem[] = [];
   for (const doc of docs) {
@@ -70,6 +71,9 @@ function buildMobileViewableArtifacts(
     if (getExpirationBadge(podcast.expiresAt).variant !== 'expired') {
       items.push(buildPodcastCanvasItem(podcast));
     }
+  }
+  for (const upload of uploads) {
+    items.push(buildUploadCanvasItem(upload));
   }
   return items;
 }
@@ -116,7 +120,7 @@ export default function MobileArtifactsMenu({
 
   // Get filenames from URL sources to avoid duplicates
   const urlSourceFilenames = new Set(urlSources.map(s => s.filename));
-  const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
+  const fileUploads = uploads.filter(upload => !urlSourceFilenames.has(upload.filename));
 
   // Count totals
   const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length;
@@ -124,8 +128,8 @@ export default function MobileArtifactsMenu({
 
   // Ordered list of all canvas-viewable artifacts (non-expired only).
   const viewableArtifacts = useMemo(
-    () => buildMobileViewableArtifacts(generatedDocs, generatedImages, generatedPodcasts),
-    [generatedDocs, generatedImages, generatedPodcasts]
+    () => buildMobileViewableArtifacts(generatedDocs, generatedImages, generatedPodcasts, fileUploads),
+    [generatedDocs, generatedImages, generatedPodcasts, fileUploads]
   );
 
   const handleArtifactClick = useCallback(
@@ -265,20 +269,30 @@ export default function MobileArtifactsMenu({
                 </button>
                 {expandedSections.userUploads && (
                   <div className="px-3 py-2 space-y-1.5 bg-white">
-                    {fileUploads.map((filename) => (
-                      <div key={filename} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group">
-                        {getFileIcon(filename)}
-                        <span className="text-xs text-gray-700 truncate flex-1">{filename}</span>
-                        {onRemoveUpload && (
-                          <button
-                            onClick={() => onRemoveUpload(filename)}
-                            className="p-0.5 text-gray-400 hover:text-red-500"
-                          >
-                            <X size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {fileUploads.map((upload) => {
+                      const item = buildUploadCanvasItem(upload);
+                      return (
+                        <div
+                          key={upload.filename}
+                          className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group cursor-pointer"
+                          onClick={onArtifactClick ? () => handleArtifactClick(item) : undefined}
+                        >
+                          {getFileIcon(upload.filename)}
+                          <span className="text-xs text-gray-700 truncate flex-1">{upload.filename}</span>
+                          {onRemoveUpload && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRemoveUpload(upload.filename);
+                              }}
+                              className="p-0.5 text-gray-400 hover:text-red-500"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

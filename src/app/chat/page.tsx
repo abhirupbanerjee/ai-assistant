@@ -20,8 +20,8 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, DiagramHint, StarterPrompt, ArtifactCanvasItem, ArtifactComment } from '@/types';
-import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildDiagramCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, DiagramHint, StarterPrompt, ArtifactCanvasItem, ArtifactComment, ThreadUploadItem } from '@/types';
+import { buildDocCanvasItem, buildImageCanvasItem, buildPodcastCanvasItem, buildDiagramCanvasItem, buildUploadCanvasItem, getExpirationVariant } from '@/lib/artifact-builders';
 
 const COLLAPSED_PANEL_WIDTH_PX = 56;
 
@@ -186,7 +186,7 @@ function HomeContent() {
   // Artifacts state (lifted from ChatWindow)
   const [artifactsData, setArtifactsData] = useState<{
     threadId: string | null;
-    uploads: string[];
+    uploads: ThreadUploadItem[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
@@ -251,7 +251,7 @@ function HomeContent() {
 
   const handleArtifactsChange = useCallback((data: {
     threadId: string | null;
-    uploads: string[];
+    uploads: ThreadUploadItem[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
@@ -279,8 +279,11 @@ function HomeContent() {
     artifactsData.generatedDiagrams.forEach((diagram, idx) => {
       items.push(buildDiagramCanvasItem(diagram, idx));
     });
+    for (const upload of artifactsData.uploads) {
+      items.push(buildUploadCanvasItem(upload));
+    }
     return items;
-  }, [artifactsData.generatedDocs, artifactsData.generatedImages, artifactsData.generatedPodcasts, artifactsData.generatedDiagrams]);
+  }, [artifactsData.generatedDocs, artifactsData.generatedImages, artifactsData.generatedPodcasts, artifactsData.generatedDiagrams, artifactsData.uploads]);
 
   // Keep a ref to the latest siblings so handleOpenCanvas identity stays stable
   // and MessageBubble memoization isn't invalidated every time a new artifact is generated.
@@ -335,7 +338,7 @@ function HomeContent() {
         chatWindowRef.current?.removeUpload(filename);
         setArtifactsData(prev => ({
           ...prev,
-          uploads: prev.uploads.filter(f => f !== filename),
+          uploads: prev.uploads.filter(f => f.filename !== filename),
         }));
       } else {
         const error = await response.json();

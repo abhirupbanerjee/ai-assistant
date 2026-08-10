@@ -5,6 +5,7 @@ import { getUploadLimits } from '@/lib/db/compat';
 import { extractWebContent, generateFilenameFromUrl, formatWebContentForIngestion, isTavilyConfigured } from '@/lib/tools/tavily';
 import { getYouTubeConfig, extractWithSupadata } from '@/lib/tools/youtube';
 import { extractVideoId, isYouTubeUrl as checkYouTubeUrl } from '@/lib/youtube';
+import { getMimeTypeFromFilename } from '@/lib/document-extractor';
 import type { UploadResponse, ApiError } from '@/types';
 
 interface RouteParams {
@@ -157,7 +158,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const saveResult = await saveUpload(user.id, threadId, filename, buffer);
 
       return NextResponse.json({
+        id: saveResult.id,
         filename: saveResult.filename,
+        fileType: getMimeTypeFromFilename(saveResult.filename),
         size: buffer.length,
         uploadCount: saveResult.uploadCount,
         sourceType: type,
@@ -226,7 +229,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     return NextResponse.json<UploadResponse>({
+      id: result.id,
       filename: result.filename,
+      fileType: getMimeTypeFromFilename(result.filename),
       size: file.size,
       uploadCount: result.uploadCount,
     });

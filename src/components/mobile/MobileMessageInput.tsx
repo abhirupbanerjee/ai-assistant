@@ -28,7 +28,7 @@ interface MobileMessageInputProps {
   disabled?: boolean;
   threadId: string | null;
   currentUploads: string[];
-  onUploadComplete: (filename: string) => void;
+  onUploadComplete: (result: { filename: string; item?: import('@/types').ThreadUploadItem }) => void;
   onUrlSourceAdded?: (source: UrlSourceInfo) => void;
   preferences: ChatPreferences;
   onPreferencesChange: (preferences: ChatPreferences) => void;

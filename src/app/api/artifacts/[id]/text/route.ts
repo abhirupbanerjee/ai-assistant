@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, getThreadOutputById, getThreadOwner } from '@/lib/db/compat';
+import { getUserByEmail, getThreadOutputById, getThreadOwner, getThreadUploadById } from '@/lib/db/compat';
 import { readFileBuffer } from '@/lib/storage';
 import { extractText, getMimeTypeFromFilename } from '@/lib/document-extractor';
 
@@ -19,14 +19,6 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const outputId = parseInt(id, 10);
-
-    if (isNaN(outputId)) {
-      return NextResponse.json(
-        { error: 'Invalid artifact ID', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      );
-    }
 
     const user = await getCurrentUser();
     if (!user) {
@@ -44,25 +36,68 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const output = await getThreadOutputById(outputId);
-    if (!output) {
-      return NextResponse.json(
-        { error: 'Artifact not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+    let filepath: string;
+    let filename: string;
+
+    if (id.startsWith('upload-')) {
+      const uploadId = parseInt(id.slice('upload-'.length), 10);
+      if (isNaN(uploadId)) {
+        return NextResponse.json(
+          { error: 'Invalid upload artifact ID', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        );
+      }
+
+      const upload = await getThreadUploadById(uploadId);
+      if (!upload) {
+        return NextResponse.json(
+          { error: 'Upload not found', code: 'NOT_FOUND' },
+          { status: 404 }
+        );
+      }
+
+      const owner = await getThreadOwner(upload.thread_id);
+      if (!owner || (owner.user_id !== dbUser.id && !user.isAdmin)) {
+        return NextResponse.json(
+          { error: 'Access denied', code: 'ACCESS_DENIED' },
+          { status: 403 }
+        );
+      }
+
+      filepath = upload.filepath;
+      filename = upload.filename;
+    } else {
+      const outputId = parseInt(id, 10);
+      if (isNaN(outputId)) {
+        return NextResponse.json(
+          { error: 'Invalid artifact ID', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        );
+      }
+
+      const output = await getThreadOutputById(outputId);
+      if (!output) {
+        return NextResponse.json(
+          { error: 'Artifact not found', code: 'NOT_FOUND' },
+          { status: 404 }
+        );
+      }
+
+      const owner = await getThreadOwner(output.thread_id);
+      if (!owner || (owner.user_id !== dbUser.id && !user.isAdmin)) {
+        return NextResponse.json(
+          { error: 'Access denied', code: 'ACCESS_DENIED' },
+          { status: 403 }
+        );
+      }
+
+      filepath = output.filepath;
+      filename = output.filename;
     }
 
-    const owner = await getThreadOwner(output.thread_id);
-    if (!owner || (owner.user_id !== dbUser.id && !user.isAdmin)) {
-      return NextResponse.json(
-        { error: 'Access denied', code: 'ACCESS_DENIED' },
-        { status: 403 }
-      );
-    }
-
-    const buffer = await readFileBuffer(output.filepath);
-    const mimeType = getMimeTypeFromFilename(output.filename);
-    const result = await extractText(buffer, mimeType, output.filename);
+    const buffer = await readFileBuffer(filepath);
+    const mimeType = getMimeTypeFromFilename(filename);
+    const result = await extractText(buffer, mimeType, filename);
 
     return NextResponse.json(
       {

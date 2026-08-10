@@ -7,7 +7,7 @@
  */
 
 import path from 'path';
-import type { Thread, ThreadWithMessages, Message, ThreadCategory } from '@/types';
+import type { Thread, ThreadWithMessages, Message, ThreadCategory, ThreadUploadItem } from '@/types';
 import {
   getThreadUploadsDir,
   ensureDir,
@@ -185,10 +185,18 @@ export async function getThread(
   const dbMessages = await dbGetMessagesForThread(threadId);
   const messages = dbMessages.map(toMessage);
 
-  // Get uploads from filesystem
-  const uploadsDir = getThreadUploadPath(userId, threadId);
-  const uploadFiles = await listFiles(uploadsDir);
-  const uploads = uploadFiles.filter(f => isSupportedExtension(f));
+  // Get uploads from database metadata so the UI has id, size, and type.
+  const dbUploads = await dbGetThreadUploads(threadId);
+  const uploads: ThreadUploadItem[] = dbUploads
+    .filter((u) => isSupportedExtension(u.filename))
+    .map((u) => ({
+      id: u.id,
+      threadId: u.thread_id,
+      filename: u.filename,
+      fileType: getMimeTypeFromFilename(u.filename),
+      fileSize: u.file_size,
+      uploadedAt: u.uploaded_at,
+    }));
 
   const categories = await resolveCategories(threadId, threadDetails.categories);
 
@@ -425,7 +433,7 @@ export async function saveUpload(
   threadId: string,
   filename: string,
   buffer: Buffer
-): Promise<{ filename: string; filePath: string; uploadCount: number }> {
+): Promise<{ id: number; filename: string; filePath: string; uploadCount: number }> {
   const numericUserId = await getUserId(userId);
   if (!numericUserId) {
     throw new Error('User not found');
@@ -454,8 +462,10 @@ export async function saveUpload(
   // Write file to filesystem
   await writeFileBuffer(filePath, buffer);
 
-  // Record upload in database
-  await dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
+  // Record upload in database — capture the inserted row so the caller can
+  // return the DB-assigned upload id back to the client (needed for
+  // ThreadUploadItem construction and upload-backed canvas artifact IDs).
+  const uploadRow = await dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
 
   // Invalidate embedding cache for this file (in case of re-upload with same name)
   await invalidateThreadEmbeddingCache(threadId, safeFilename);
@@ -463,6 +473,7 @@ export async function saveUpload(
   const newCount = await dbGetThreadUploadCount(threadId);
 
   return {
+    id: uploadRow.id,
     filename: safeFilename,
     filePath,
     uploadCount: newCount,

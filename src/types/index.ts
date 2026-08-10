@@ -81,9 +81,22 @@ export interface ThreadCategory {
   slug: string;
 }
 
+/**
+ * A user-uploaded file attached to a thread.
+ * Mirrors the thread_uploads table columns needed by the UI.
+ */
+export interface ThreadUploadItem {
+  id: number;
+  threadId: string;
+  filename: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt: string;
+}
+
 export interface ThreadWithMessages extends Thread {
   messages: Message[];
-  uploads: string[];
+  uploads: ThreadUploadItem[];
   categories?: ThreadCategory[];
 }
 
@@ -317,6 +330,10 @@ export interface UploadResponse {
   filename: string;
   size: number;
   uploadCount: number;
+  /** DB-assigned upload id (used for upload-backed canvas artifact IDs). */
+  id?: number;
+  /** MIME type resolved from the filename (used for canvas artifact mapping). */
+  fileType?: string;
 }
 
 // ============ Multimodal Content Types ============

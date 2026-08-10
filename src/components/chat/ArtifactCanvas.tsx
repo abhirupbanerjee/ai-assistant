@@ -33,7 +33,7 @@ interface ArtifactCanvasProps {
   onSendComments?: (comments: ArtifactComment[]) => void;
 }
 
-const TEXT_SELECTABLE_TYPES: ArtifactCanvasItem['artifactType'][] = ['md', 'pdf', 'docx'];
+const TEXT_SELECTABLE_TYPES: ArtifactCanvasItem['artifactType'][] = ['md', 'pdf', 'docx', 'html'];
 
 function ArtifactViewer({
   artifact,
@@ -57,7 +57,11 @@ function ArtifactViewer({
 
   switch (artifact.artifactType) {
     case 'html':
-      return <HtmlViewer artifact={artifact} />;
+      return (
+        <div ref={containerRef} className="w-full h-full">
+          <HtmlViewer artifact={artifact} containerRef={containerRef as React.RefObject<HTMLElement | null>} />
+        </div>
+      );
     case 'docx':
     case 'md':
       return (

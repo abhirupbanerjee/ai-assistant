@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { ThreadUploadItem } from '@/types';
 import {
   Paperclip,
   FileText,
@@ -97,7 +98,7 @@ interface ImageCapabilities {
 interface FileUploadProps {
   threadId: string | null;
   currentUploads: string[];
-  onUploadComplete: (filename: string) => void;
+  onUploadComplete: (result: { filename: string; item?: import('@/types').ThreadUploadItem }) => void;
   onUrlSourceAdded?: (source: UrlSourceInfo) => void;
   disabled?: boolean;
 }
@@ -483,12 +484,26 @@ export default function FileUpload({
     // Notify parent of successful uploads
     for (const { item, result } of results) {
       if (result.success && result.data) {
-        onUploadComplete(result.data.filename as string);
+        const filename = result.data.filename as string;
+        const threadUploadItem: ThreadUploadItem | undefined =
+          typeof result.data.id === 'number' &&
+          typeof result.data.size === 'number' &&
+          typeof result.data.uploadCount === 'number'
+            ? {
+                id: result.data.id as number,
+                threadId: threadId!,
+                filename,
+                fileType: result.data.fileType as string,
+                fileSize: result.data.size as number,
+                uploadedAt: new Date().toISOString(),
+              }
+            : undefined;
+        onUploadComplete({ filename, item: threadUploadItem });
 
         // Notify about URL sources
         if (onUrlSourceAdded && result.data.sourceType) {
           onUrlSourceAdded({
-            filename: result.data.filename as string,
+            filename,
             originalUrl: (result.data.originalUrl as string) || item.url || '',
             sourceType: result.data.sourceType as 'web' | 'youtube',
             title: result.data.title as string | undefined,
