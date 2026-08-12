@@ -1,0 +1,30 @@
+{
+  "name": "Sanitized Contract Bot",
+  "slug": "contract-bot",
+  "description": "A fixture containing only public discovery fields.",
+  "baseUrl": "https://assistant.example.test/api/agent-bots/contract-bot",
+  "version": { "number": 1, "label": "Initial" },
+  "inputSchema": {
+    "parameters": [
+      { "name": "prompt", "type": "string", "description": "Prompt text", "required": true },
+      { "name": "includeDetails", "type": "boolean", "description": "Include details", "required": false, "default": false }
+    ]
+  },
+  "uploadConfig": {
+    "enabled": true,
+    "maxFiles": 2,
+    "maxSizePerFileMB": 10,
+    "allowedTypes": ["text/plain", "application/pdf"],
+    "required": false
+  },
+  "outputConfig": {
+    "enabledTypes": ["text", "json", "pdf"],
+    "defaultType": "json",
+    "supportsFallback": true
+  },
+  "endpoints": [
+    { "path": "https://assistant.example.test/api/agent-bots/contract-bot/invoke", "method": "POST", "purpose": "Execute the agent bot (sync or async)" }
+  ],
+  "features": { "async": true, "sync": true, "webhooks": true, "includeSources": true },
+  "futureField": { "ignored": true }
+}

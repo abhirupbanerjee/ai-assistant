@@ -1,0 +1,8 @@
+{
+  "workspaceId": "workspace_fixture_01",
+  "type": "public",
+  "config": {
+    "name": "Sanitized Workspace",
+    "welcomeMessage": "Welcome"
+  }
+}

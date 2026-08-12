@@ -1,0 +1,20 @@
+{
+  "jobId": "job_fixture_01",
+  "status": "completed",
+  "createdAt": "2026-08-12T12:00:00.000Z",
+  "startedAt": "2026-08-12T12:00:01.000Z",
+  "completedAt": "2026-08-12T12:00:03.000Z",
+  "outputs": [
+    { "type": "text", "content": "Completed fixture output" },
+    {
+      "type": "pdf",
+      "filename": "report.pdf",
+      "downloadUrl": "/api/agent-bots/contract-bot/jobs/job_fixture_01/outputs/output_fixture_01/download",
+      "fileSize": 2048,
+      "mimeType": "application/pdf"
+    }
+  ],
+  "sources": [{ "title": "Fixture source" }],
+  "tokenUsage": { "totalTokens": 42 },
+  "processingTimeMs": 2000
+}
