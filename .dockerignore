@@ -50,5 +50,8 @@ data/
 # Separate microservices (built from their own Dockerfiles/contexts)
 services/
 
+# Separate apps (built from their own Dockerfiles/contexts)
+test-portal/
+
 # Misc
 .dockerignore
