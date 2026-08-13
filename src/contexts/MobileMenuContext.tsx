@@ -10,8 +10,10 @@ interface MobileMenuContextValue {
   // Input expanded state
   isInputExpanded: boolean;
 
-  // Computed: should hide FABs (typing or scrolling)
-  shouldHideFABs: boolean;
+  // Computed independently so the primary Threads navigation remains
+  // reachable while secondary artifact navigation may auto-hide.
+  hideThreadsFAB: boolean;
+  hideArtifactsFAB: boolean;
 
   // Computed: should hide input (scrolling down, not typing)
   shouldHideInput: boolean;
@@ -78,8 +80,12 @@ export function MobileMenuProvider({ children }: MobileMenuProviderProps) {
     setIsScrollingDown(scrolling);
   }, []);
 
-  // Compute shouldHideFABs: hide when typing (input expanded) or scrolling down or menu open
-  const shouldHideFABs = isInputExpanded || isScrollingDown || isThreadsMenuOpen || isArtifactsMenuOpen;
+  // Threads is the only persistent mobile navigation after removing the
+  // contextual header, so never hide it merely because the user is typing or
+  // scrolling. Artifacts remains a secondary action and may auto-hide.
+  const isAnyMenuOpen = isThreadsMenuOpen || isArtifactsMenuOpen;
+  const hideThreadsFAB = isAnyMenuOpen;
+  const hideArtifactsFAB = isInputExpanded || isScrollingDown || isAnyMenuOpen;
 
   // Compute shouldHideInput: hide when scrolling down (but not when input is expanded/typing)
   const shouldHideInput = isScrollingDown && !isInputExpanded;
@@ -88,7 +94,8 @@ export function MobileMenuProvider({ children }: MobileMenuProviderProps) {
     isThreadsMenuOpen,
     isArtifactsMenuOpen,
     isInputExpanded,
-    shouldHideFABs,
+    hideThreadsFAB,
+    hideArtifactsFAB,
     shouldHideInput,
     isScrollingDown,
     openThreadsMenu,

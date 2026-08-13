@@ -25,7 +25,12 @@ export default function MobileFABs({
   artifactCount,
   hasActiveThread,
 }: MobileFABsProps) {
-  const { shouldHideFABs, openThreadsMenu, openArtifactsMenu } = useMobileMenu();
+  const {
+    hideThreadsFAB,
+    hideArtifactsFAB,
+    openThreadsMenu,
+    openArtifactsMenu,
+  } = useMobileMenu();
 
   return (
     <>
@@ -34,7 +39,7 @@ export default function MobileFABs({
         onClick={openThreadsMenu}
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
         className={`fixed left-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
-          shouldHideFABs ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
+          hideThreadsFAB ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
         }`}
         aria-label="Open threads menu"
       >
@@ -52,7 +57,7 @@ export default function MobileFABs({
           onClick={openArtifactsMenu}
           style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
           className={`fixed right-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
-            shouldHideFABs ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
+            hideArtifactsFAB ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
           }`}
           aria-label="Open artifacts menu"
         >

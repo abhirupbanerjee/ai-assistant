@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
-  Download, Home, ChevronDown, ChevronRight, Search, X, FolderOpen
+  Download, Home, ChevronDown, ChevronRight, Search, X, FolderOpen, HelpCircle
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -12,6 +12,7 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import MobileMenuDrawer from '@/components/ui/MobileMenuDrawer';
 import CategorySelector from '@/components/ui/CategorySelector';
+import BotIcon from '@/components/ui/BotIcon';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
 import {
   useThreadGroups,
@@ -43,6 +44,9 @@ interface MobileThreadsMenuProps {
   onThreadCreated: (thread: Thread) => void;
   onThreadDeleted: () => void;
   selectedThreadId?: string | null;
+  brandingName: string;
+  brandingBotIcon: string;
+  onHomeClick: () => void;
 }
 
 export default function MobileThreadsMenu({
@@ -50,6 +54,9 @@ export default function MobileThreadsMenu({
   onThreadCreated,
   onThreadDeleted,
   selectedThreadId,
+  brandingName,
+  brandingBotIcon,
+  onHomeClick,
 }: MobileThreadsMenuProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -153,6 +160,12 @@ export default function MobileThreadsMenu({
     closeThreadsMenu();
     router.push(href);
   }, [closeThreadsMenu, router]);
+
+  const handleHome = useCallback(() => {
+    onHomeClick();
+    closeThreadsMenu();
+    router.push('/chat');
+  }, [closeThreadsMenu, onHomeClick, router]);
 
   const handleSignOut = useCallback(() => {
     if (process.env.NODE_ENV !== 'production') {
@@ -352,12 +365,18 @@ export default function MobileThreadsMenu({
         isOpen={isThreadsMenuOpen}
         onClose={closeThreadsMenu}
         title="Threads"
+        titleContent={(
+          <span className="flex items-center gap-2 min-w-0">
+            <BotIcon iconKey={brandingBotIcon} size={22} className="text-blue-600 shrink-0" />
+            <span className="truncate" title={brandingName}>{brandingName}</span>
+          </span>
+        )}
         side="left"
         headerRight={
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => navigateFromMenu('/chat')}
+              onClick={handleHome}
               className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
               style={{ color: 'var(--accent-color)' }}
               aria-label="Chat home"
@@ -435,6 +454,10 @@ export default function MobileThreadsMenu({
 
         {/* Footer */}
         <div className="border-t p-4 space-y-2">
+          <button type="button" onClick={() => navigateFromMenu('/help')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            <HelpCircle size={16} />
+            Help
+          </button>
           {isAdmin && (
             <button type="button" onClick={() => navigateFromMenu('/admin')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
               <Settings size={16} />

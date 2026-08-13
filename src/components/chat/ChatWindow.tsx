@@ -25,7 +25,6 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import ChatSummaryBanner from './ChatSummaryBanner';
 import ChatWelcome from './ChatWelcome';
 import ScrollNavButtons from './ScrollNavButtons';
-import ThreadContextBar from './ThreadContextBar';
 
 // Lazy-load heavy conditional components that only render during specific streaming states
 const SubagentPanel = dynamic(() => import('./SubagentPanel'), { ssr: false, loading: () => <div className="h-24 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
@@ -1104,10 +1103,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   return (
 
-    <div className="flex-1 flex flex-col min-w-0 min-h-0">
-      {/* Thread context sub-bar — title, model, categories */}
-      <ThreadContextBar thread={activeThread ?? null} />
-
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 pt-[calc(env(safe-area-inset-top,0px)+64px)] md:pt-0">
       {/* Summarization Banner */}
       <ChatSummaryBanner
         isSummarized={activeThread?.isSummarized ?? false}

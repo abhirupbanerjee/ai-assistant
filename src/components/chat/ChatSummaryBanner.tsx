@@ -39,18 +39,18 @@ export default function ChatSummaryBanner({
     >
       <button
         onClick={onToggleDetails}
-        className="w-full flex items-center justify-between text-left"
+        className="w-full flex items-start justify-between gap-2 text-left"
       >
-        <div className="flex items-center gap-2" style={{ color: 'var(--accent-text)' }}>
-          <BookOpen size={18} />
-          <span className="text-sm font-medium">
+        <div className="flex items-start gap-2 min-w-0" style={{ color: 'var(--accent-text)' }}>
+          <BookOpen size={18} className="shrink-0 mt-0.5" />
+          <span className="text-sm font-medium min-w-0 break-words">
             This conversation has been summarized ({summaryData.messagesSummarized} messages compressed)
           </span>
         </div>
         {showSummaryDetails ? (
-          <ChevronUp size={18} style={{ color: 'var(--accent-color)' }} />
+          <ChevronUp size={18} className="shrink-0" style={{ color: 'var(--accent-color)' }} />
         ) : (
-          <ChevronDown size={18} style={{ color: 'var(--accent-color)' }} />
+          <ChevronDown size={18} className="shrink-0" style={{ color: 'var(--accent-color)' }} />
         )}
       </button>
       {showSummaryDetails && (

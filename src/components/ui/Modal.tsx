@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface ModalProps {
   isOpen: boolean;
@@ -16,22 +17,65 @@ interface ModalProps {
 
 export default function Modal({ isOpen, onClose, title, children, allowOverflow = false, maxWidth = 'max-w-lg' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const releaseScrollLock = lockBodyScroll();
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const firstField = dialogRef.current?.querySelector<HTMLElement>(
+        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+      );
+      firstField?.focus();
+    });
+
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    );
+
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
         onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    document.body.style.overflow = 'hidden';
+    // Capture phase gives the topmost modal first refusal on Escape before an
+    // underlying drawer's document listener can react.
+    document.addEventListener('keydown', handleEscape, true);
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', handleEscape, true);
+      releaseScrollLock();
+      window.requestAnimationFrame(() => previouslyFocusedRef.current?.focus());
     };
   }, [isOpen, onClose]);
 
@@ -48,13 +92,22 @@ export default function Modal({ isOpen, onClose, title, children, allowOverflow 
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={handleOverlayClick}
+      data-modal-root="true"
     >
-      <div className={`bg-white rounded-lg shadow-xl ${maxWidth} w-full mx-4 max-h-[90vh] flex flex-col`}>
+      <div
+        ref={dialogRef}
+        className={`bg-white rounded-lg shadow-xl ${maxWidth} w-full mx-4 max-h-[90vh] flex flex-col`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
             className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+            aria-label={`Close ${title}`}
           >
             <X size={20} />
           </button>

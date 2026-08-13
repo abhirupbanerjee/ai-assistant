@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
-  PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X, FolderOpen
+  PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X, FolderOpen,
+  HelpCircle
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
+import BotIcon from '@/components/ui/BotIcon';
 import {
   useThreadGroups,
   loadCollapsedGroups,
@@ -46,6 +48,9 @@ interface ThreadSidebarProps {
   hidden?: boolean; // For mobile: hide when input is focused
   collapsed?: boolean;
   onCollapseChange?: (collapsed: boolean) => void;
+  brandingName: string;
+  brandingBotIcon: string;
+  onHomeClick: () => void;
 }
 
 export interface ThreadSidebarRef {
@@ -60,6 +65,9 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   hidden = false,
   collapsed: collapsedProp = false,
   onCollapseChange,
+  brandingName,
+  brandingBotIcon,
+  onHomeClick,
 }, ref) {
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -340,11 +348,22 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   if (isCollapsed) {
     return (
       <>
-        <aside className="w-full h-full bg-white border-r border-gray-200 flex flex-col items-center py-4 gap-3">
+        <aside className="w-full h-full min-h-0 overflow-y-auto bg-white border-r border-gray-200 flex flex-col items-center py-2 gap-1">
+          <Link
+            href="/chat"
+            onClick={onHomeClick}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shrink-0"
+            title={`${brandingName} home`}
+            aria-label={`${brandingName} home`}
+          >
+            <BotIcon iconKey={brandingBotIcon} size={22} />
+          </Link>
+
           <button
             onClick={() => setIsCollapsed(false)}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
             title="Expand threads panel"
+            aria-label="Expand threads panel"
           >
             <PanelLeftOpen size={20} />
           </button>
@@ -352,21 +371,22 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
           {/* New thread button */}
           <button
             onClick={openNewThreadModal}
-            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shrink-0"
             title="New thread"
+            aria-label="New thread"
           >
             <Plus size={20} />
           </button>
 
-          {/* Thread count */}
-          {threadTotal > 0 && (
-            <div className="flex flex-col items-center gap-1">
-              <MessageSquare size={16} className="text-gray-400" />
-              <span className="text-xs font-medium text-gray-600">{threadTotal}</span>
-            </div>
-          )}
-
-          <div className="mt-auto flex flex-col items-center gap-2 border-t border-gray-200 pt-3">
+          <div className="mt-auto flex flex-col items-center gap-1 border-t border-gray-200 pt-2 shrink-0">
+            <Link
+              href="/help"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Help"
+              aria-label="Help"
+            >
+              <HelpCircle size={20} />
+            </Link>
             {(isAdmin || isSuperUser) && (
               <Link
                 href={isAdmin ? '/admin' : '/superuser'}
@@ -470,16 +490,29 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
     <>
       {/* Sidebar */}
       <aside className="w-full h-full bg-white border-r border-gray-200 flex flex-col">
-        {/* Header with collapse button */}
+        {/* Product identity and panel control */}
         <div className="px-4 py-3 border-b flex items-center justify-between">
-          <span className="font-medium text-gray-900">Threads</span>
+          <Link
+            href="/chat"
+            onClick={onHomeClick}
+            className="flex items-center gap-2 min-w-0 text-gray-900 hover:text-blue-600 transition-colors"
+            title={`${brandingName} home`}
+          >
+            <BotIcon iconKey={brandingBotIcon} size={24} className="text-blue-600 shrink-0" />
+            <span className="font-semibold truncate">{brandingName}</span>
+          </Link>
           <button
             onClick={() => setIsCollapsed(true)}
-            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors shrink-0"
             title="Collapse panel"
+            aria-label="Collapse panel"
           >
             <PanelLeftClose size={18} />
           </button>
+        </div>
+
+        <div className="px-4 py-2 border-b">
+          <span className="font-medium text-gray-900">Threads</span>
         </div>
 
         {/* New Thread Button */}
@@ -704,6 +737,13 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
 
         {/* Footer with user info and admin link */}
         <div className="border-t p-4 space-y-2">
+          <Link
+            href="/help"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <HelpCircle size={16} />
+            Help
+          </Link>
           {isAdmin && (
             <Link
               href="/admin"

@@ -11,7 +11,6 @@ import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import ArtifactCanvas from '@/components/chat/ArtifactCanvas';
 import BrowserSessionViewer from '@/components/chat/viewers/BrowserSessionViewer';
 import MobileArtifactCanvas from '@/components/mobile/MobileArtifactCanvas';
-import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -401,9 +400,6 @@ function HomeContent() {
     mobileMenu?.setInputExpanded(false);
   }, [mobileMenu]);
 
-  // Header always shows the bot name (branding)
-  const getHeaderTitle = () => brandingName;
-
   // Calculate artifact count for FAB badge
   const artifactCount = artifactsData.generatedDocs.length +
     artifactsData.generatedImages.length +
@@ -411,24 +407,14 @@ function HomeContent() {
     artifactsData.uploads.length +
     artifactsData.urlSources.length;
 
-  // Handler for creating new thread from mobile header
-  const handleNewThreadFromHeader = useCallback(() => {
+  // Explicitly reset local thread state; same-route navigation to /chat does
+  // not guarantee that this client component will remount.
+  const handleHomeClick = useCallback(() => {
     setActiveThread(null);
   }, []);
 
   return (
     <div className="fixed-layout bg-gray-50">
-      {/* Header - shows help link */}
-      <AppHeader
-        title={getHeaderTitle()}
-        botIcon={brandingBotIcon}
-        isMobile={isMobile}
-        activeThread={activeThread}
-        onOpenThreadsMenu={mobileMenu?.openThreadsMenu}
-        onNewThread={handleNewThreadFromHeader}
-        onHomeClick={handleNewThreadFromHeader}
-      />
-
       {/* Content area */}
       <div ref={desktopLayoutRef} className="flex flex-1 min-h-0 overflow-hidden">
         <PanelGroup
@@ -458,6 +444,9 @@ function HomeContent() {
                   selectedThreadId={activeThread?.id}
                   collapsed={isThreadSidebarCollapsed}
                   onCollapseChange={handleThreadSidebarCollapseChange}
+                  brandingName={brandingName}
+                  brandingBotIcon={brandingBotIcon}
+                  onHomeClick={handleHomeClick}
                 />
               </Panel>
               <PanelResizeHandle
@@ -570,6 +559,9 @@ function HomeContent() {
             onThreadCreated={handleThreadCreated}
             onThreadDeleted={handleThreadDeleted}
             selectedThreadId={activeThread?.id}
+            brandingName={brandingName}
+            brandingBotIcon={brandingBotIcon}
+            onHomeClick={handleHomeClick}
           />
           {canvasState.mode === 'browser' && canvasState.browserSessionId ? (
             <div className="fixed inset-0 z-50 bg-gray-900">
