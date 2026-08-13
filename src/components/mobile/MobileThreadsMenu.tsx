@@ -6,7 +6,7 @@ import {
   Download, Home, ChevronDown, ChevronRight, Search, X, FolderOpen
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
@@ -41,14 +41,17 @@ const getCategoryColor = (categoryId: number) => {
 interface MobileThreadsMenuProps {
   onThreadSelect: (thread: Thread | null) => void;
   onThreadCreated: (thread: Thread) => void;
+  onThreadDeleted: () => void;
   selectedThreadId?: string | null;
 }
 
 export default function MobileThreadsMenu({
   onThreadSelect,
   onThreadCreated,
+  onThreadDeleted,
   selectedThreadId,
 }: MobileThreadsMenuProps) {
+  const router = useRouter();
   const { data: session } = useSession();
   const { isThreadsMenuOpen, closeThreadsMenu } = useMobileMenu();
 
@@ -141,6 +144,24 @@ export default function MobileThreadsMenu({
     closeThreadsMenu();
   };
 
+  // Explicitly navigate in the tap handler. Closing the animated drawer from
+  // a nested Link could swallow the first tap in some installed PWAs.
+  const navigateFromMenu = useCallback((href: string) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[MobileThreadsMenu] single-tap navigation', { href });
+    }
+    closeThreadsMenu();
+    router.push(href);
+  }, [closeThreadsMenu, router]);
+
+  const handleSignOut = useCallback(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[MobileThreadsMenu] single-tap sign out');
+    }
+    closeThreadsMenu();
+    void signOut({ callbackUrl: '/auth/signin' });
+  }, [closeThreadsMenu]);
+
   const createNewThread = async () => {
     setCreating(true);
     try {
@@ -181,6 +202,7 @@ export default function MobileThreadsMenu({
       const response = await fetch(`/api/threads/${deleteThread.id}`, { method: 'DELETE' });
       if (response.ok) {
         setThreads((prev) => prev.filter((t) => t.id !== deleteThread.id));
+        onThreadDeleted();
         if (selectedThreadId === deleteThread.id) {
           onThreadSelect(null);
         }
@@ -333,14 +355,15 @@ export default function MobileThreadsMenu({
         side="left"
         headerRight={
           <div className="flex items-center gap-1">
-            <Link
-              href="/chat"
-              onClick={closeThreadsMenu}
+            <button
+              type="button"
+              onClick={() => navigateFromMenu('/chat')}
               className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
               style={{ color: 'var(--accent-color)' }}
+              aria-label="Chat home"
             >
               <Home size={20} />
-            </Link>
+            </button>
             <button
               onClick={() => {
                 setNewThreadTitle('');
@@ -413,22 +436,22 @@ export default function MobileThreadsMenu({
         {/* Footer */}
         <div className="border-t p-4 space-y-2">
           {isAdmin && (
-            <Link href="/admin" onClick={closeThreadsMenu} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            <button type="button" onClick={() => navigateFromMenu('/admin')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
               <Settings size={16} />
               Admin Dashboard
-            </Link>
+            </button>
           )}
           {isSuperUser && (
-            <Link href="/superuser" onClick={closeThreadsMenu} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            <button type="button" onClick={() => navigateFromMenu('/superuser')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
               <Settings size={16} />
               Manage
-            </Link>
+            </button>
           )}
           {session?.user && (
-            <Link href="/profile" onClick={closeThreadsMenu} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            <button type="button" onClick={() => navigateFromMenu('/profile')} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
               <User size={16} />
               Profile
-            </Link>
+            </button>
           )}
           {session?.user && (
             <div className="flex items-center justify-between px-3 py-2">
@@ -444,7 +467,7 @@ export default function MobileThreadsMenu({
                 </div>
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                onClick={handleSignOut}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
                 title="Sign out"
               >

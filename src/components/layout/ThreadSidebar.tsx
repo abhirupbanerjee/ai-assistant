@@ -41,6 +41,7 @@ const getCategoryColor = (categoryId: number) => {
 interface ThreadSidebarProps {
   onThreadSelect?: (thread: Thread | null) => void;
   onThreadCreated?: (thread: Thread) => void;
+  onThreadDeleted?: () => void;
   selectedThreadId?: string | null;
   hidden?: boolean; // For mobile: hide when input is focused
   collapsed?: boolean;
@@ -54,6 +55,7 @@ export interface ThreadSidebarRef {
 const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function ThreadSidebar({
   onThreadSelect,
   onThreadCreated,
+  onThreadDeleted,
   selectedThreadId,
   hidden = false,
   collapsed: collapsedProp = false,
@@ -61,6 +63,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
 }, ref) {
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadTotal, setThreadTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [deleteThread, setDeleteThread] = useState<Thread | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -114,6 +117,13 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
       const response = await fetch('/api/threads');
       if (response.ok) {
         const data = await response.json();
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[ThreadSidebar] loaded threads', {
+            returnedCount: data.threads.length,
+            total: data.total,
+          });
+        }
+        setThreadTotal(data.total ?? data.threads.length);
         setThreads(data.threads.map((t: Thread) => ({
           ...t,
           createdAt: new Date(t.createdAt),
@@ -182,6 +192,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
           updatedAt: new Date(thread.updatedAt),
         };
         setThreads((prev) => [newThread, ...prev]);
+        setThreadTotal((prev) => prev + 1);
         onThreadSelect?.(newThread);
         onThreadCreated?.(newThread);
         setShowNewThreadModal(false);
@@ -204,6 +215,8 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
 
       if (response.ok) {
         setThreads((prev) => prev.filter((t) => t.id !== deleteThread.id));
+        setThreadTotal((prev) => Math.max(0, prev - 1));
+        onThreadDeleted?.();
         if (selectedThreadId === deleteThread.id) {
           onThreadSelect?.(null);
         }
@@ -314,12 +327,46 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
           </button>
 
           {/* Thread count */}
-          {threads.length > 0 && (
+          {threadTotal > 0 && (
             <div className="flex flex-col items-center gap-1">
               <MessageSquare size={16} className="text-gray-400" />
-              <span className="text-xs font-medium text-gray-600">{threads.length}</span>
+              <span className="text-xs font-medium text-gray-600">{threadTotal}</span>
             </div>
           )}
+
+          <div className="mt-auto flex flex-col items-center gap-2 border-t border-gray-200 pt-3">
+            {(isAdmin || isSuperUser) && (
+              <Link
+                href={isAdmin ? '/admin' : '/superuser'}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title={isAdmin ? 'Admin Dashboard' : 'Manage'}
+                aria-label={isAdmin ? 'Admin Dashboard' : 'Manage'}
+              >
+                <Settings size={20} />
+              </Link>
+            )}
+            {session?.user && (
+              <Link
+                href="/profile"
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Profile"
+                aria-label="Profile"
+              >
+                <User size={20} />
+              </Link>
+            )}
+            {session?.user && (
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut size={20} />
+              </button>
+            )}
+          </div>
         </aside>
 
         {/* New Thread modal (still needed when collapsed) */}

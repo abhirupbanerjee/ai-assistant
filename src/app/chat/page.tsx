@@ -62,7 +62,9 @@ function HomeContent() {
   const [globalStarterPrompts, setGlobalStarterPrompts] = useState<StarterPrompt[]>([]);
   const [threadCount, setThreadCount] = useState(0);
   const [isThreadSidebarCollapsed, setIsThreadSidebarCollapsed] = useState(false);
-  const [isArtifactsPanelCollapsed, setIsArtifactsPanelCollapsed] = useState(false);
+  // The home view has no artifact to display, so start with the artifact rail
+  // collapsed. Opening an artifact or browser session expands it as needed.
+  const [isArtifactsPanelCollapsed, setIsArtifactsPanelCollapsed] = useState(true);
   const [collapsedPanelSize, setCollapsedPanelSize] = useState(3);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
@@ -166,9 +168,13 @@ function HomeContent() {
       artifactsPanelRef.current?.resize(66);
     } else {
       threadSidebarPanelRef.current?.expand();
-      artifactsPanelRef.current?.resize(25);
+      if (isArtifactsPanelCollapsed) {
+        artifactsPanelRef.current?.collapse();
+      } else {
+        artifactsPanelRef.current?.resize(25);
+      }
     }
-  }, [canvasState.mode, isMobile]);
+  }, [canvasState.mode, isArtifactsPanelCollapsed, isMobile]);
 
   // Swipe gestures for mobile navigation
   useSwipeGesture({
@@ -232,7 +238,15 @@ function HomeContent() {
         const threadsResponse = await fetch('/api/threads');
         if (threadsResponse.ok) {
           const threadsData = await threadsResponse.json();
-          setThreadCount(threadsData.threads?.length || 0);
+          if (process.env.NODE_ENV !== 'production') {
+            console.debug('[ChatThreads] count response', {
+              returnedCount: threadsData.threads?.length ?? 0,
+              total: threadsData.total,
+            });
+          }
+          // The endpoint paginates the returned array (50 by default), so use
+          // its total rather than the page length for the badge.
+          setThreadCount(threadsData.total ?? threadsData.threads?.length ?? 0);
         }
       } catch (err) {
         console.error('Failed to load user data:', err);
@@ -248,6 +262,10 @@ function HomeContent() {
   const handleThreadCreated = useCallback((thread: Thread) => {
     setActiveThread(thread);
     setThreadCount(prev => prev + 1);
+  }, []);
+
+  const handleThreadDeleted = useCallback(() => {
+    setThreadCount(prev => Math.max(0, prev - 1));
   }, []);
 
   const handleArtifactsChange = useCallback((data: {
@@ -436,6 +454,7 @@ function HomeContent() {
                   ref={sidebarRef}
                   onThreadSelect={handleThreadSelect}
                   onThreadCreated={handleThreadCreated}
+                  onThreadDeleted={handleThreadDeleted}
                   selectedThreadId={activeThread?.id}
                   collapsed={isThreadSidebarCollapsed}
                   onCollapseChange={handleThreadSidebarCollapseChange}
@@ -492,7 +511,7 @@ function HomeContent() {
               <Panel
                 ref={artifactsPanelRef}
                 id="artifacts-panel"
-                defaultSize={25}
+                defaultSize={collapsedPanelSize}
                 minSize={15}
                 maxSize={75}
                 collapsible
@@ -549,6 +568,7 @@ function HomeContent() {
           <MobileThreadsMenu
             onThreadSelect={handleThreadSelect}
             onThreadCreated={handleThreadCreated}
+            onThreadDeleted={handleThreadDeleted}
             selectedThreadId={activeThread?.id}
           />
           {canvasState.mode === 'browser' && canvasState.browserSessionId ? (
