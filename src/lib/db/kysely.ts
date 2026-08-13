@@ -1497,6 +1497,34 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }
   console.log('[Kysely] Synced comprehensive model specs for all 25 enabled models (July 2026)');
 
+  // Browser sessions (remote browser sidecar). Records persist the checkpoint
+  // state machine; the live Playwright context lives only in the worker.
+  await sql`
+    CREATE TABLE IF NOT EXISTS browser_sessions (
+      id                 TEXT PRIMARY KEY,
+      user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      thread_id          TEXT,
+      task               TEXT,
+      worker_session_id  TEXT,
+      state              TEXT NOT NULL DEFAULT 'created',
+      current_url        TEXT,
+      page_title         TEXT,
+      pending_checkpoint TEXT,
+      last_aria_json     TEXT,
+      allowlist_json     TEXT,
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at         TIMESTAMPTZ,
+      terminated_at      TIMESTAMPTZ
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS browser_sessions_user_id_idx ON browser_sessions (user_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS browser_sessions_thread_id_idx ON browser_sessions (thread_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS browser_sessions_expires_at_idx ON browser_sessions (expires_at)`.execute(database);
+  // Backfill for databases where the table pre-existed before the `task` column.
+  await sql`ALTER TABLE browser_sessions ADD COLUMN IF NOT EXISTS task TEXT`.execute(database);
+  console.log('[Kysely] Ensured browser_sessions table + indexes exist');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

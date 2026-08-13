@@ -1168,3 +1168,19 @@ export {
   setConnectedAccountError,
   hasConnectedAccount,
 } from './connected-accounts';
+
+// ============ Browser Sessions (Remote Browser — Phase 1) ============
+export {
+  type CreateBrowserSessionInput,
+  type BrowserSessionPatch,
+  createBrowserSession,
+  getBrowserSession,
+  getBrowserSessionForUser,
+  userOwnsBrowserSession,
+  listBrowserSessionsForThread,
+  updateBrowserSession,
+  setBrowserSessionCheckpoint,
+  touchBrowserSession,
+  terminateBrowserSession,
+  expireStaleBrowserSessions,
+} from './browser-sessions';

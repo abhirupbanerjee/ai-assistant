@@ -1,4 +1,4 @@
-export type CanvasMode = 'normal' | 'canvas';
+export type CanvasMode = 'normal' | 'canvas' | 'browser';
 
 export interface ArtifactCanvasItem {
   artifactId: string;

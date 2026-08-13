@@ -6,6 +6,7 @@ import { aggregateDataTool } from './tools/aggregate-data';
 import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction } from './tools/function-api';
 import { youtubeToolDefinition } from './tools/youtube';
 import { chartGenTool } from './tools/chart-gen';
+import { browserTaskStartTool, browserTaskContinueTool } from './tools/browser';
 
 import { imageGenTool } from './tools/image-gen';
 import { translationTool } from './tools/translation';
@@ -275,6 +276,12 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   // turn. See plans/phase_2_2_implementation_plan.md §1 decision (c).
   handoff_to_category: { ...handoffToCategoryTool, subagentSafe: true, tags: ['system', 'handoff'],
     modelRequirements: { requiresToolCalling: true } },
+
+  // ── Browser Automation (remote browser sidecar) ──
+  browser_task_start: { ...browserTaskStartTool, group: 'browser', subagentSafe: false, tags: ['web', 'browser'],
+    modelRequirements: { requiresToolCalling: true, requiresVision: true, prefersLargeContext: true } },
+  browser_task_continue: { ...browserTaskContinueTool, group: 'browser', subagentSafe: false, tags: ['web', 'browser'],
+    modelRequirements: { requiresToolCalling: true, requiresVision: true, prefersLargeContext: true } },
 };
 
 /**

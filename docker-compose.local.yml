@@ -85,6 +85,40 @@ services:
       timeout: 10s
       retries: 3
 
+  # Browser Worker (remote browser sessions) — exposed on localhost for
+  # `npm run dev`; the app sets BROWSER_WORKER_URL=http://localhost:8780.
+  browser-worker:
+    build:
+      context: ./services/browser-worker
+      dockerfile: Dockerfile
+    container_name: policy-bot-browser-worker-local
+    ports:
+      - "8780:8780"
+    environment:
+      - NODE_ENV=production
+      - PORT=8780
+      - BROWSER_WORKER_SHARED_SECRET=${BROWSER_WORKER_SHARED_SECRET:-local-dev-secret-change-me}
+      - BROWSER_ALLOWLIST=${BROWSER_ALLOWLIST:-booking.com}
+      - BROWSER_SESSION_TTL_MS=${BROWSER_SESSION_TTL_MS:-900000}
+      - BROWSER_SCREENSHOT_INTERVAL_MS=${BROWSER_SCREENSHOT_INTERVAL_MS:-1000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    read_only: true
+    tmpfs:
+      - /tmp/browser-profile:rw,size=256m
+      - /tmp:rw,size=64m
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8780/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
   # Ollama Local LLM Server
   # Start with: docker compose -f docker-compose.local.yml --profile ollama up -d
   ollama:

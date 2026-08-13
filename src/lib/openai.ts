@@ -2405,6 +2405,9 @@ export async function generateResponseWithTools(
               if (parsed.success && parsed.podcastHint) {
                 callbacks.onArtifact('podcast', parsed.podcastHint);
               }
+              if (parsed.success && parsed.browserSession) {
+                callbacks.onBrowserSessionStarted?.(parsed.browserSession);
+              }
               // Phase 2.2 — agent-as-tool return-result: surface the agent's
               // contract envelope as an `agent` artifact so the client renders
               // an "Answered by agent X" card. `executeAgentTool` injects

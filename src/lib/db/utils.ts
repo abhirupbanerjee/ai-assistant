@@ -162,6 +162,21 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
     },
   },
+  browser_task_start: {
+    enabled: false,
+    config: {
+      allowlist: [],
+      screenshotEnabled: true,
+      sessionTtlMinutes: 15,
+    },
+  },
+  browser_task_continue: {
+    enabled: false,
+    config: {
+      allowlist: [],
+      screenshotEnabled: true,
+    },
+  },
   image_gen: {
     enabled: false,
     config: {

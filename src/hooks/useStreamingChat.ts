@@ -143,6 +143,8 @@ export interface UseStreamingChatOptions {
    * when the stream is stopped or errors (no 'done' event in those paths).
    */
   onUserMessageSaved?: (messageId: string) => void;
+  /** Called when browser_task_start opens a remote browser session — the UI opens the viewer. */
+  onBrowserSessionStarted?: (sessionId: string) => void;
 }
 
 /** Per-send options (not part of persisted chat preferences) */
@@ -255,7 +257,7 @@ const initialState: StreamingState = {
 // ============ Hook ============
 
 export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStreamingChatReturn {
-  const { onComplete, onError, onPhaseChange, onModelSwitch, onUserMessageSaved } = options;
+  const { onComplete, onError, onPhaseChange, onModelSwitch, onUserMessageSaved, onBrowserSessionStarted } = options;
 
   const [state, setState] = useState<StreamingState>(initialState);
   // Always-current state ref — used to read values outside setState updaters
@@ -478,6 +480,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             agentResponses: agentResponsesRef.current,
           }));
         }
+        break;
+
+      case 'browser_session_started':
+        onBrowserSessionStarted?.(event.sessionId);
         break;
 
       case 'handoff':

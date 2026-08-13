@@ -15,6 +15,7 @@ import type {
   PodcastHint,
 } from './index';
 import type { ArtifactComment } from './artifact-canvas';
+import type { BrowserSessionState, BrowserSessionInfo } from './browser';
 import type {
   ComplianceDecision,
   HitlClarificationEvent,
@@ -230,6 +231,10 @@ export type StreamEvent =
   // X" card with the artifact + confidence. The main LLM still synthesizes a
   // final summary on top. See plans/phase_2_2_implementation_plan.md §1 (a).
   | { type: 'artifact'; subtype: 'agent'; data: AgentResponseInfo }
+
+  // Browser session (remote browser) — emitted when browser_task_start creates a
+  // session so the UI opens the right-panel BrowserSessionViewer.
+  | { type: 'browser_session_started'; sessionId: string; threadId?: string; state: BrowserSessionState; url?: string; title?: string }
 
   // RAG sources
   | { type: 'sources'; data: Source[] }
@@ -563,6 +568,8 @@ export interface StreamingCallbacks {
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast' | 'agent', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint | AgentResponseInfo) => void;
+  /** Called when browser_task_start creates a session — the client opens the BrowserSessionViewer. */
+  onBrowserSessionStarted?: (session: BrowserSessionInfo) => void;
   /** Called when the LLM invokes request_clarification. Pauses the stream, shows HITL UI, resolves with user's answer or null. */
   onClarification?: (question: string, options: string[], allowFreeText: boolean) => Promise<string | null>;
   /**

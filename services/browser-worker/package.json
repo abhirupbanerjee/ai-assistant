@@ -1,0 +1,20 @@
+{
+  "name": "browser-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated Playwright Chromium sidecar for remote browser sessions. Runs in its own container with egress guard, non-root user, and no access to app/database secrets.",
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "playwright": "^1.59.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.12.0"
+  }
+}

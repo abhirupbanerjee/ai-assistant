@@ -1122,7 +1122,33 @@ export interface DB {
   force_swarm_role_allowlist: ForceSwarmRoleAllowlistTable;
   // MCP Servers
   mcp_servers: McpServersTable;
+  // Browser Sessions (remote browser)
+  browser_sessions: BrowserSessionsTable;
 }
+
+// ============ Browser Sessions ============
+
+export interface BrowserSessionsTable {
+  id: string;
+  user_id: number;
+  thread_id: string | null;
+  task: string | null;
+  worker_session_id: string | null;
+  state: Generated<string>;
+  current_url: string | null;
+  page_title: string | null;
+  pending_checkpoint: string | null;
+  last_aria_json: string | null;
+  allowlist_json: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+  expires_at: string | null;
+  terminated_at: string | null;
+}
+
+export type BrowserSession = Selectable<BrowserSessionsTable>;
+export type NewBrowserSession = Insertable<BrowserSessionsTable>;
+export type BrowserSessionUpdate = Updateable<BrowserSessionsTable>;
 
 // ============ WhatsApp Channels ============
 

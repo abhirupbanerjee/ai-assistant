@@ -6,6 +6,10 @@ export * from './stream';
 
 export * from './artifact-canvas';
 
+// ============ Browser Session Types (re-exported) ============
+
+export * from './browser';
+
 // ============ Diagram Types (re-exported) ============
 
 export type { DiagramHint, MermaidDiagramType, DiagramGenConfig } from './diagram-gen';

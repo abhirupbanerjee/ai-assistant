@@ -75,6 +75,8 @@ interface ChatWindowProps {
   onRemoveArtifactComment?: (commentId: string) => void;
   /** Called after a message is sent so the parent can clear pending comments. */
   onClearArtifactComments?: () => void;
+  /** Called when a remote browser session starts — the parent opens the browser panel. */
+  onBrowserSessionStarted?: (sessionId: string) => void;
 }
 
 // Ref interface for external control
@@ -122,6 +124,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   artifactComments = [],
   onRemoveArtifactComment,
   onClearArtifactComments,
+  onBrowserSessionStarted,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<ThreadUploadItem[]>([]);
@@ -388,6 +391,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     onError: handleStreamError,
     onModelSwitch: handleModelSwitch,
     onUserMessageSaved: handleUserMessageSaved,
+    onBrowserSessionStarted,
   });
 
   // Always-current streaming flag for scroll handler (avoids recreating callback)

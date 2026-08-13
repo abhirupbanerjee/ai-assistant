@@ -69,6 +69,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - DATA_DIR=/app/data
       - CONFIG_DIR=/app/config
+      # Browser worker sidecar (remote browser sessions)
+      - BROWSER_WORKER_URL=http://browser-worker:8780
+      - BROWSER_WORKER_SHARED_SECRET=${BROWSER_WORKER_SHARED_SECRET}
       # Fix transformers cache permission (reranker model caching)
       - TRANSFORMERS_CACHE=/tmp/transformers_cache
       - XDG_CACHE_HOME=/tmp/cache
@@ -171,6 +174,39 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  # Browser Worker — isolated Playwright Chromium sidecar for remote browser
+  # sessions. Runs non-root (in-image user), read-only root FS, no app/secret
+  # mounts, and is only reachable from the app over the internal network.
+  # NOTE: Chromium runs with its sandbox enabled (no --no-sandbox). If the host
+  # kernel's default Docker seccomp profile blocks user namespaces, mount a
+  # Chromium-compatible seccomp profile (e.g. --security-opt seccomp=chrome.json).
+  browser-worker:
+    build:
+      context: ./services/browser-worker
+      dockerfile: Dockerfile
+    container_name: policy-bot-browser-worker
+    environment:
+      - NODE_ENV=production
+      - PORT=8780
+      - BROWSER_WORKER_SHARED_SECRET=${BROWSER_WORKER_SHARED_SECRET}
+      - BROWSER_ALLOWLIST=${BROWSER_ALLOWLIST}
+      - BROWSER_SESSION_TTL_MS=${BROWSER_SESSION_TTL_MS:-900000}
+      - BROWSER_SCREENSHOT_INTERVAL_MS=${BROWSER_SCREENSHOT_INTERVAL_MS:-1000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    read_only: true
+    tmpfs:
+      - /tmp/browser-profile:rw,size=256m
+      - /tmp:rw,size=64m
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     networks:
       - policy-bot-network
     restart: unless-stopped

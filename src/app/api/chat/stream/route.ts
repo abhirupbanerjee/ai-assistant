@@ -30,7 +30,7 @@ import {
 import { saveTrajectoryEntries } from '@/lib/db/citation-trajectory';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, ArtifactComment, ArtifactContext } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, BrowserSessionInfo, ArtifactComment, ArtifactContext } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { executeAgentTool } from '@/lib/agent-registry/agent-tools';
@@ -1059,6 +1059,16 @@ export async function POST(request: NextRequest) {
                   const info = data as AgentResponseInfo;
                   send({ type: 'artifact', subtype: 'agent', data: info });
                 }
+              },
+              onBrowserSessionStarted: (session: BrowserSessionInfo) => {
+                send({
+                  type: 'browser_session_started',
+                  sessionId: session.sessionId,
+                  threadId: session.threadId ?? undefined,
+                  state: session.state,
+                  url: session.currentUrl ?? undefined,
+                  title: session.pageTitle ?? undefined,
+                });
               },
               // Phase 2.2 handoff routing: transfer the thread to the target
               // category and emit a `handoff` SSE event so the UI can show a

@@ -9,6 +9,7 @@ import ThreadSidebar, { type ThreadSidebarRef } from '@/components/layout/Thread
 
 import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import ArtifactCanvas from '@/components/chat/ArtifactCanvas';
+import BrowserSessionViewer from '@/components/chat/viewers/BrowserSessionViewer';
 import MobileArtifactCanvas from '@/components/mobile/MobileArtifactCanvas';
 import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
@@ -474,6 +475,7 @@ function HomeContent() {
                   artifactComments={pendingArtifactComments}
                   onRemoveArtifactComment={handleRemoveArtifactComment}
                   onClearArtifactComments={handleClearArtifactComments}
+                  onBrowserSessionStarted={canvasState.openBrowserSession}
                 />
               </ErrorBoundary>
             </main>
@@ -506,6 +508,11 @@ function HomeContent() {
                     siblings={canvasState.siblings}
                     onNavigate={canvasState.navigateTo}
                     onSendComments={handleSendComments}
+                  />
+                ) : canvasState.mode === 'browser' && canvasState.browserSessionId ? (
+                  <BrowserSessionViewer
+                    sessionId={canvasState.browserSessionId}
+                    onClose={canvasState.closeBrowserSession}
                   />
                 ) : (
                   <ArtifactsPanel
@@ -544,7 +551,14 @@ function HomeContent() {
             onThreadCreated={handleThreadCreated}
             selectedThreadId={activeThread?.id}
           />
-          {canvasState.mode === 'canvas' && canvasState.artifact ? (
+          {canvasState.mode === 'browser' && canvasState.browserSessionId ? (
+            <div className="fixed inset-0 z-50 bg-gray-900">
+              <BrowserSessionViewer
+                sessionId={canvasState.browserSessionId}
+                onClose={canvasState.closeBrowserSession}
+              />
+            </div>
+          ) : canvasState.mode === 'canvas' && canvasState.artifact ? (
             <MobileArtifactCanvas
               artifact={canvasState.artifact}
               onClose={canvasState.closeCanvas}

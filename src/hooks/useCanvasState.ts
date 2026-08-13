@@ -8,16 +8,21 @@ export interface CanvasState {
   artifact: ArtifactCanvasItem | null;
   /** Ordered list of viewable artifacts for prev/next navigation. */
   siblings: ArtifactCanvasItem[];
+  /** Active remote browser session id (when mode === 'browser'). */
+  browserSessionId: string | null;
   openCanvas: (item: ArtifactCanvasItem, siblings?: ArtifactCanvasItem[]) => void;
   closeCanvas: () => void;
   /** Navigate to a sibling by index (clamped to valid range). */
   navigateTo: (index: number) => void;
+  openBrowserSession: (sessionId: string) => void;
+  closeBrowserSession: () => void;
 }
 
 export function useCanvasState(): CanvasState {
   const [mode, setMode] = useState<CanvasMode>('normal');
   const [artifact, setArtifact] = useState<ArtifactCanvasItem | null>(null);
   const [siblings, setSiblings] = useState<ArtifactCanvasItem[]>([]);
+  const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
 
   // Mirror siblings in a ref so navigateTo can read the current value without
   // nesting a setState call inside another setState updater (which violates
@@ -32,6 +37,7 @@ export function useCanvasState(): CanvasState {
     siblingsRef.current = next;
     setArtifact(item);
     setSiblings(next);
+    setBrowserSessionId(null);
     setMode('canvas');
   }, []);
 
@@ -40,6 +46,7 @@ export function useCanvasState(): CanvasState {
     setMode('normal');
     setArtifact(null);
     setSiblings([]);
+    setBrowserSessionId(null);
   }, []);
 
   const navigateTo = useCallback((index: number) => {
@@ -52,5 +59,28 @@ export function useCanvasState(): CanvasState {
     }
   }, []);
 
-  return { mode, artifact, siblings, openCanvas, closeCanvas, navigateTo };
+  const openBrowserSession = useCallback((sessionId: string) => {
+    siblingsRef.current = [];
+    setArtifact(null);
+    setSiblings([]);
+    setBrowserSessionId(sessionId);
+    setMode('browser');
+  }, []);
+
+  const closeBrowserSession = useCallback(() => {
+    setMode('normal');
+    setBrowserSessionId(null);
+  }, []);
+
+  return {
+    mode,
+    artifact,
+    siblings,
+    browserSessionId,
+    openCanvas,
+    closeCanvas,
+    navigateTo,
+    openBrowserSession,
+    closeBrowserSession,
+  };
 }
