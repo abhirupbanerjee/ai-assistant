@@ -217,13 +217,13 @@ export async function getThread(
 /**
  * List threads for a user
  */
-export async function listThreads(userId: string): Promise<Thread[]> {
+export async function listThreads(userId: string, limit = 50, offset = 0): Promise<Thread[]> {
   const numericUserId = await getUserId(userId);
   if (!numericUserId) {
     return [];
   }
 
-  const dbThreads = await dbGetThreadsForUser(numericUserId);
+  const dbThreads = await dbGetThreadsForUser(numericUserId, limit, offset);
 
   // Pre-fetch category map once to avoid N+1 queries
   const { getAllCategories } = await import('./db/compat/categories');

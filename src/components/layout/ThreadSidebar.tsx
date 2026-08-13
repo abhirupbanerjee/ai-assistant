@@ -73,6 +73,8 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   const [creating, setCreating] = useState(false);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Per-group collapse state (header chevron) with localStorage persistence.
   // Keyed by CHATS_GROUP_KEY or category id as string. Desktop defaults to
@@ -113,8 +115,9 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   const requiresSingleCategory = isRegularUser;
 
   const loadThreads = useCallback(async () => {
+    setLoading(true);
     try {
-      const response = await fetch('/api/threads');
+      const response = await fetch('/api/threads?limit=50&offset=0');
       if (response.ok) {
         const data = await response.json();
         if (process.env.NODE_ENV !== 'production') {
@@ -129,6 +132,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
           createdAt: new Date(t.createdAt),
           updatedAt: new Date(t.updatedAt),
         })));
+        setOffset(data.threads?.length ?? 0);
       }
     } catch (err) {
       console.error('Failed to load threads:', err);
@@ -136,6 +140,34 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
       setLoading(false);
     }
   }, []);
+
+  const hasMore = threads.length < threadTotal;
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const response = await fetch(`/api/threads?limit=50&offset=${offset}`);
+      if (response.ok) {
+        const data = await response.json();
+        const incoming = (data.threads as Thread[]).map((t) => ({
+          ...t,
+          createdAt: new Date(t.createdAt),
+          updatedAt: new Date(t.updatedAt),
+        }));
+        setThreads((prev) => {
+          const seen = new Set(prev.map((t) => t.id));
+          return [...prev, ...incoming.filter((t) => !seen.has(t.id))];
+        });
+        setThreadTotal(data.total ?? threadTotal);
+        setOffset((prev) => prev + (data.threads?.length ?? 0));
+      }
+    } catch (err) {
+      console.error('Failed to load more threads:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [offset, loadingMore, threadTotal]);
 
   useEffect(() => {
     loadThreads();
@@ -651,7 +683,20 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
                   );
                 };
 
-                return <>{groups.map(renderGroup)}</>;
+                return (
+                  <>
+                    {groups.map(renderGroup)}
+                    {hasMore && (
+                      <button
+                        onClick={loadMore}
+                        disabled={loadingMore}
+                        className="w-full text-center px-3 py-2 mt-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {loadingMore ? 'Loading…' : `Load more (${threads.length}/${threadTotal})`}
+                      </button>
+                    )}
+                  </>
+                );
               })()}
             </>
           )}

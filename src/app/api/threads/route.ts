@@ -19,25 +19,23 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    const [allThreads, total] = await Promise.all([
-      listThreads(user.id),
+    const [threads, total] = await Promise.all([
+      listThreads(user.id, limit, offset),
       countThreads(user.id),
     ]);
-    const paginatedThreads = allThreads.slice(offset, offset + limit);
 
     if (process.env.NODE_ENV !== 'production') {
       console.debug('[ThreadsAPI] pagination diagnostics', {
         userId: user.id,
         requestedLimit: limit,
         requestedOffset: offset,
-        listThreadsReturned: allThreads.length,
-        responsePageSize: paginatedThreads.length,
+        responsePageSize: threads.length,
         exactDatabaseTotal: total,
       });
     }
 
     return NextResponse.json<ThreadListResponse>({
-      threads: paginatedThreads,
+      threads,
       total,
     });
   } catch (error) {
