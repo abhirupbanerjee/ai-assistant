@@ -1,4 +1,4 @@
-// v10 — bump cache version to evict the stale app-shell + static caches
+// Cache-version history — bump to evict stale app-shell + static caches
 // after a deploy that changed chunk hashes. Without this, the SW serves
 // stale cached HTML referencing old /_next/static/chunks/*.js filenames
 // that 404 on the new server → ChunkLoadError → ChatWindow ErrorBoundary.
@@ -12,7 +12,11 @@
 // three-panel layout. Without this bump, returning clients would run the
 // old app-shell JS that lacks the canvas components, causing missing-module
 // errors and a broken chat layout.
-const CACHE_VERSION = 'v12';
+// v13 evicts the pre-header-removal chat shell. The 2026-08-13 deploy moves
+// branding and Help into the thread navigation, removes both chat top bars,
+// and changes the mobile drawer/FAB layout. Cached v12 HTML or chunks would
+// otherwise preserve the obsolete header structure and stale interactions.
+const CACHE_VERSION = 'v13';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 

@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 
+const SERVICE_WORKER_VERSION = 'v13';
+
 export function RegisterSW() {
   useEffect(() => {
     // Guard against SSR
@@ -20,7 +22,12 @@ export function RegisterSW() {
 
     const register = async () => {
       try {
-        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        // Keep the registration URL in lockstep with public/sw.js so browsers,
+        // proxies, and installed PWAs perform an unambiguous update check.
+        const registration = await navigator.serviceWorker.register(
+          `/sw.js?v=${SERVICE_WORKER_VERSION}`,
+          { scope: '/' }
+        );
         console.log('[SW] Registered');
 
         // Force update check to ensure latest SW is active
