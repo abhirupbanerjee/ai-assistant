@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { createThread, listThreads } from '@/lib/threads';
+import { countThreads, createThread, listThreads } from '@/lib/threads';
 import { getEnabledModel } from '@/lib/db/compat/enabled-models';
 import { isAutoSentinel } from '@/lib/auto-model-selector';
 import type { Thread, ThreadListResponse, CreateThreadRequest, ApiError } from '@/types';
@@ -19,12 +19,26 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    const allThreads = await listThreads(user.id);
+    const [allThreads, total] = await Promise.all([
+      listThreads(user.id),
+      countThreads(user.id),
+    ]);
     const paginatedThreads = allThreads.slice(offset, offset + limit);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[ThreadsAPI] pagination diagnostics', {
+        userId: user.id,
+        requestedLimit: limit,
+        requestedOffset: offset,
+        listThreadsReturned: allThreads.length,
+        responsePageSize: paginatedThreads.length,
+        exactDatabaseTotal: total,
+      });
+    }
 
     return NextResponse.json<ThreadListResponse>({
       threads: paginatedThreads,
-      total: allThreads.length,
+      total,
     });
   } catch (error) {
     console.error('List threads error:', error);

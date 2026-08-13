@@ -165,7 +165,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
   browser_task_start: {
     enabled: false,
     config: {
-      allowlist: [],
+      allowlist: '',
       screenshotEnabled: true,
       sessionTtlMinutes: 15,
     },
@@ -173,7 +173,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
   browser_task_continue: {
     enabled: false,
     config: {
-      allowlist: [],
+      allowlist: '',
       screenshotEnabled: true,
     },
   },

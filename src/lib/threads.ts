@@ -25,6 +25,7 @@ import {
   getThreadById as dbGetThreadById,
   getThreadWithDetails,
   getThreadsForUser as dbGetThreadsForUser,
+  getThreadCountForUser as dbGetThreadCountForUser,
   deleteThread as dbDeleteThread,
   updateThreadTitle as dbUpdateThreadTitle,
   toggleThreadPin as dbToggleThreadPin,
@@ -241,6 +242,19 @@ export async function listThreads(userId: string): Promise<Thread[]> {
     totalTokens: t.total_tokens || 0,
     isPinned: Boolean(t.is_pinned),
   })));
+}
+
+/**
+ * Return the exact number of threads owned by a user without applying the
+ * thread-list query's default page limit.
+ */
+export async function countThreads(userId: string): Promise<number> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return 0;
+  }
+
+  return dbGetThreadCountForUser(numericUserId);
 }
 
 /**

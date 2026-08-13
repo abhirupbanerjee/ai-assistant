@@ -16,6 +16,7 @@ import {
 } from '@/lib/db/compat';
 import { getToolConfig } from '@/lib/db/compat/tool-config';
 import { getBrowserWorkerClient, isBrowserWorkerConfigured } from '@/lib/browser/client';
+import { coerceAllowlist } from '@/lib/tools/browser';
 import { toErrorResponse } from './_helpers';
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -45,13 +46,10 @@ export async function POST(request: NextRequest) {
     const threadId = typeof body.threadId === 'string' ? body.threadId : null;
     const startUrl = typeof body.startUrl === 'string' ? body.startUrl : undefined;
 
-    let allowlist = Array.isArray(body.allowlist)
-      ? (body.allowlist as unknown[]).map(String)
-      : [];
+    let allowlist = coerceAllowlist(body.allowlist);
     if (allowlist.length === 0) {
       const cfg = await getToolConfig('browser_task_start');
-      const cfgList = (cfg?.config as Record<string, unknown> | undefined)?.allowlist;
-      if (Array.isArray(cfgList)) allowlist = cfgList.map(String);
+      allowlist = coerceAllowlist((cfg?.config as Record<string, unknown> | undefined)?.allowlist);
     }
     if (allowlist.length === 0) {
       return NextResponse.json(

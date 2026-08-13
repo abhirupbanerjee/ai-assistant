@@ -35,10 +35,35 @@ async function resolveDbUserId(): Promise<number> {
   return dbUser.id;
 }
 
+/**
+ * Coerce an allowlist config value into a clean string array. The admin Tools
+ * UI stores generic fields as raw strings, so this tolerates a comma-separated
+ * string, a pasted JSON array string, or an actual array.
+ */
+export function coerceAllowlist(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) {
+    return value.map(String).map((s) => s.trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (Array.isArray(parsed)) return coerceAllowlist(parsed);
+      } catch {
+        /* fall through to comma split */
+      }
+    }
+    return trimmed.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 async function getAllowlist(toolName: string): Promise<string[]> {
   const cfg = await getToolConfig(toolName);
-  const allowlist = (cfg?.config as Record<string, unknown> | undefined)?.allowlist;
-  return Array.isArray(allowlist) ? allowlist.map(String) : [];
+  return coerceAllowlist((cfg?.config as Record<string, unknown> | undefined)?.allowlist);
 }
 
 function isValidAction(action: unknown): action is BrowserAction {
@@ -95,7 +120,7 @@ export const browserTaskStartTool: ToolDefinition = {
     },
   },
   defaultConfig: {
-    allowlist: [] as string[],
+    allowlist: '',
     screenshotEnabled: true,
     sessionTtlMinutes: 15,
   },
@@ -103,10 +128,10 @@ export const browserTaskStartTool: ToolDefinition = {
     type: 'object',
     properties: {
       allowlist: {
-        type: 'array',
-        items: { type: 'string' },
+        type: 'string',
         title: 'Allowed domains',
-        description: 'Domains the browser may visit (e.g., booking.com, *.booking.com). Empty = disabled.',
+        description: 'Comma-separated list of domains (e.g., booking.com, *.booking.com). Empty = disabled.',
+        default: '',
       },
       screenshotEnabled: {
         type: 'boolean',
@@ -122,8 +147,13 @@ export const browserTaskStartTool: ToolDefinition = {
   },
   validateConfig: (config: Record<string, unknown>): ValidationResult => {
     const errors: string[] = [];
-    if (config.allowlist !== undefined && !Array.isArray(config.allowlist)) {
-      errors.push('Allowed domains must be an array of strings');
+    if (
+      config.allowlist !== undefined &&
+      config.allowlist !== null &&
+      typeof config.allowlist !== 'string' &&
+      !Array.isArray(config.allowlist)
+    ) {
+      errors.push('Allowed domains must be a comma-separated string or an array of strings');
     }
     if (config.sessionTtlMinutes !== undefined && typeof config.sessionTtlMinutes !== 'number') {
       errors.push('Session TTL must be a number');
@@ -233,16 +263,17 @@ export const browserTaskContinueTool: ToolDefinition = {
     },
   },
   defaultConfig: {
-    allowlist: [] as string[],
+    allowlist: '',
     screenshotEnabled: true,
   },
   configSchema: {
     type: 'object',
     properties: {
       allowlist: {
-        type: 'array',
-        items: { type: 'string' },
+        type: 'string',
         title: 'Allowed domains',
+        description: 'Comma-separated list of domains. Empty = disabled.',
+        default: '',
       },
       screenshotEnabled: {
         type: 'boolean',
@@ -252,8 +283,13 @@ export const browserTaskContinueTool: ToolDefinition = {
   },
   validateConfig: (config: Record<string, unknown>): ValidationResult => {
     const errors: string[] = [];
-    if (config.allowlist !== undefined && !Array.isArray(config.allowlist)) {
-      errors.push('Allowed domains must be an array of strings');
+    if (
+      config.allowlist !== undefined &&
+      config.allowlist !== null &&
+      typeof config.allowlist !== 'string' &&
+      !Array.isArray(config.allowlist)
+    ) {
+      errors.push('Allowed domains must be a comma-separated string or an array of strings');
     }
     return { valid: errors.length === 0, errors };
   },
