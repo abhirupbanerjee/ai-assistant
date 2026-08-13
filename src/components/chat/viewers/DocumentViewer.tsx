@@ -8,6 +8,7 @@ import rehypeHighlight from 'rehype-highlight';
 import type { ArtifactCanvasItem } from '@/types';
 
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
+const DEBUG_ARTIFACT_RENDERING = process.env.NODE_ENV === 'development';
 
 interface DocumentViewerProps {
   artifact: ArtifactCanvasItem;
@@ -16,58 +17,8 @@ interface DocumentViewerProps {
 export default function DocumentViewer({ artifact }: DocumentViewerProps) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [docxLoading, setDocxLoading] = useState(artifact.artifactType === 'docx');
   const docxContainerRef = useRef<HTMLDivElement>(null);
-
-  // Tag docx-preview page wrappers with data-page-number after async render.
-  useEffect(() => {
-    if (artifact.artifactType !== 'docx') return;
-    const container = docxContainerRef.current;
-    if (!container) return;
-
-    // docx-preview may render in a microtask; use a short timeout + MutationObserver
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let observer: MutationObserver | null = null;
-
-    const tagPages = () => {
-      // Heuristic: look for elements whose class contains "page" or that are direct
-      // children of the wrapper and look like paper pages.
-      const pages = container.querySelectorAll('[class*="page"], [class*="document"] > div');
-      if (pages.length === 0) return false;
-      pages.forEach((page, idx) => {
-        if (!page.hasAttribute('data-page-number')) {
-          page.setAttribute('data-page-number', String(idx + 1));
-        }
-      });
-      return true;
-    };
-
-    const tryTag = () => {
-      if (tagPages()) {
-        observer?.disconnect();
-        return true;
-      }
-      return false;
-    };
-
-    if (!tryTag()) {
-      observer = new MutationObserver(() => {
-        if (tryTag()) {
-          if (timeoutId) clearTimeout(timeoutId);
-          observer?.disconnect();
-        }
-      });
-      observer.observe(container, { childList: true, subtree: true });
-      timeoutId = setTimeout(() => {
-        tryTag();
-        observer?.disconnect();
-      }, 2000);
-    }
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      observer?.disconnect();
-    };
-  }, [artifact.artifactType]);
 
   // ── DOCX: render natively via docx-preview (preserves headings, tables,
   //    page margins, headers/footers, and custom fonts — mammoth stripped all
@@ -78,6 +29,8 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
 
     async function loadDocx() {
       try {
+        setError(null);
+        setDocxLoading(true);
         const response = await fetch(artifact.downloadUrl, { credentials: 'same-origin' });
         if (!response.ok) throw new Error(`Failed to load document: ${response.status}`);
         const arrayBuffer = await response.arrayBuffer();
@@ -98,8 +51,33 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
           renderEndnotes: true,
           experimental: true,
         });
+        if (cancelled) return;
+
+        // docx-preview renders each page as a section with the configured
+        // class name. Tag only those sections so text comments get reliable
+        // page numbers without matching nested elements incidentally.
+        const pages = container.querySelectorAll('section.docx-viewer');
+        pages.forEach((page, index) => {
+          page.setAttribute('data-page-number', String(index + 1));
+        });
+        if (DEBUG_ARTIFACT_RENDERING) {
+          const details = {
+            artifactId: artifact.artifactId,
+            pageCount: pages.length,
+            selectableTextLength: container.textContent?.trim().length ?? 0,
+          };
+          if (pages.length === 0) {
+            console.warn('[ArtifactCanvas][DOCX] Render completed without page sections', details);
+          } else {
+            console.debug('[ArtifactCanvas][DOCX] Render completed', details);
+          }
+        }
+        setDocxLoading(false);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load document');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load document');
+          setDocxLoading(false);
+        }
       }
     }
 
@@ -114,10 +92,20 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
 
     async function loadMarkdown() {
       try {
+        setContent(null);
+        setError(null);
         const response = await fetch(artifact.downloadUrl, { credentials: 'same-origin' });
         if (!response.ok) throw new Error(`Failed to load document: ${response.status}`);
         const text = await response.text();
-        if (!cancelled) setContent(text);
+        if (!cancelled) {
+          setContent(text);
+          if (DEBUG_ARTIFACT_RENDERING) {
+            console.debug('[ArtifactCanvas][Markdown] Content loaded', {
+              artifactId: artifact.artifactId,
+              characterCount: text.length,
+            });
+          }
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load document');
       }
@@ -138,8 +126,13 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
   // ── DOCX: native render container (docx-preview injects paper pages)
   if (artifact.artifactType === 'docx') {
     return (
-      <div className="w-full h-full overflow-auto bg-gray-100">
-        <div ref={docxContainerRef} className="docx-viewer-container w-full h-full" />
+      <div className="relative w-full h-full overflow-auto bg-gray-100 py-6">
+        {docxLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100">
+            <div className="animate-pulse text-sm text-gray-400">Loading document…</div>
+          </div>
+        )}
+        <div ref={docxContainerRef} className="docx-viewer-container min-w-full min-h-full" />
       </div>
     );
   }
@@ -157,7 +150,7 @@ export default function DocumentViewer({ artifact }: DocumentViewerProps) {
   //    task lists, strikethrough, and syntax-highlighted code blocks.
   return (
     <div className="w-full h-full overflow-auto bg-gray-100 py-6 px-4">
-      <div className="mx-auto max-w-3xl bg-white shadow-sm border border-gray-200 rounded-lg p-8 md:p-12 prose prose-sm md:prose-base max-w-none prose-headings:scroll-mt-4 prose-table:border prose-table:border-gray-300 prose-th:border prose-th:border-gray-300 prose-td:border prose-td:border-gray-300">
+      <div className="markdown-content mx-auto max-w-3xl bg-white shadow-sm border border-gray-200 rounded-lg p-8 md:p-12">
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
           {content}
         </ReactMarkdown>

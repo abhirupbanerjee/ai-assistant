@@ -66,13 +66,20 @@ function ArtifactViewer({
     case 'md':
       return (
         <div ref={containerRef} className="w-full h-full">
-          <DocumentViewer artifact={artifact} />
+          <DocumentViewer
+            key={`${artifact.artifactType}:${artifact.artifactId}:${artifact.downloadUrl}`}
+            artifact={artifact}
+          />
         </div>
       );
     case 'pdf':
       return (
         <div ref={containerRef} className="w-full h-full">
-          <PdfViewer artifact={artifact} selectable />
+          <PdfViewer
+            key={`${artifact.artifactId}:${artifact.downloadUrl}`}
+            artifact={artifact}
+            selectable
+          />
         </div>
       );
     case 'pptx':
