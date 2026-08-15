@@ -68,7 +68,7 @@ export default function BrandingSettingsTab() {
 
       const brandingData = data.branding || {
         botName: 'AI Assistant',
-        botIcon: 'policy',
+        botIcon: 'ai-neural',
         subtitle: '',
         welcomeTitle: '',
         welcomeMessage: '',

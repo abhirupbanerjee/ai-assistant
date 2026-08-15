@@ -51,7 +51,7 @@ export default function LandingPage() {
   const { status } = useSession();
   const router = useRouter();
   const [brandingName, setBrandingName] = useState('AI Assistant');
-  const [brandingBotIcon, setBrandingBotIcon] = useState('policy');
+  const [brandingBotIcon, setBrandingBotIcon] = useState('ai-neural');
 
   // Interactive UI States
   const [activeTab, setActiveTab] = useState<'rag' | 'agents' | 'api' | 'commands'>('rag');

@@ -55,7 +55,7 @@ function HomeContent() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('AI Assistant');
-  const [brandingBotIcon, setBrandingBotIcon] = useState<string>('policy');
+  const [brandingBotIcon, setBrandingBotIcon] = useState<string>('ai-neural');
   const [brandingSubtitle, setBrandingSubtitle] = useState<string>('Ask questions about policy documents');
   const [globalWelcome, setGlobalWelcome] = useState<WelcomeConfig>({});
   const [globalStarterPrompts, setGlobalStarterPrompts] = useState<StarterPrompt[]>([]);
@@ -224,7 +224,7 @@ function HomeContent() {
         if (brandingResponse.ok) {
           const brandingData = await brandingResponse.json();
           setBrandingName(brandingData.botName || 'AI Assistant');
-          setBrandingBotIcon(brandingData.botIcon || 'policy');
+          setBrandingBotIcon(brandingData.botIcon || 'ai-neural');
           setBrandingSubtitle(brandingData.subtitle || 'Ask questions about policy documents');
           setGlobalWelcome({
             title: brandingData.welcomeTitle || undefined,
