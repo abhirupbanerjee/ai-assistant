@@ -3,11 +3,24 @@
 import { useRef, useCallback, RefObject } from 'react';
 
 /**
+ * Bump this version whenever the scroll container layout changes in a way that
+ * invalidates previously saved absolute offsets (e.g. adding/removing a
+ * scroll-start spacer). Old stored values will be discarded and the thread will
+ * fall back to its default scroll position instead of jumping to a wrong offset.
+ */
+const SCROLL_MEMORY_VERSION = 2;
+
+interface StoredScrollPosition {
+  offset: number;
+  version: number;
+}
+
+/**
  * Per-thread scroll position memory.
  * When switching threads, saves the scroll position of the current thread
  * and restores it when the user navigates back.
  */
-const scrollPositions = new Map<string, number>();
+const scrollPositions = new Map<string, StoredScrollPosition>();
 
 /**
  * Hook that provides save/restore callbacks for scroll position,
@@ -29,7 +42,10 @@ export function useScrollMemory(containerRef: RefObject<HTMLDivElement | null>) 
     (threadId: string) => {
       const container = containerRef.current;
       if (container && threadId) {
-        scrollPositions.set(threadId, container.scrollTop);
+        scrollPositions.set(threadId, {
+          offset: container.scrollTop,
+          version: SCROLL_MEMORY_VERSION,
+        });
       }
     },
     [containerRef],
@@ -39,14 +55,14 @@ export function useScrollMemory(containerRef: RefObject<HTMLDivElement | null>) 
     (threadId: string) => {
       if (!threadId) return;
 
-      const savedPosition = scrollPositions.get(threadId);
+      const saved = scrollPositions.get(threadId);
       const container = containerRef.current;
 
-      if (container && savedPosition !== undefined) {
+      if (container && saved && saved.version === SCROLL_MEMORY_VERSION) {
         // Apply saved scroll position
         // Defer to next frame so the DOM has painted the restored messages
         requestAnimationFrame(() => {
-          container.scrollTop = savedPosition;
+          container.scrollTop = saved.offset;
           // If messages loaded asynchronously, try again after a short delay
           pendingRestore.current = { threadId, attempts: 0 };
         });
@@ -64,12 +80,12 @@ export function useScrollMemory(containerRef: RefObject<HTMLDivElement | null>) 
       if (!pendingRestore.current || pendingRestore.current.threadId !== threadId) return;
 
       const container = containerRef.current;
-      const savedPosition = scrollPositions.get(threadId);
+      const saved = scrollPositions.get(threadId);
 
-      if (container && savedPosition !== undefined) {
+      if (container && saved && saved.version === SCROLL_MEMORY_VERSION) {
         const hasContent = container.scrollHeight > container.clientHeight;
-        if (hasContent && Math.abs(container.scrollTop - savedPosition) > 10) {
-          container.scrollTop = savedPosition;
+        if (hasContent && Math.abs(container.scrollTop - saved.offset) > 10) {
+          container.scrollTop = saved.offset;
         }
       }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { MessageSquare } from 'lucide-react';
+import { EDGE_TO_EDGE_MOBILE_HEADER } from '@/lib/feature-flags';
 import type { StarterPrompt } from '@/types';
 import StarterButtons from './StarterButtons';
 import SuggestionGrid from './SuggestionGrid';
@@ -25,8 +26,11 @@ export default function ChatWelcome({
   onStarterSelect,
 }: ChatWelcomeProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center">
-      <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
+    <div className="flex flex-col items-center justify-center h-full text-center px-4">
+      {/* On mobile the welcome surface is edge-to-edge under the fixed FABs.
+          Add top safe-area padding so the title and prompts avoid the control
+          corners while the background extends behind them. */}
+      <MessageSquare className={`w-12 h-12 text-gray-300 mb-4 ${EDGE_TO_EDGE_MOBILE_HEADER ? 'mt-[calc(env(safe-area-inset-top,0px)+72px)] md:mt-0' : 'md:mt-0'}`} />
       <h2 className="text-lg font-medium text-gray-900 mb-2">
         {title}
       </h2>

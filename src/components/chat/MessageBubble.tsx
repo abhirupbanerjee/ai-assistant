@@ -364,7 +364,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 group message-enter`}>
+    <div data-message className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 group message-enter`}>
       <div
         className={`max-w-full sm:max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser

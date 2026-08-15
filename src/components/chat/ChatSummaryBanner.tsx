@@ -13,6 +13,7 @@ interface ChatSummaryBannerProps {
   summaryData: ThreadSummary | null;
   showSummaryDetails: boolean;
   onToggleDetails: () => void;
+  className?: string;
 }
 
 /**
@@ -26,12 +27,13 @@ export default function ChatSummaryBanner({
   summaryData,
   showSummaryDetails,
   onToggleDetails,
+  className = '',
 }: ChatSummaryBannerProps) {
   if (!isSummarized || !summaryData) return null;
 
   return (
     <div
-      className="border-b px-6 py-3"
+      className={`border-b px-6 py-3 ${className}`}
       style={{
         backgroundColor: 'var(--accent-lighter)',
         borderColor: 'var(--accent-border)',

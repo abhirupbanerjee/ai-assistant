@@ -2,6 +2,7 @@
 
 import { List, Paperclip } from 'lucide-react';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 interface MobileFABsProps {
   threadCount: number;
@@ -15,10 +16,12 @@ interface MobileFABsProps {
  * - Left FAB: Opens Threads menu
  * - Right FAB: Opens Artifacts menu (only shown when there's an active thread)
  *
- * FABs auto-hide when:
+ * Artifacts auto-hides when:
  * - Input is expanded (typing)
  * - Scrolling down
  * - A menu is open
+ *
+ * Threads is persistent primary navigation and is never hidden by typing/scroll.
  */
 export default function MobileFABs({
   threadCount,
@@ -31,13 +34,19 @@ export default function MobileFABs({
     openThreadsMenu,
     openArtifactsMenu,
   } = useMobileMenu();
+  const isOnline = useOnlineStatus();
+
+  const offlineOffset = isOnline ? 0 : 40; // height of OfflineBanner
+  const topStyle = {
+    top: `calc(var(--mobile-top-clearance) + ${offlineOffset}px)`,
+  };
 
   return (
     <>
       {/* Threads FAB - Top Left (below header, respects safe-area-inset-top for notched devices) */}
       <button
         onClick={openThreadsMenu}
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
+        style={topStyle}
         className={`fixed left-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
           hideThreadsFAB ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
         }`}
@@ -55,7 +64,7 @@ export default function MobileFABs({
       {hasActiveThread && (
         <button
           onClick={openArtifactsMenu}
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
+          style={topStyle}
           className={`fixed right-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
             hideArtifactsFAB ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
           }`}

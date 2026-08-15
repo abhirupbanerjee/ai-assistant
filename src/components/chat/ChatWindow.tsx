@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import { RefreshCw } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem, ArtifactComment, ThreadUploadItem } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
+import { resolveCssLengthToPixels, MOBILE_TOP_CLEARANCE } from '@/lib/mobile-layout';
+import { EDGE_TO_EDGE_MOBILE_HEADER } from '@/lib/feature-flags';
 import MessageBubble from './MessageBubble';
 import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
 import MessageInput from './MessageInput';
@@ -814,7 +816,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     const container = messagesContainerRef.current;
     if (!container) return;
     programmaticScrollRef.current = true;
-    container.scrollTo({ top: 0, behavior: 'smooth' });
+    // When the edge-to-edge header is enabled, scroll to the first message
+    // instead of 0 so the mobile scroll-start spacer remains hidden.
+    if (EDGE_TO_EDGE_MOBILE_HEADER) {
+      const firstMessage = container.querySelector('[data-message]') as HTMLElement | null;
+      if (firstMessage) {
+        container.scrollTo({ top: firstMessage.offsetTop, behavior: 'smooth' });
+      } else {
+        container.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } else {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         programmaticScrollRef.current = false;
@@ -876,10 +889,13 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         : undefined,
     };
 
-    // Pre-measure spacer so the auto-scroll effect sees bottomSpacerHeight > 0 on the first render
+    // Pre-measure spacer so the auto-scroll effect sees bottomSpacerHeight > 0 on the first render.
+    // When the edge-to-edge header is enabled, subtract the mobile top clearance so the new user
+    // message pins at the same visual position as before the root padding was removed.
     const container = messagesContainerRef.current;
     if (container) {
-      setBottomSpacerHeight(container.clientHeight);
+      const topClearancePx = EDGE_TO_EDGE_MOBILE_HEADER ? resolveCssLengthToPixels(MOBILE_TOP_CLEARANCE) : 0;
+      setBottomSpacerHeight(Math.max(0, container.clientHeight - topClearancePx));
     }
     // Reset the streaming scroll-pause latch for the new turn
     streamScrollPausedRef.current = false;
@@ -1101,15 +1117,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     />
   ), [uploads, urlSources, pendingUploads, pendingUrlSources, handleRemoveUpload, handleRemoveUrlSource]);
 
+  const hasFirstContent = messages.length > 0 || archivedMessages.length > 0 || loading || displayError;
+
   return (
 
-    <div className="flex-1 flex flex-col min-w-0 min-h-0 pt-[calc(env(safe-area-inset-top,0px)+64px)] md:pt-0">
-      {/* Summarization Banner */}
+    <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${EDGE_TO_EDGE_MOBILE_HEADER ? '' : 'pt-[calc(env(safe-area-inset-top,0px)+64px)] md:pt-0'}`}>
+      {/* Summarization Banner — on mobile it sits beneath the fixed FABs. */}
       <ChatSummaryBanner
         isSummarized={activeThread?.isSummarized ?? false}
         summaryData={summaryData}
         showSummaryDetails={showSummaryDetails}
         onToggleDetails={() => setShowSummaryDetails(!showSummaryDetails)}
+        className={EDGE_TO_EDGE_MOBILE_HEADER ? 'mt-[var(--mobile-top-clearance)] md:mt-0' : ''}
       />
 
       {/* Messages */}
@@ -1118,6 +1137,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onScroll={handleMessagesScroll}
         className={`flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative group${streamingState.isStreaming ? ' is-streaming' : ''}`}
       >
+        {/* Mobile scroll-start clearance: protects first messages, loading skeletons,
+            and first-turn errors from colliding with the fixed FABs. The spacer is
+            inside the scroller so it scrolls away once the conversation grows. */}
+        {EDGE_TO_EDGE_MOBILE_HEADER && hasFirstContent && (
+          <div
+            className="md:hidden"
+            style={{ height: 'var(--mobile-top-clearance)' }}
+            aria-hidden="true"
+          />
+        )}
+
             {messages.length === 0 && archivedMessages.length === 0 && !loading && (
               <ChatWelcome
                 title={welcomeContent.title}
