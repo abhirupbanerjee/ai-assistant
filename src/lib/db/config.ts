@@ -322,26 +322,9 @@ export interface ModelTokenLimits {
 }
 
 // Available icon options for branding
-// Each icon has Lucide component name and pre-rendered PNG paths for PWA
-export const BRANDING_ICONS = [
-  { key: 'government', label: 'Government', lucideIcon: 'Landmark', png192: '/icons/bot/government-192.png', png512: '/icons/bot/government-512.png' },
-  { key: 'operations', label: 'Operations', lucideIcon: 'Settings', png192: '/icons/bot/operations-192.png', png512: '/icons/bot/operations-512.png' },
-  { key: 'finance', label: 'Finance', lucideIcon: 'DollarSign', png192: '/icons/bot/finance-192.png', png512: '/icons/bot/finance-512.png' },
-  { key: 'kpi', label: 'KPI', lucideIcon: 'BarChart3', png192: '/icons/bot/kpi-192.png', png512: '/icons/bot/kpi-512.png' },
-  { key: 'logs', label: 'Logs', lucideIcon: 'FileText', png192: '/icons/bot/logs-192.png', png512: '/icons/bot/logs-512.png' },
-  { key: 'data', label: 'Data', lucideIcon: 'Database', png192: '/icons/bot/data-192.png', png512: '/icons/bot/data-512.png' },
-  { key: 'monitoring', label: 'Monitoring', lucideIcon: 'Activity', png192: '/icons/bot/monitoring-192.png', png512: '/icons/bot/monitoring-512.png' },
-  { key: 'architecture', label: 'Architecture', lucideIcon: 'Layers', png192: '/icons/bot/architecture-192.png', png512: '/icons/bot/architecture-512.png' },
-  { key: 'internet', label: 'Internet', lucideIcon: 'Globe', png192: '/icons/bot/internet-192.png', png512: '/icons/bot/internet-512.png' },
-  { key: 'systems', label: 'Systems', lucideIcon: 'Server', png192: '/icons/bot/systems-192.png', png512: '/icons/bot/systems-512.png' },
-  { key: 'policy', label: 'Policy', lucideIcon: 'ScrollText', png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
-  // AI Assistant — neural-network glyph with "abai"/"ai" wordmark.
-  // The `ai-icon` key is the value already stored in production DBs, so it
-  // is repointed to the new ai-neural PNGs. A second `ai-neural` key is
-  // exposed so admins can pick it explicitly going forward.
-  { key: 'ai-icon', label: 'AI Assistant', lucideIcon: 'BrainCircuit', png192: '/icons/bot/ai-neural-192.png', png512: '/icons/bot/ai-neural-512.png' },
-  { key: 'ai-neural', label: 'AI Neural', lucideIcon: 'BrainCircuit', png192: '/icons/bot/ai-neural-192.png', png512: '/icons/bot/ai-neural-512.png' },
-] as const;
+// Re-exported from utils.ts so the favicon resolver (layout.tsx) and the
+// compat/admin APIs use the exact same icon list and PNG paths.
+export { BRANDING_ICONS } from './utils';
 
 // ============ Available Models ============
 

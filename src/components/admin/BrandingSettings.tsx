@@ -76,6 +76,12 @@ export default function BrandingSettingsTab() {
         starterPrompts: [],
       };
 
+      // Normalize a missing or unrecognized botIcon to the ai-neural default
+      // so the UI and the server validator always agree on a valid key.
+      if (!brandingData.botIcon || !BRANDING_ICONS.some(i => i.key === brandingData.botIcon)) {
+        brandingData.botIcon = 'ai-neural';
+      }
+
       setSettings(brandingData);
       setEditedSettings({
         botName: brandingData.botName,
@@ -134,13 +140,18 @@ export default function BrandingSettingsTab() {
 
   const handleReset = () => {
     if (settings) {
+      const resolvedIcon = settings.botIcon && BRANDING_ICONS.some(i => i.key === settings.botIcon)
+        ? settings.botIcon
+        : 'ai-neural';
+
       setEditedSettings({
         botName: settings.botName,
-        botIcon: settings.botIcon,
+        botIcon: resolvedIcon as typeof BRANDING_ICONS[number]['key'],
         subtitle: settings.subtitle,
         welcomeTitle: settings.welcomeTitle,
         welcomeMessage: settings.welcomeMessage,
         accentColor: settings.accentColor,
+        starterPrompts: settings.starterPrompts || [],
       });
       setIsModified(false);
     }
