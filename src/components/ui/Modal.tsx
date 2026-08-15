@@ -19,6 +19,16 @@ export default function Modal({ isOpen, onClose, title, children, allowOverflow 
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  // Keep the latest callback available to the keyboard listener without making
+  // the modal focus lifecycle depend on the callback's identity. Callers often
+  // pass an inline function, which changes whenever controlled form state
+  // changes; depending on it here used to rerun focus initialization after
+  // every keystroke.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -29,8 +39,13 @@ export default function Modal({ isOpen, onClose, title, children, allowOverflow 
     const releaseScrollLock = lockBodyScroll();
 
     const focusFrame = window.requestAnimationFrame(() => {
+      // Prefer an editable field over the header close button. Falling back to
+      // the first generic focusable element still supports confirmation modals
+      // that contain buttons only.
       const firstField = dialogRef.current?.querySelector<HTMLElement>(
-        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+        'input:not([disabled]), select:not([disabled]), textarea:not([disabled])'
+      ) ?? dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
       );
       firstField?.focus();
     });
@@ -44,7 +59,7 @@ export default function Modal({ isOpen, onClose, title, children, allowOverflow 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -77,7 +92,7 @@ export default function Modal({ isOpen, onClose, title, children, allowOverflow 
       releaseScrollLock();
       window.requestAnimationFrame(() => previouslyFocusedRef.current?.focus());
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

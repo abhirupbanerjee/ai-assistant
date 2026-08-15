@@ -142,6 +142,8 @@ const MessageInput = memo(function MessageInput({
   const triggerSpanRef = useRef<TriggerSpan | null>(null);
   const lastModelIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobile();
 
   // Toast notifications
@@ -420,14 +422,44 @@ const MessageInput = memo(function MessageInput({
     textareaRef.current?.focus();
   };
 
+  useEffect(() => () => {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+    }
+  }, []);
+
   const handleFocus = () => {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
     setIsFocused(true);
     onFocus?.();
   };
 
   const handleBlur = () => {
-    setIsFocused(false);
-    onBlur?.();
+    // A category trigger is rendered only while the adaptive composer is
+    // expanded. Browser event order fires textarea blur before the trigger's
+    // click; collapsing synchronously therefore unmounted the trigger before
+    // its click could open the dropdown. Defer the decision until focus has
+    // settled, and treat the portalled category dropdown as part of the
+    // composer even though it lives under document.body.
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+    }
+    blurTimerRef.current = setTimeout(() => {
+      blurTimerRef.current = null;
+      const activeElement = document.activeElement;
+      const focusRemainsInComposer = activeElement instanceof Node
+        && composerRef.current?.contains(activeElement);
+      const focusMovedToCategoryDropdown = activeElement instanceof Element
+        && activeElement.closest('[data-category-dropdown="true"]');
+
+      if (focusRemainsInComposer || focusMovedToCategoryDropdown) return;
+
+      setIsFocused(false);
+      onBlur?.();
+    }, 0);
   };
 
   // Upload a single file
@@ -501,7 +533,7 @@ const MessageInput = memo(function MessageInput({
 
   // Unified layout for both mobile and desktop
   return (
-    <div className="bg-white p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
+    <div ref={composerRef} className="bg-white p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
       {/* Screen reader state announcements */}
       <span role="status" aria-live="polite" className="sr-only">
         {stateAnnouncement}

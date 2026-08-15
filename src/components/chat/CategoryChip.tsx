@@ -138,6 +138,9 @@ export default function CategoryChip({
     onSelect(categoryId);
     setIsOpen(false);
     setFilterText('');
+    // Return focus from the body-level portal to the composer. This keeps the
+    // adaptive input expanded until the user intentionally focuses elsewhere.
+    window.requestAnimationFrame(() => buttonRef.current?.focus());
   };
 
   // Read-only badge (for active threads)
@@ -159,42 +162,44 @@ export default function CategoryChip({
 
   return (
     <div className="inline-flex items-center gap-2 flex-wrap" ref={wrapperRef}>
-      <button
-        ref={buttonRef}
-        onClick={() => !disabled && setIsOpen(!isOpen)}
-        disabled={disabled || readOnly}
+      <div
         className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
           selectedCategory
             ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200'
             : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
         } ${disabled || readOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-label={selectedCategory ? `Category: ${selectedCategory.categoryName}` : 'Select a category'}
       >
-        {selectedCategory ? (
-          <>
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          disabled={disabled || readOnly}
+          className="inline-flex items-center gap-2 disabled:cursor-not-allowed"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-label={selectedCategory ? `Category: ${selectedCategory.categoryName}` : 'Select a category'}
+        >
+          {selectedCategory ? (
             <span className="truncate">{selectedCategory.categoryName}</span>
-            {!readOnly && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelect(null);
-                }}
-                className="ml-1 hover:opacity-70 transition-opacity"
-                aria-label={`Clear ${selectedCategory.categoryName}`}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </>
-        ) : (
-          <>
+          ) : (
+            <>
             <span>Select category</span>
             <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-          </>
+            </>
+          )}
+        </button>
+        {selectedCategory && !readOnly && (
+          <button
+            type="button"
+            onClick={() => handleSelect(null)}
+            disabled={disabled}
+            className="ml-1 hover:opacity-70 transition-opacity disabled:cursor-not-allowed"
+            aria-label={`Clear ${selectedCategory.categoryName}`}
+          >
+            <X size={14} />
+          </button>
         )}
-      </button>
+      </div>
 
       {/* Quick-pick recent categories */}
       {!selectedCategoryId && !isOpen && validRecentCategories.length > 0 && (
@@ -224,6 +229,7 @@ export default function CategoryChip({
         <Portal>
           <div
             ref={portalDropdownRef}
+            data-category-dropdown="true"
             className="fixed w-max min-w-[14rem] bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] flex flex-col"
             style={{ bottom: `calc(100vh - ${dropdownPos.top}px + 4px)`, left: dropdownPos.left }}
             role="listbox"
