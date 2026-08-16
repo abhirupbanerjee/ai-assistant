@@ -9,7 +9,6 @@ interface UseInputStateOptions {
   value: string;
   isFocused: boolean;
   attachmentCount: number;
-  lineCount: number;
 }
 
 interface UseInputStateResult {
@@ -23,13 +22,12 @@ interface UseInputStateResult {
  * States:
  * - COMPACT: Mobile, idle, no draft/attachments → single-row bar
  * - EXPANDED: Desktop OR (mobile with draft/attachments/focus) → two-row bar with chips
- * - FOCUSED-WRITE: Mobile only, when lineCount >= 4 → 50dvh sheet with collapsed chips
+ * - FOCUSED-WRITE: Reserved for a future explicit writing-mode control
  */
 export function useInputState({
   value,
   isFocused,
   attachmentCount,
-  lineCount,
 }: UseInputStateOptions): UseInputStateResult {
   const isMobile = useIsMobile();
   const [forceExpanded, setForceExpanded] = useState(false);
@@ -41,11 +39,6 @@ export function useInputState({
       return 'expanded' as InputState;
     }
 
-    // Mobile: check for FOCUSED-WRITE (4+ lines)
-    if (lineCount >= 4) {
-      return 'focused-write' as InputState;
-    }
-
     // Mobile: check for EXPANDED (draft, attachments, focus, or forced)
     const hasContent = value.trim().length > 0;
     const hasAttachments = attachmentCount > 0;
@@ -55,7 +48,7 @@ export function useInputState({
 
     // Mobile: default COMPACT
     return 'compact' as InputState;
-  }, [isMobile, value, isFocused, attachmentCount, lineCount, forceExpanded]);
+  }, [isMobile, value, isFocused, attachmentCount, forceExpanded]);
 
   return {
     state,

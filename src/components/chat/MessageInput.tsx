@@ -126,7 +126,6 @@ const MessageInput = memo(function MessageInput({
   const [mode, setMode] = useState<ChatMode>('normal');
   const [isUploading, setIsUploading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [lineCount, setLineCount] = useState(1);
   const [chipSheetOpen, setChipSheetOpen] = useState(false);
   const [currentModelInfo, setCurrentModelInfo] = useState<CurrentModelInfo | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
@@ -208,7 +207,6 @@ const MessageInput = memo(function MessageInput({
     value: message,
     isFocused,
     attachmentCount: currentUploads.length,
-    lineCount,
   });
 
   // Compute active feature badges for ChipSheet collapsed pill
@@ -264,18 +262,18 @@ const MessageInput = memo(function MessageInput({
   }, [inputState]);
 
 
-  // Auto-resize textarea with different max heights for mobile vs desktop
+  // Auto-resize textarea. Mobile grows from one to three lines, then keeps a
+  // fixed height and uses native textarea scrolling. Desktop behavior remains
+  // unchanged.
   useEffect(() => {
     if (textareaRef.current) {
-      const maxHeight = isMobile ? 112 : 150; // Mobile: 4 lines, Desktop: ~6 lines
+      const maxHeight = isMobile ? 84 : 150;
       textareaRef.current.style.height = 'auto';
       const scrollHeight = textareaRef.current.scrollHeight;
       textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
-      
-      // Calculate line count (approximate: 28px per line on mobile, 24px on desktop)
-      const lineHeightPx = isMobile ? 28 : 24;
-      const calculatedLines = Math.ceil(scrollHeight / lineHeightPx);
-      setLineCount(calculatedLines);
+      textareaRef.current.style.overflowY = isMobile
+        ? (scrollHeight > maxHeight ? 'auto' : 'hidden')
+        : '';
     }
   }, [message, isMobile]);
 
@@ -533,12 +531,12 @@ const MessageInput = memo(function MessageInput({
 
   // Unified layout for both mobile and desktop
   return (
-    <div ref={composerRef} className="bg-white p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
+    <div ref={composerRef} className="bg-white p-2 md:p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
       {/* Screen reader state announcements */}
       <span role="status" aria-live="polite" className="sr-only">
         {stateAnnouncement}
       </span>
-      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 transition-all duration-300 relative">
+      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-2 md:p-3 transition-all duration-300 relative">
 
         {/* Chip slots: CategoryChip + AttachmentChipsRow + ArtifactComments (visible in EXPANDED state) */}
         {/* On mobile FOCUSED-WRITE, chips are shown in the ChipSheet instead */}
@@ -709,15 +707,15 @@ const MessageInput = memo(function MessageInput({
           onBlur={handleBlur}
           placeholder="Ask a question..."
           disabled={isUploading}
-          rows={isMobile ? 2 : 1}
+          rows={1}
           enterKeyHint={isMobile ? 'enter' : 'send'}
           className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${
-            isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[40vh]'
+            isMobile ? 'min-h-[28px] max-h-[84px] leading-7' : 'min-h-[40px] max-h-[40vh]'
           }`}
         />
 
         {/* Bottom row: Voice + Plus menu + Model selector + Submit */}
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between mt-1 md:mt-2">
           {/* Left actions: Voice + Plus menu */}
           <div className="flex items-center gap-1">
             <VoiceInput onTranscript={handleVoiceTranscript} />

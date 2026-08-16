@@ -38,7 +38,10 @@ export default function MobileFABs({
 
   const offlineOffset = isOnline ? 0 : 40; // height of OfflineBanner
   const topStyle = {
-    top: `calc(var(--mobile-top-clearance) + ${offlineOffset}px)`,
+    // Position the control at the top of its reserved clearance zone. The
+    // --mobile-top-clearance variable describes the full safe-area + control
+    // row, so using it here as the top coordinate creates a second empty row.
+    top: `calc(env(safe-area-inset-top, 0px) + 8px + ${offlineOffset}px)`,
   };
 
   return (
