@@ -183,13 +183,29 @@ export const DEFAULT_RERANKER_SETTINGS: RerankerSettings = {
 };
 
 export interface MemorySettings {
-  enabled: boolean;               // Enable/disable memory system
-  extractionThreshold: number;    // Minimum messages before extracting facts
-  maxFactsPerCategory: number;    // Maximum facts stored per user+category
-  maxFactsPerQuery: number;       // Maximum facts returned by semantic retrieval (default: 10)
-  autoExtractOnThreadEnd: boolean; // Auto-extract facts when thread ends
-  extractionMaxTokens: number;    // Max tokens for fact extraction LLM call (default: 1000)
-  factMaxAgeDays: number;         // Max age in days for facts (0 = no filtering, default: 0)
+  /** Personal Memory master switch. */
+  enabled: boolean;
+  automaticPreferenceExtractionEnabled: boolean;
+  automaticInterestExtractionEnabled: boolean;
+  extractionThreshold: number;
+  maxInterestsPerUser: number;
+  inferredPreferencesRequireConfirmation: boolean;
+  extractionMaxTokens: number;
+  /** Shared Category Memory controls; intentionally independent from Personal Memory. */
+  categoryMemoryEnabled: boolean;
+  categoryMemoryMaxActiveItems: number;
+  categoryMemoryMaxRetrievedItems: number;
+  categoryMemoryTokenBudget: number;
+  suggestionsEnabled: boolean;
+  automaticCategoryCandidateExtractionEnabled: boolean;
+  categoryCandidateExtractionThreshold: number;
+  categoryCandidateConfidenceThreshold: number;
+  categoryCandidateExtractionMaxTokens: number;
+  /** Deprecated compatibility fields retained for older admin clients. */
+  maxFactsPerCategory: number;
+  maxFactsPerQuery: number;
+  autoExtractOnThreadEnd: boolean;
+  factMaxAgeDays: number;
 }
 
 export interface SummarizationSettings {
@@ -824,9 +840,22 @@ export function getRerankerSettings(): RerankerSettings {
  */
 export function getMemorySettings(): MemorySettings {
   const hardcoded: MemorySettings = {
-    enabled: false,
+    enabled: true,
+    automaticPreferenceExtractionEnabled: true,
+    automaticInterestExtractionEnabled: true,
     extractionThreshold: 5,
-    maxFactsPerCategory: 20,
+    maxInterestsPerUser: 25,
+    inferredPreferencesRequireConfirmation: false,
+    categoryMemoryEnabled: true,
+    categoryMemoryMaxActiveItems: 100,
+    categoryMemoryMaxRetrievedItems: 5,
+    categoryMemoryTokenBudget: 800,
+    suggestionsEnabled: true,
+    automaticCategoryCandidateExtractionEnabled: false,
+    categoryCandidateExtractionThreshold: 6,
+    categoryCandidateConfidenceThreshold: 0.85,
+    categoryCandidateExtractionMaxTokens: 600,
+    maxFactsPerCategory: 25,
     maxFactsPerQuery: 10,
     autoExtractOnThreadEnd: true,
     extractionMaxTokens: 1000,

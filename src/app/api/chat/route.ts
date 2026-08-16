@@ -6,9 +6,11 @@ import { rateLimitMiddleware } from '@/lib/rate-limiter';
 import { ragQuery } from '@/lib/rag';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import {
-  getMemoryContext,
+  assemblePersonalMemoryContext,
   processConversationForMemory,
 } from '@/lib/memory';
+import { retrieveCategoryMemory } from '@/lib/category-memory';
+import { runCategoryMemoryCandidateLearning } from '@/lib/category-memory-learning';
 import {
   countTokens,
   updateThreadTokenCount,
@@ -98,15 +100,20 @@ export async function POST(request: NextRequest) {
     const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
     console.log('[Chat API] Thread categories:', { threadId, categorySlugs });
 
-    // Get category IDs for memory context
+    // Thread category IDs are server-derived. Never retrieve category memory
+    // from an unverified client activeCategoryId.
     const categoryIds = thread.categories?.map(c => c.id) || [];
-    const effectiveCategoryId = activeCategoryId ?? categoryIds[0] ?? null;
+    const verifiedCategoryId = activeCategoryId && categoryIds.includes(activeCategoryId) ? activeCategoryId : null;
 
-    // Get memory context if enabled
-    let memoryContext = '';
-    if (memorySettings.enabled && dbUser) {
-      memoryContext = await getMemoryContext(dbUser.id, effectiveCategoryId, message);
-    }
+    const personalMemory = await assemblePersonalMemoryContext({
+      surface: 'main-chat',
+      userId: dbUser?.id ?? null,
+      query: message,
+    });
+    const categoryMemory = verifiedCategoryId && dbUser
+      ? await retrieveCategoryMemory({ userId: dbUser.id, role: dbUser.role, categoryId: verifiedCategoryId, query: message })
+      : { promptContext: '' };
+    const memoryContext = [personalMemory.promptContext, categoryMemory.promptContext].filter(Boolean).join('\n\n');
 
     // Get thread summary context if available
     let summaryContext = '';
@@ -259,15 +266,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Process conversation for memory extraction if enabled (async, non-blocking)
+    // Explicit awaited post-response write-back for durable Personal Memory.
     if (memorySettings.enabled && memorySettings.autoExtractOnThreadEnd && dbUser) {
       // Process with recent conversation
       const recentMessages = conversationHistory.slice(-10).map(m => ({
         role: m.role,
         content: m.content,
       }));
-      processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages).catch(err => {
-        console.error('[Chat API] Background memory extraction failed:', err);
+      await processConversationForMemory(dbUser.id, verifiedCategoryId, recentMessages);
+    }
+
+    // Explicit awaited Phase 5 post-response hook. This authenticated main-chat
+    // route is the only eligible surface; the hook independently re-verifies
+    // ownership, exact thread category, and current category access.
+    if (dbUser) {
+      await runCategoryMemoryCandidateLearning({
+        surface: 'main-chat',
+        userId: dbUser.id,
+        role: dbUser.role,
+        threadId,
+        categoryId: verifiedCategoryId,
+        sourceMessageId: userMessage.id,
+        recentMessages: [
+          ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
+          { role: 'assistant', content: answer },
+        ],
       });
     }
 

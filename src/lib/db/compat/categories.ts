@@ -430,7 +430,7 @@ export async function deleteCategoryWithRelatedData(
     await trx.deleteFrom('category_prompts').where('category_id', '=', categoryId).execute();
     await trx.deleteFrom('category_tool_configs').where('category_id', '=', categoryId).execute();
     await trx.deleteFrom('category_skills').where('category_id', '=', categoryId).execute();
-    await trx.deleteFrom('user_memories').where('category_id', '=', categoryId).execute();
+    // category_memories and category_memory_events use ON DELETE CASCADE.
     await trx.deleteFrom('data_api_categories').where('category_id', '=', categoryId).execute();
     await trx.deleteFrom('data_csv_categories').where('category_id', '=', categoryId).execute();
     await trx.deleteFrom('function_api_categories').where('category_id', '=', categoryId).execute();

@@ -37,6 +37,7 @@ export interface CategoriesTable {
   description: string | null;
   created_by: string;
   created_at: Generated<string>;
+  memory_enabled: Generated<boolean>;
 }
 
 export type Category = Selectable<CategoriesTable>;
@@ -222,15 +223,120 @@ export interface ThreadOutputsTable {
   created_at: Generated<string>;
 }
 
-// ============ User Memories ============
+// ============ Personal & Category Memory Foundation ============
 
-export interface UserMemoriesTable {
-  id: Generated<number>;
+export interface PersonalPreferenceProfilesTable {
   user_id: number;
-  category_id: number | null;
-  facts_json: string;
+  preferred_language: string | null;
+  translation_language: string | null;
+  translation_mode: Generated<'never' | 'when_requested' | 'always'>;
+  tone: Generated<'default' | 'friendly' | 'formal' | 'direct' | 'professional'>;
+  verbosity: Generated<'brief' | 'balanced' | 'detailed'>;
+  complexity: Generated<'simple' | 'standard' | 'technical' | 'executive'>;
+  preferred_format: Generated<'auto' | 'bullets' | 'steps' | 'prose' | 'table'>;
+  preferred_diagram_format: Generated<'auto' | 'mermaid' | 'ascii' | 'infographic'>;
+  preferred_document_format: Generated<'auto' | 'markdown' | 'docx' | 'pdf'>;
+  include_examples: boolean | null;
+  include_citations: boolean | null;
+  source: Generated<'user_set' | 'inferred'>;
+  preferred_language_source: Generated<'user_set' | 'inferred'>;
+  translation_language_source: Generated<'user_set' | 'inferred'>;
+  translation_mode_source: Generated<'user_set' | 'inferred'>;
+  tone_source: Generated<'user_set' | 'inferred'>;
+  verbosity_source: Generated<'user_set' | 'inferred'>;
+  complexity_source: Generated<'user_set' | 'inferred'>;
+  preferred_format_source: Generated<'user_set' | 'inferred'>;
+  preferred_diagram_format_source: Generated<'user_set' | 'inferred'>;
+  preferred_document_format_source: Generated<'user_set' | 'inferred'>;
+  include_examples_source: Generated<'user_set' | 'inferred'>;
+  include_citations_source: Generated<'user_set' | 'inferred'>;
+  learning_enabled: Generated<boolean>;
   created_at: Generated<string>;
   updated_at: Generated<string>;
+}
+
+export interface PersonalInterestsTable {
+  id: Generated<number>;
+  user_id: number;
+  topic: string;
+  normalized_topic: string;
+  source: Generated<'user_set' | 'inferred'>;
+  confidence: Generated<number>;
+  is_active: Generated<boolean>;
+  last_used_at: string | null;
+  hit_count: Generated<number>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface PendingPersonalPreferenceCandidatesTable {
+  id: Generated<number>;
+  user_id: number;
+  field: 'preferredLanguage' | 'translationLanguage' | 'translationMode' | 'tone' | 'verbosity' | 'complexity' | 'preferredFormat' | 'preferredDiagramFormat' | 'preferredDocumentFormat' | 'includeExamples' | 'includeCitations';
+  value: unknown;
+  confidence: Generated<number>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface CategoryMemoriesTable {
+  id: Generated<number>;
+  category_id: number;
+  memory_type: 'fact' | 'terminology' | 'decision' | 'process' | 'faq' | 'caveat';
+  title: string;
+  normalized_title: string;
+  content: string;
+  status: Generated<'draft' | 'suggested' | 'approved' | 'archived' | 'rejected'>;
+  source_reference: string | null;
+  confidence: Generated<number>;
+  valid_from: string | null;
+  expires_at: string | null;
+  created_by: number | null;
+  approved_by: number | null;
+  moderation_flags: Generated<unknown>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface CategoryMemoryEventsTable {
+  id: Generated<number>;
+  category_memory_id: number;
+  category_id: number;
+  revision_number: number;
+  action: 'created' | 'suggested' | 'edited' | 'approved' | 'rejected' | 'archived' | 'restored' | 'expiry_changed';
+  actor_id: number | null;
+  previous_value: unknown | null;
+  new_value: unknown | null;
+  created_at: Generated<string>;
+}
+
+export interface CategoryMemoryExtractionEventsTable {
+  id: Generated<number>;
+  category_id: number;
+  user_id: number | null;
+  thread_id: string;
+  source_message_id: string;
+  source_surface: Generated<'main-chat'>;
+  outcome: 'pending' | 'no_candidate' | 'candidate_created' | 'duplicate_skip' | 'access_revoked' | 'error';
+  category_memory_id: number | null;
+  candidate_count: Generated<number>;
+  duplicate_skips: Generated<number>;
+  redaction_count: Generated<number>;
+  created_at: Generated<string>;
+  completed_at: string | null;
+}
+
+export interface NotificationsTable {
+  id: Generated<number>;
+  user_id: number;
+  type: 'category_memory_suggestion_submitted' | 'category_memory_suggestion_approved' | 'category_memory_suggestion_rejected';
+  title: string;
+  message: string;
+  resource_type: 'category_memory';
+  resource_id: number;
+  metadata: Generated<unknown>;
+  read_at: string | null;
+  created_at: Generated<string>;
 }
 
 // ============ Thread Summaries ============
@@ -1052,7 +1158,13 @@ export interface DB {
   messages: MessagesTable;
   thread_uploads: ThreadUploadsTable;
   thread_outputs: ThreadOutputsTable;
-  user_memories: UserMemoriesTable;
+  personal_preference_profiles: PersonalPreferenceProfilesTable;
+  personal_interests: PersonalInterestsTable;
+  pending_personal_preference_candidates: PendingPersonalPreferenceCandidatesTable;
+  category_memories: CategoryMemoriesTable;
+  category_memory_events: CategoryMemoryEventsTable;
+  category_memory_extraction_events: CategoryMemoryExtractionEventsTable;
+  notifications: NotificationsTable;
   thread_summaries: ThreadSummariesTable;
   archived_messages: ArchivedMessagesTable;
   settings: SettingsTable;

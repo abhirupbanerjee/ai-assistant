@@ -14,7 +14,9 @@ import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory, transferThreadCategory, deleteMessagesFromPoint } from '@/lib/db/compat';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
-import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
+import { assemblePersonalMemoryContext, processConversationForMemory } from '@/lib/memory';
+import { retrieveCategoryMemory } from '@/lib/category-memory';
+import { runCategoryMemoryCandidateLearning } from '@/lib/category-memory-learning';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
@@ -122,8 +124,6 @@ export async function POST(request: NextRequest) {
           activeCategoryId,
           mode = 'normal',
           webSearchEnabled = true,
-          targetLanguage = 'en',
-          responseTone = 'default',
           showCitationTrajectory = true,
           thinkingEnabled = false,
           toolHints,
@@ -132,6 +132,8 @@ export async function POST(request: NextRequest) {
           truncateFromMessageId,
           artifactComments,
         } = body;
+        const hasExplicitTargetLanguage = Object.prototype.hasOwnProperty.call(body, 'targetLanguage');
+        const hasExplicitResponseTone = Object.prototype.hasOwnProperty.call(body, 'responseTone');
 
         // `pipeline` is client-supplied (untrusted). Keep it mutable so it can
         // be re-validated against the server-side registry below.
@@ -197,6 +199,32 @@ export async function POST(request: NextRequest) {
           ...uploadDetails.documents.map(d => d.filename),
           ...uploadDetails.images.map(i => i.filename),
         ];
+        // Resolve deterministic stored defaults before any generation or final
+        // translation branch. Request field presence denotes an explicit control.
+        const personalMemory = await assemblePersonalMemoryContext({
+          surface: 'main-chat',
+          userId: dbUser?.id ?? null,
+          query: message,
+          explicit: {
+            ...(hasExplicitTargetLanguage ? { targetLanguage: body.targetLanguage } : {}),
+            ...(hasExplicitResponseTone ? { responseTone: body.responseTone } : {}),
+          },
+        });
+        const targetLanguage = personalMemory.resolvedTargetLanguage;
+        const responseTone = personalMemory.resolvedResponseTone;
+        // Category scope is derived only from the server-verified, owned thread.
+        // The client-provided activeCategoryId is never sufficient for memory access.
+        const verifiedThreadCategory = activeCategoryId
+          ? thread.categories?.find((category) => category.id === activeCategoryId)
+          : undefined;
+        const categoryMemory = verifiedThreadCategory && dbUser
+          ? await retrieveCategoryMemory({
+              userId: dbUser.id,
+              role: dbUser.role,
+              categoryId: verifiedThreadCategory.id,
+              query: message,
+            })
+          : { items: [], promptContext: '', diagnostics: { source: 'category' as const, ids: [], tokens: 0, strategy: 'disabled' as const } };
 
         // Create and save user message
         const userMessageId = uuidv4();
@@ -458,10 +486,7 @@ export async function POST(request: NextRequest) {
           const effectiveCategoryId = activeCategoryId ?? categoryIds[0] ?? null;
 
           // Get memory and summary context
-          let memoryContext = '';
-          if (memorySettings.enabled && dbUser) {
-            memoryContext = await getMemoryContext(dbUser.id, effectiveCategoryId, message);
-          }
+          const memoryContext = [personalMemory.promptContext, categoryMemory.promptContext].filter(Boolean).join('\n\n');
 
           let summaryContext = '';
           const existingSummary = await getThreadSummary(threadId);
@@ -527,7 +552,8 @@ export async function POST(request: NextRequest) {
                   }
                 }
 
-                // Background tasks (non-blocking)
+                // Post-response tasks are explicit and awaited so durable memory
+                // write-back cannot be lost when the stream closes.
                 if (summarizationSettings.enabled && await shouldSummarize(threadId)) {
                   summarizeThread(threadId).catch(() => {});
                 }
@@ -537,7 +563,18 @@ export async function POST(request: NextRequest) {
                     role: m.role,
                     content: m.content,
                   }));
-                  processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages).catch(() => {});
+                  await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
+                }
+
+                if (dbUser) {
+                  await runCategoryMemoryCandidateLearning({
+                    surface: 'main-chat', userId: dbUser.id, role: dbUser.role, threadId,
+                    categoryId: verifiedThreadCategory?.id ?? null, sourceMessageId: userMessageId,
+                    recentMessages: [
+                      ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
+                      { role: 'assistant', content: assistantMessage.content },
+                    ],
+                  });
                 }
 
                 // Send completion
@@ -606,10 +643,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Get memory and summary context
-        let memoryContext = '';
-        if (memorySettings.enabled && dbUser) {
-          memoryContext = await getMemoryContext(dbUser.id, effectiveCategoryId, message);
-        }
+        const memoryContext = [personalMemory.promptContext, categoryMemory.promptContext].filter(Boolean).join('\n\n');
 
         let summaryContext = '';
         const existingSummary = await getThreadSummary(threadId);
@@ -619,6 +653,13 @@ export async function POST(request: NextRequest) {
 
         if (memoryContext) {
           send({ type: 'operation_log', category: 'memory', message: 'Loading user memory' });
+        }
+        if (categoryMemory.items.length) {
+          send({
+            type: 'operation_log',
+            category: 'memory',
+            message: `Loaded shared category context (${categoryMemory.diagnostics.ids.length} items, ${categoryMemory.diagnostics.tokens} tokens, ${categoryMemory.diagnostics.strategy})`,
+          });
         }
         if (summaryContext) {
           send({ type: 'operation_log', category: 'memory', message: 'Loading conversation summary' });
@@ -1444,7 +1485,21 @@ export async function POST(request: NextRequest) {
                 role: m.role,
                 content: m.content,
               }));
-              processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages).catch(() => {});
+              await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
+            }
+
+
+            // Explicit awaited post-response assisted-learning hook. The exact
+            // server-verified category is used rather than the request fallback.
+            if (dbUser) {
+              await runCategoryMemoryCandidateLearning({
+                surface: 'main-chat', userId: dbUser.id, role: dbUser.role, threadId,
+                categoryId: verifiedThreadCategory?.id ?? null, sourceMessageId: userMessageId,
+                recentMessages: [
+                  ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
+                  { role: 'assistant', content: fullContent },
+                ],
+              });
             }
 
             // Log token usage for dashboard

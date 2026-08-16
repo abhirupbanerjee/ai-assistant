@@ -14,6 +14,89 @@
 // Export database helper
 export { getDb } from '../kysely';
 
+// ============ In-app Notifications ============
+export {
+  type NotificationType,
+  type AppNotification,
+  createNotifications,
+  listNotifications,
+  markNotificationRead,
+  listCategoryMemoryReviewerIds,
+} from './notifications';
+
+// ============ Shared Category Memory ============
+export {
+  type CategoryMemoryType,
+  type CategoryMemoryStatus,
+  type CategoryMemoryAction,
+  type CategoryMemoryItem,
+  type CategoryMemoryEvent,
+  type CategoryMemoryInput,
+  type CategoryMemoryAccess,
+  type CategoryMemoryLearningMetrics,
+  normalizeCategoryMemoryTitle,
+  isCategoryMemoryActive,
+  calculateCategoryMemoryPermission,
+  getCategoryMemoryAccess,
+  verifyCategoryMemoryExtractionContext,
+  claimCategoryMemoryExtraction,
+  completeCategoryMemoryExtraction,
+  getCategoryMemoryLearningMetrics,
+  listEffectiveCategoryMemoryCategories,
+  setCategoryMemoryEnabled,
+  listCategoryMemories,
+  getCategoryMemoryById,
+  createCategoryMemory,
+  createCategoryMemorySuggestion,
+  listCategoryMemoryReviewQueue,
+  listUserCategoryMemorySuggestions,
+  validateCategoryMemoryForApproval,
+  updateCategoryMemory,
+  transitionCategoryMemory,
+  deleteCategoryMemory,
+  clearCategoryMemories,
+  listCategoryMemoryEvents,
+  listExpiredApprovedCategoryMemories,
+} from './category-memory';
+
+// ============ Personal Memory ============
+export {
+  type PersonalMemorySource,
+  type TranslationMode,
+  type PersonalTone,
+  type PersonalVerbosity,
+  type PersonalComplexity,
+  type PersonalFormat,
+  type PersonalDiagramFormat,
+  type PersonalDocumentFormat,
+  type PersonalPreferenceProfile,
+  type PersonalPreferencePatch,
+  type PersonalPreferenceField,
+  type PendingPersonalPreferenceCandidate,
+  type PersonalInterest,
+  validatePersonalPreferencePatch,
+  normalizeInterestTopic,
+  getPersonalPreferenceProfile,
+  getOrCreatePersonalPreferenceProfile,
+  updatePersonalPreferenceProfile,
+  updateInferredPersonalPreferences,
+  upsertPendingPersonalPreferenceCandidates,
+  listPendingPersonalPreferenceCandidates,
+  resolvePendingPersonalPreferenceCandidate,
+  clearPendingPersonalPreferenceCandidates,
+  clearInferredPersonalMemory,
+  setPersonalMemoryLearning,
+  resetPersonalPreferences,
+  listPersonalInterests,
+  addPersonalInterest,
+  setPersonalInterestActive,
+  deletePersonalInterest,
+  clearPersonalInterests,
+  markPersonalInterestsUsed,
+  clearAllPersonalMemory,
+  getPersonalMemoryStats,
+} from './personal-memory';
+
 // ============ Users ============
 export {
   // Types

@@ -270,6 +270,8 @@ export interface ChunkMetadata {
   readonly source: 'global' | 'user';
   readonly threadId?: string;
   readonly userId?: string;
+  readonly categoryId?: number;
+  readonly status?: string;
 }
 
 // ============ API Request Types ============

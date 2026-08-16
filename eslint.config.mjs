@@ -3,6 +3,7 @@ export default [
   {
     ignores: [
       '.next/**',
+      '**/.next/**',
       'node_modules/**',
       'out/**',
       '.turbo/**',

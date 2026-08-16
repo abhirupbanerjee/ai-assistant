@@ -21,6 +21,7 @@ import {
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { deleteDocument } from '@/lib/ingest';
 import { invalidateCategoryCache } from '@/lib/redis';
+import { CATEGORY_MEMORY_COLLECTION } from '@/lib/category-memory';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -182,6 +183,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     const store = await getVectorStore();
     const collNames = getCollectionNames();
     await store.deleteCollection(collNames.forCategory(existing.slug));
+    await store.deleteDocumentsByFilter(CATEGORY_MEMORY_COLLECTION, { categoryId });
 
     // 5. Invalidate Redis cache
     await invalidateCategoryCache(existing.slug);

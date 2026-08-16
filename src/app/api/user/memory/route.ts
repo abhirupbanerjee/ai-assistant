@@ -1,201 +1,209 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, getCategoriesByIds } from '@/lib/db/compat';
 import {
-  getAllMemoriesForUser,
-  clearMemory,
-  getMemoryForUser,
-  deleteFact,
-} from '@/lib/memory';
-import type { ApiError } from '@/types';
+  addPersonalInterest,
+  clearAllPersonalMemory,
+  clearInferredPersonalMemory,
+  clearPersonalInterests,
+  deletePersonalInterest,
+  getMemorySettings,
+  getOrCreatePersonalPreferenceProfile,
+  getUserByEmail,
+  listPersonalInterests,
+  listPendingPersonalPreferenceCandidates,
+  resetPersonalPreferences,
+  setPersonalInterestActive,
+  setPersonalMemoryLearning,
+  resolvePendingPersonalPreferenceCandidate,
+  updatePersonalPreferenceProfile,
+  validatePersonalPreferencePatch,
+  type PersonalPreferencePatch,
+} from '@/lib/db/compat';
+import type { ApiError, ErrorCode } from '@/types';
 
-/**
- * GET /api/user/memory
- * Get all memories for the current user
- */
-export async function GET() {
+function isUnsupportedSurface(request: NextRequest): boolean {
+  return Boolean(request.headers.get('x-agent-bot-api-key') || request.headers.get('x-workspace-slug'));
+}
+
+function downloadResponse(content: string, filename: string, contentType: string) {
+  return new NextResponse(content, {
+    headers: {
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  });
+}
+
+function formatPersonalMemoryText(input: {
+  exportedAt: string;
+  profile: Awaited<ReturnType<typeof getOrCreatePersonalPreferenceProfile>>;
+  interests: Awaited<ReturnType<typeof listPersonalInterests>>;
+  pendingPreferences: Awaited<ReturnType<typeof listPendingPersonalPreferenceCandidates>>;
+}): string {
+  const preferenceEntries = Object.entries(input.profile)
+    .filter(([key]) => !['userId', 'sources', 'createdAt', 'updatedAt'].includes(key))
+    .map(([key, value]) => `${key}: ${value === null ? 'default / unset' : String(value)}`);
+  const interests = input.interests.length
+    ? input.interests.map((interest) => `- ${interest.topic} (${interest.source}, ${interest.isActive ? 'active' : 'disabled'}, confidence ${interest.confidence})`)
+    : ['- None'];
+  const pending = input.pendingPreferences.length
+    ? input.pendingPreferences.map((candidate) => `- ${candidate.field}: ${String(candidate.value)} (confidence ${candidate.confidence})`)
+    : ['- None'];
+  return [
+    'Personal Memory Export',
+    `Exported: ${input.exportedAt}`,
+    '',
+    'Preferences',
+    ...preferenceEntries,
+    '',
+    'Topics of interest',
+    ...interests,
+    '',
+    'Pending learned preferences',
+    ...pending,
+    '',
+  ].join('\n');
+}
+
+async function getAuthenticatedDbUser() {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) return null;
+  return getUserByEmail(sessionUser.email);
+}
+
+function error(message: string, code: ErrorCode, status: number) {
+  return NextResponse.json<ApiError>({ error: message, code }, { status });
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json<ApiError>(
-        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      );
+    if (isUnsupportedSurface(request)) return error('Main chat user session required', 'ACCESS_DENIED', 403);
+    const user = await getAuthenticatedDbUser();
+    if (!user) return error('Unauthorized', 'AUTH_REQUIRED', 401);
+    const [profile, interests, pendingPreferences, settings] = await Promise.all([
+      getOrCreatePersonalPreferenceProfile(user.id),
+      listPersonalInterests(user.id),
+      listPendingPersonalPreferenceCandidates(user.id),
+      getMemorySettings(),
+    ]);
+    const payload = {
+      profile,
+      interests,
+      pendingPreferences,
+      limits: { maxInterests: settings.maxInterestsPerUser },
+      categoryMemory: { enabled: settings.categoryMemoryEnabled },
+    };
+    const format = request.nextUrl.searchParams.get('format');
+    if (format === 'json' || format === 'text') {
+      const exportedAt = new Date().toISOString();
+      const exportPayload = { exportedAt, profile, interests, pendingPreferences };
+      const date = exportedAt.slice(0, 10);
+      return format === 'json'
+        ? downloadResponse(`${JSON.stringify(exportPayload, null, 2)}\n`, `personal-memory-${date}.json`, 'application/json; charset=utf-8')
+        : downloadResponse(formatPersonalMemoryText(exportPayload), `personal-memory-${date}.txt`, 'text/plain; charset=utf-8');
     }
-
-    const dbUser = await getUserByEmail(user.email);
-    if (!dbUser) {
-      return NextResponse.json<ApiError>(
-        { error: 'User not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
-    }
-
-    // Get all memories for the user
-    const memories = await getAllMemoriesForUser(dbUser.id);
-
-    // Get category information for each memory
-    const categoryIds = memories
-      .map((m) => m.categoryId)
-      .filter((id): id is number => id !== null);
-
-    const categories = categoryIds.length > 0
-      ? await getCategoriesByIds(categoryIds)
-      : [];
-
-    // Map memories with category info
-    const memoriesWithCategories = memories.map((memory) => {
-      const category = memory.categoryId
-        ? categories.find((c) => c.id === memory.categoryId)
-        : null;
-
-      return {
-        id: memory.id,
-        categoryId: memory.categoryId,
-        categoryName: category?.name || (memory.categoryId === null ? 'Global' : 'Unknown'),
-        categorySlug: category?.slug || null,
-        // Extract text from FactEntry[] for backward-compatible string[] response
-        facts: memory.facts.map(f => typeof f === 'string' ? f : f.text),
-        updatedAt: memory.updatedAt,
-      };
-    });
-
-    return NextResponse.json({
-      memories: memoriesWithCategories,
-      totalFacts: memories.reduce((sum, m) => sum + m.facts.length, 0),
-    });
-  } catch (error) {
-    console.error('Get user memory error:', error);
-    return NextResponse.json<ApiError>(
-      {
-        error: 'Failed to get memories',
-        code: 'SERVICE_ERROR',
-        details: error instanceof Error ? error.message : undefined,
-      },
-      { status: 500 }
-    );
+    if (format) return error('Format must be json or text', 'VALIDATION_ERROR', 400);
+    return NextResponse.json(payload);
+  } catch (cause) {
+    console.error('Get personal memory error:', cause);
+    return error('Failed to get personal memory', 'SERVICE_ERROR', 500);
   }
 }
 
-/**
- * DELETE /api/user/memory
- * Clear memories for the current user
- * Query params:
- *   - categoryId: Optional category ID to clear (omit to clear all)
- */
-export async function DELETE(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json<ApiError>(
-        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      );
+    if (isUnsupportedSurface(request)) return error('Main chat user session required', 'ACCESS_DENIED', 403);
+    const user = await getAuthenticatedDbUser();
+    if (!user) return error('Unauthorized', 'AUTH_REQUIRED', 401);
+    const body = await request.json() as { action?: string; topic?: string };
+    if (body.action !== 'add_interest' || typeof body.topic !== 'string' || !body.topic.trim()) {
+      return error('A non-empty interest topic is required', 'VALIDATION_ERROR', 400);
     }
-
-    const dbUser = await getUserByEmail(user.email);
-    if (!dbUser) {
-      return NextResponse.json<ApiError>(
-        { error: 'User not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const categoryIdParam = searchParams.get('categoryId');
-
-    if (categoryIdParam) {
-      // Clear specific category memory
-      const categoryId = categoryIdParam === 'global' ? null : parseInt(categoryIdParam, 10);
-      if (categoryIdParam !== 'global' && isNaN(categoryId as number)) {
-        return NextResponse.json<ApiError>(
-          { error: 'Invalid category ID', code: 'VALIDATION_ERROR' },
-          { status: 400 }
-        );
-      }
-
-      // Check memory exists before clearing
-      const memory = await getMemoryForUser(dbUser.id, categoryId);
-      if (!memory) {
-        return NextResponse.json<ApiError>(
-          { error: 'Memory not found for this category', code: 'NOT_FOUND' },
-          { status: 404 }
-        );
-      }
-
-      await clearMemory(dbUser.id, categoryId);
-      return NextResponse.json({
-        success: true,
-        message: `Cleared memory for ${categoryIdParam === 'global' ? 'global context' : `category ${categoryId}`}`,
-      });
-    } else {
-      // Clear all memories
-      await clearMemory(dbUser.id);
-      return NextResponse.json({
-        success: true,
-        message: 'Cleared all memories',
-      });
-    }
-  } catch (error) {
-    console.error('Clear user memory error:', error);
-    return NextResponse.json<ApiError>(
-      {
-        error: 'Failed to clear memories',
-        code: 'SERVICE_ERROR',
-        details: error instanceof Error ? error.message : undefined,
-      },
-      { status: 500 }
-    );
+    const settings = await getMemorySettings();
+    const interest = await addPersonalInterest(user.id, body.topic, 'user_set', 1, settings.maxInterestsPerUser);
+    if (!interest) return error(`A maximum of ${settings.maxInterestsPerUser} interests is allowed`, 'VALIDATION_ERROR', 409);
+    return NextResponse.json({ interest }, { status: 201 });
+  } catch (cause) {
+    console.error('Add personal interest error:', cause);
+    return error(cause instanceof Error ? cause.message : 'Failed to add interest', 'SERVICE_ERROR', 500);
   }
 }
 
-/**
- * PATCH /api/user/memory
- * Delete a single fact from memory
- * Body: { categoryId: number | null, factText: string }
- */
 export async function PATCH(request: NextRequest) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json<ApiError>(
-        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      );
+    if (isUnsupportedSurface(request)) return error('Main chat user session required', 'ACCESS_DENIED', 403);
+    const user = await getAuthenticatedDbUser();
+    if (!user) return error('Unauthorized', 'AUTH_REQUIRED', 401);
+    const body = await request.json() as {
+      action?: string;
+      preferences?: PersonalPreferencePatch;
+      learningEnabled?: boolean;
+      interestId?: number;
+      active?: boolean;
+      candidateId?: number;
+      replacement?: PersonalPreferencePatch;
+    };
+    switch (body.action) {
+      case 'update_preferences':
+        {
+          const validated = validatePersonalPreferencePatch(body.preferences);
+          if (!validated.ok) return error(validated.error, 'VALIDATION_ERROR', 400);
+          return NextResponse.json({ profile: await updatePersonalPreferenceProfile(user.id, validated.value) });
+        }
+      case 'set_learning':
+        if (typeof body.learningEnabled !== 'boolean') return error('learningEnabled must be boolean', 'VALIDATION_ERROR', 400);
+        return NextResponse.json({ profile: await setPersonalMemoryLearning(user.id, body.learningEnabled) });
+      case 'set_interest_active':
+        if (!Number.isInteger(body.interestId) || typeof body.active !== 'boolean') return error('interestId and active are required', 'VALIDATION_ERROR', 400);
+        if (!await setPersonalInterestActive(user.id, body.interestId!, body.active)) return error('Interest not found', 'NOT_FOUND', 404);
+        return NextResponse.json({ success: true });
+      case 'accept_pending_preference':
+      case 'reject_pending_preference':
+        if (!Number.isInteger(body.candidateId) || body.candidateId! <= 0) return error('Valid candidateId is required', 'VALIDATION_ERROR', 400);
+        if (body.action === 'reject_pending_preference' && body.replacement !== undefined) return error('Reject does not accept a replacement', 'VALIDATION_ERROR', 400);
+        if (!await resolvePendingPersonalPreferenceCandidate(
+          user.id,
+          body.candidateId!,
+          body.action === 'accept_pending_preference' ? 'accept' : 'reject',
+          body.action === 'accept_pending_preference' ? body.replacement : undefined,
+        )) return error('Pending preference not found', 'NOT_FOUND', 404);
+        return NextResponse.json({ success: true });
+      default:
+        return error('Unsupported memory action', 'VALIDATION_ERROR', 400);
     }
+  } catch (cause) {
+    console.error('Update personal memory error:', cause);
+    if (cause instanceof RangeError) return error(cause.message, 'VALIDATION_ERROR', 400);
+    return error(cause instanceof Error ? cause.message : 'Failed to update personal memory', 'SERVICE_ERROR', 500);
+  }
+}
 
-    const dbUser = await getUserByEmail(user.email);
-    if (!dbUser) {
-      return NextResponse.json<ApiError>(
-        { error: 'User not found', code: 'NOT_FOUND' },
-        { status: 404 }
-      );
+export async function DELETE(request: NextRequest) {
+  try {
+    if (isUnsupportedSurface(request)) return error('Main chat user session required', 'ACCESS_DENIED', 403);
+    const user = await getAuthenticatedDbUser();
+    if (!user) return error('Unauthorized', 'AUTH_REQUIRED', 401);
+    const { searchParams } = new URL(request.url);
+    const scope = searchParams.get('scope') ?? 'all';
+    if (scope === 'interest') {
+      const id = Number(searchParams.get('id'));
+      if (!Number.isInteger(id)) return error('Valid interest id is required', 'VALIDATION_ERROR', 400);
+      if (!await deletePersonalInterest(user.id, id)) return error('Interest not found', 'NOT_FOUND', 404);
+    } else if (scope === 'inferred') {
+      await clearInferredPersonalMemory(user.id);
+    } else if (scope === 'preferences') {
+      await resetPersonalPreferences(user.id);
+    } else if (scope === 'interests') {
+      await clearPersonalInterests(user.id, false);
+    } else if (scope === 'all') {
+      await clearAllPersonalMemory(user.id);
+    } else {
+      return error('Invalid clear scope', 'VALIDATION_ERROR', 400);
     }
-
-    const body = await request.json();
-    const { categoryId, factText } = body;
-
-    if (!factText || typeof factText !== 'string') {
-      return NextResponse.json<ApiError>(
-        { error: 'factText is required', code: 'VALIDATION_ERROR' },
-        { status: 400 }
-      );
-    }
-
-    // categoryId can be null (global), a number, or omitted (defaults to null)
-    const resolvedCategoryId = body.categoryId === undefined ? null : categoryId;
-
-    await deleteFact(dbUser.id, resolvedCategoryId, factText);
-
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Delete fact error:', error);
-    return NextResponse.json<ApiError>(
-      {
-        error: error instanceof Error ? error.message : 'Failed to delete fact',
-        code: 'SERVICE_ERROR',
-      },
-      { status: 500 }
-    );
+  } catch (cause) {
+    console.error('Clear personal memory error:', cause);
+    return error('Failed to clear personal memory', 'SERVICE_ERROR', 500);
   }
 }

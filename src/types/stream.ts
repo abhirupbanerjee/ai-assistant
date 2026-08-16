@@ -581,4 +581,3 @@ export interface StreamingCallbacks {
    */
   onHandoff?: (envelope: { targetCategoryId: number; targetCategoryName: string; targetCategorySlug: string; reason?: string }) => void;
 }
-

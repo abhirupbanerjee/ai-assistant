@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS categories (
   slug TEXT UNIQUE NOT NULL,
   description TEXT,
   created_by TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  memory_enabled BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug);
@@ -274,22 +275,183 @@ CREATE INDEX IF NOT EXISTS idx_citation_trajectories_message ON citation_traject
 CREATE INDEX IF NOT EXISTS idx_citation_trajectories_thread ON citation_trajectories(thread_id);
 CREATE INDEX IF NOT EXISTS idx_citation_trajectories_source_type ON citation_trajectories(source_type);
 
--- ============ Memory & Summarization ============
+-- ============ Personal & Category Memory Foundation ============
 
-CREATE TABLE IF NOT EXISTS user_memories (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  category_id INTEGER,
-  facts_json TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, category_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+-- Personal memory is global to a user. The structured profile avoids semantic
+-- retrieval for deterministic response preferences. Runtime behavior is added
+-- in Phase 2; all feature flags remain disabled during this foundation phase.
+CREATE TABLE IF NOT EXISTS personal_preference_profiles (
+  user_id INTEGER PRIMARY KEY,
+  preferred_language TEXT,
+  translation_language TEXT,
+  translation_mode TEXT NOT NULL DEFAULT 'never'
+    CHECK (translation_mode IN ('never', 'when_requested', 'always')),
+  tone TEXT NOT NULL DEFAULT 'default'
+    CHECK (tone IN ('default', 'friendly', 'formal', 'direct', 'professional')),
+  verbosity TEXT NOT NULL DEFAULT 'balanced'
+    CHECK (verbosity IN ('brief', 'balanced', 'detailed')),
+  complexity TEXT NOT NULL DEFAULT 'standard'
+    CHECK (complexity IN ('simple', 'standard', 'technical', 'executive')),
+  preferred_format TEXT NOT NULL DEFAULT 'auto'
+    CHECK (preferred_format IN ('auto', 'bullets', 'steps', 'prose', 'table')),
+  preferred_diagram_format TEXT NOT NULL DEFAULT 'auto'
+    CHECK (preferred_diagram_format IN ('auto', 'mermaid', 'ascii', 'infographic')),
+  preferred_document_format TEXT NOT NULL DEFAULT 'auto'
+    CHECK (preferred_document_format IN ('auto', 'markdown', 'docx', 'pdf')),
+  include_examples BOOLEAN,
+  include_citations BOOLEAN,
+  source TEXT NOT NULL DEFAULT 'user_set'
+    CHECK (source IN ('user_set', 'inferred')),
+  preferred_language_source TEXT NOT NULL DEFAULT 'inferred' CHECK (preferred_language_source IN ('user_set', 'inferred')),
+  translation_language_source TEXT NOT NULL DEFAULT 'inferred' CHECK (translation_language_source IN ('user_set', 'inferred')),
+  translation_mode_source TEXT NOT NULL DEFAULT 'inferred' CHECK (translation_mode_source IN ('user_set', 'inferred')),
+  tone_source TEXT NOT NULL DEFAULT 'inferred' CHECK (tone_source IN ('user_set', 'inferred')),
+  verbosity_source TEXT NOT NULL DEFAULT 'inferred' CHECK (verbosity_source IN ('user_set', 'inferred')),
+  complexity_source TEXT NOT NULL DEFAULT 'inferred' CHECK (complexity_source IN ('user_set', 'inferred')),
+  preferred_format_source TEXT NOT NULL DEFAULT 'inferred' CHECK (preferred_format_source IN ('user_set', 'inferred')),
+  preferred_diagram_format_source TEXT NOT NULL DEFAULT 'inferred' CHECK (preferred_diagram_format_source IN ('user_set', 'inferred')),
+  preferred_document_format_source TEXT NOT NULL DEFAULT 'inferred' CHECK (preferred_document_format_source IN ('user_set', 'inferred')),
+  include_examples_source TEXT NOT NULL DEFAULT 'inferred' CHECK (include_examples_source IN ('user_set', 'inferred')),
+  include_citations_source TEXT NOT NULL DEFAULT 'inferred' CHECK (include_citations_source IN ('user_set', 'inferred')),
+  learning_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_memories_user ON user_memories(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category_id);
+CREATE TABLE IF NOT EXISTS personal_interests (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  topic TEXT NOT NULL,
+  normalized_topic TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'user_set'
+    CHECK (source IN ('user_set', 'inferred')),
+  confidence REAL NOT NULL DEFAULT 1.0
+    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_used_at TIMESTAMPTZ,
+  hit_count INTEGER NOT NULL DEFAULT 0 CHECK (hit_count >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, normalized_topic),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_personal_interests_user_active
+  ON personal_interests(user_id, is_active);
+
+-- At most one unconfirmed learned value per preference field (eleven rows/user).
+-- Candidates are deliberately separate from the effective profile so they can
+-- never affect prompts before the user accepts them.
+CREATE TABLE IF NOT EXISTS pending_personal_preference_candidates (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  field TEXT NOT NULL
+    CHECK (field IN ('preferredLanguage', 'translationLanguage', 'translationMode', 'tone', 'verbosity', 'complexity', 'preferredFormat', 'preferredDiagramFormat', 'preferredDocumentFormat', 'includeExamples', 'includeCitations')),
+  value JSONB NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.75
+    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, field),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_personal_preferences_user
+  ON pending_personal_preference_candidates(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS category_memories (
+  id BIGSERIAL PRIMARY KEY,
+  category_id INTEGER NOT NULL,
+  memory_type TEXT NOT NULL
+    CHECK (memory_type IN ('fact', 'terminology', 'decision', 'process', 'faq', 'caveat')),
+  title TEXT NOT NULL,
+  normalized_title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'suggested', 'approved', 'archived', 'rejected')),
+  source_reference TEXT,
+  confidence REAL NOT NULL DEFAULT 1.0
+    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+  valid_from TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  created_by INTEGER,
+  approved_by INTEGER,
+  moderation_flags JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (category_id, normalized_title),
+  CHECK (expires_at IS NULL OR valid_from IS NULL OR expires_at > valid_from),
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_memories_category_status
+  ON category_memories(category_id, status);
+CREATE INDEX IF NOT EXISTS idx_category_memories_active_window
+  ON category_memories(category_id, valid_from, expires_at);
+
+-- Append-only audit/revision stream. Each event captures the complete values
+-- before and after a change so revisions can be reconstructed without relying
+-- on mutable category-memory rows.
+CREATE TABLE IF NOT EXISTS category_memory_events (
+  id BIGSERIAL PRIMARY KEY,
+  category_memory_id BIGINT NOT NULL,
+  category_id INTEGER NOT NULL,
+  revision_number INTEGER NOT NULL CHECK (revision_number > 0),
+  action TEXT NOT NULL
+    CHECK (action IN ('created', 'suggested', 'edited', 'approved', 'rejected', 'archived', 'restored', 'expiry_changed')),
+  actor_id INTEGER,
+  previous_value JSONB,
+  new_value JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (category_memory_id, revision_number),
+  FOREIGN KEY (category_memory_id) REFERENCES category_memories(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_memory_events_memory
+  ON category_memory_events(category_memory_id, revision_number DESC);
+CREATE INDEX IF NOT EXISTS idx_category_memory_events_category
+  ON category_memory_events(category_id, created_at DESC);
+
+-- Content-free assisted-learning telemetry and idempotency. Conversation and
+-- candidate text are deliberately never stored in this table.
+CREATE TABLE IF NOT EXISTS category_memory_extraction_events (
+  id BIGSERIAL PRIMARY KEY,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+  source_message_id TEXT NOT NULL,
+  source_surface TEXT NOT NULL DEFAULT 'main-chat' CHECK (source_surface = 'main-chat'),
+  outcome TEXT NOT NULL DEFAULT 'pending'
+    CHECK (outcome IN ('pending', 'no_candidate', 'candidate_created', 'duplicate_skip', 'access_revoked', 'error')),
+  category_memory_id BIGINT REFERENCES category_memories(id) ON DELETE SET NULL,
+  candidate_count INTEGER NOT NULL DEFAULT 0 CHECK (candidate_count BETWEEN 0 AND 1),
+  duplicate_skips INTEGER NOT NULL DEFAULT 0 CHECK (duplicate_skips BETWEEN 0 AND 1),
+  redaction_count INTEGER NOT NULL DEFAULT 0 CHECK (redaction_count >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  UNIQUE (source_message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_category_memory_extraction_metrics
+  ON category_memory_extraction_events(category_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('category_memory_suggestion_submitted', 'category_memory_suggestion_approved', 'category_memory_suggestion_rejected')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  resource_type TEXT NOT NULL DEFAULT 'category_memory' CHECK (resource_type = 'category_memory'),
+  resource_id BIGINT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS thread_summaries (
   id SERIAL PRIMARY KEY,

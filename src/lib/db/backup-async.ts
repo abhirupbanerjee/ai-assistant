@@ -157,7 +157,7 @@ export async function exportAllDataAsync(): Promise<BackupData> {
     db.selectFrom('workspace_users').selectAll().execute(),
     db.selectFrom('function_api_configs').selectAll().execute(),
     db.selectFrom('function_api_categories').selectAll().execute(),
-    db.selectFrom('user_memories').selectAll().execute(),
+    Promise.resolve([]), // Legacy memory intentionally excluded after Phase 1 reset.
     db.selectFrom('tool_routing_rules').selectAll().execute(),
     db.selectFrom('thread_shares').selectAll().execute(),
     db.selectFrom('task_plans').selectAll().execute(),
@@ -231,7 +231,11 @@ export async function importAllDataAsync(backup: BackupData): Promise<void> {
     await trx.deleteFrom('threads').execute();
     await trx.deleteFrom('document_categories').execute();
     await trx.deleteFrom('documents').execute();
-    await trx.deleteFrom('user_memories').execute();
+    await trx.deleteFrom('category_memory_events').execute();
+    await trx.deleteFrom('category_memories').execute();
+    await trx.deleteFrom('pending_personal_preference_candidates').execute();
+    await trx.deleteFrom('personal_interests').execute();
+    await trx.deleteFrom('personal_preference_profiles').execute();
     await trx.deleteFrom('user_subscriptions').execute();
     await trx.deleteFrom('super_user_categories').execute();
     await trx.deleteFrom('workspace_users').execute();
@@ -288,7 +292,7 @@ export async function importAllDataAsync(backup: BackupData): Promise<void> {
     // User-dependent tables
     await insertBatch('super_user_categories', data.superUserCategories);
     await insertBatch('user_subscriptions', data.userSubscriptions);
-    await insertBatch('user_memories', data.userMemories);
+    // Legacy userMemories backups are intentionally not restored.
 
     // Document tables
     await insertBatch('documents', data.documents);
@@ -347,7 +351,10 @@ export async function migrateDatabase(
         'documents',
         'thread_uploads',
         'thread_outputs',
-        'user_memories',
+        'pending_personal_preference_candidates',
+        'personal_interests',
+        'category_memories',
+        'category_memory_events',
         'thread_summaries',
         'storage_alerts',
         'tool_config_audit',

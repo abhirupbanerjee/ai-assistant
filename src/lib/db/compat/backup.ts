@@ -222,8 +222,9 @@ export async function exportFunctionApiCategories(): Promise<FunctionApiCategory
 }
 
 export async function exportUserMemories(): Promise<UserMemoryRecord[]> {
-  const db = await getDb();
-  return db.selectFrom('user_memories').selectAll().orderBy('id').execute() as Promise<UserMemoryRecord[]>;
+  // Legacy backup manifest compatibility only. Phase 1 intentionally discarded
+  // user_memories; new memory tables are not restored until their APIs ship.
+  return [];
 }
 
 export async function exportToolRoutingRules(): Promise<ToolRoutingRuleRecord[]> {
@@ -774,8 +775,8 @@ export async function importFunctionApiCategories(records: FunctionApiCategoryRe
 }
 
 export async function importUserMemories(records: UserMemoryRecord[]): Promise<void> {
-  const db = await getDb();
-  await importBatch('user_memories', records, db);
+  // Intentionally ignore legacy records: clean replacement was authorized.
+  void records;
 }
 
 export async function importToolRoutingRules(records: ToolRoutingRuleRecord[]): Promise<void> {
@@ -862,9 +863,13 @@ export async function clearAllData(): Promise<void> {
     await trx.deleteFrom('messages').execute();
     await trx.deleteFrom('threads').execute();
     // User data
+    await trx.deleteFrom('category_memory_events').execute();
+    await trx.deleteFrom('category_memories').execute();
+    await trx.deleteFrom('pending_personal_preference_candidates').execute();
+    await trx.deleteFrom('personal_interests').execute();
+    await trx.deleteFrom('personal_preference_profiles').execute();
     await trx.deleteFrom('user_subscriptions').execute();
     await trx.deleteFrom('super_user_categories').execute();
-    await trx.deleteFrom('user_memories').execute();
     await trx.deleteFrom('users').execute();
     // Document data
     await trx.deleteFrom('document_categories').execute();

@@ -233,7 +233,7 @@ export async function GET() {
         branding: await getBrandingSettings(),
         embedding: { model: 'text-embedding-3-large', dimensions: 3072 },
         reranker: { enabled: false, provider: 'cohere', topKForReranking: 50, minRerankerScore: 0.3, cacheTTLSeconds: 3600 },
-        memory: { enabled: false, extractionThreshold: 5, maxFactsPerCategory: 20, maxFactsPerQuery: 10, autoExtractOnThreadEnd: true, extractionMaxTokens: 1000, factMaxAgeDays: 0 },
+        memory: { enabled: true, automaticPreferenceExtractionEnabled: true, automaticInterestExtractionEnabled: true, extractionThreshold: 5, maxInterestsPerUser: 25, inferredPreferencesRequireConfirmation: false, categoryMemoryEnabled: false, categoryMemoryMaxActiveItems: 100, categoryMemoryMaxRetrievedItems: 5, categoryMemoryTokenBudget: 800, suggestionsEnabled: true, automaticCategoryCandidateExtractionEnabled: false, categoryCandidateExtractionThreshold: 6, categoryCandidateConfidenceThreshold: 0.85, categoryCandidateExtractionMaxTokens: 600, maxFactsPerCategory: 25, maxFactsPerQuery: 10, autoExtractOnThreadEnd: true, extractionMaxTokens: 1000, factMaxAgeDays: 0 },
         summarization: { enabled: false, tokenThreshold: 100000, keepRecentMessages: 10, summaryMaxTokens: 2000, archiveOriginalMessages: true },
         ocr: DEFAULT_OCR_SETTINGS,
       },
@@ -1029,12 +1029,21 @@ export async function PUT(request: NextRequest) {
       case 'memory': {
         const {
           enabled,
+          automaticPreferenceExtractionEnabled,
+          automaticInterestExtractionEnabled,
           extractionThreshold,
-          maxFactsPerCategory,
-          maxFactsPerQuery,
-          autoExtractOnThreadEnd,
+          maxInterestsPerUser,
+          inferredPreferencesRequireConfirmation,
           extractionMaxTokens,
-          factMaxAgeDays,
+          categoryMemoryEnabled,
+          categoryMemoryMaxActiveItems,
+          categoryMemoryMaxRetrievedItems,
+          categoryMemoryTokenBudget,
+          suggestionsEnabled,
+          automaticCategoryCandidateExtractionEnabled,
+          categoryCandidateExtractionThreshold,
+          categoryCandidateConfidenceThreshold,
+          categoryCandidateExtractionMaxTokens,
         } = settings;
 
         // Validate enabled flag
@@ -1053,27 +1062,35 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate maxFactsPerCategory
-        if (typeof maxFactsPerCategory !== 'number' || !isFinite(maxFactsPerCategory) || maxFactsPerCategory < 1 || maxFactsPerCategory > 100) {
+        if (typeof maxInterestsPerUser !== 'number' || !isFinite(maxInterestsPerUser) || maxInterestsPerUser < 1 || maxInterestsPerUser > 100) {
           return NextResponse.json<ApiError>(
-            { error: 'Max facts per category must be between 1 and 100', code: 'VALIDATION_ERROR' },
+            { error: 'Maximum interests must be between 1 and 100', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        // Validate maxFactsPerQuery
-        if (typeof maxFactsPerQuery !== 'number' || !isFinite(maxFactsPerQuery) || maxFactsPerQuery < 1 || maxFactsPerQuery > 50) {
+        if (typeof automaticPreferenceExtractionEnabled !== 'boolean' || typeof automaticInterestExtractionEnabled !== 'boolean' || typeof inferredPreferencesRequireConfirmation !== 'boolean' || typeof categoryMemoryEnabled !== 'boolean' || typeof suggestionsEnabled !== 'boolean' || typeof automaticCategoryCandidateExtractionEnabled !== 'boolean') {
           return NextResponse.json<ApiError>(
-            { error: 'Max facts per query must be between 1 and 50', code: 'VALIDATION_ERROR' },
+            { error: 'Memory feature flags must be booleans', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        // Validate autoExtractOnThreadEnd
-        if (typeof autoExtractOnThreadEnd !== 'boolean') {
+        if (!Number.isInteger(categoryMemoryMaxActiveItems) || categoryMemoryMaxActiveItems < 1 || categoryMemoryMaxActiveItems > 500
+          || !Number.isInteger(categoryMemoryMaxRetrievedItems) || categoryMemoryMaxRetrievedItems < 1 || categoryMemoryMaxRetrievedItems > 10
+          || !Number.isInteger(categoryMemoryTokenBudget) || categoryMemoryTokenBudget < 100 || categoryMemoryTokenBudget > 4000) {
           return NextResponse.json<ApiError>(
-            { error: 'Auto extract on thread end must be a boolean', code: 'VALIDATION_ERROR' },
-            { status: 400 }
+            { error: 'Category Memory item/retrieval limits are invalid', code: 'VALIDATION_ERROR' },
+            { status: 400 },
+          );
+        }
+
+        if (!Number.isInteger(categoryCandidateExtractionThreshold) || categoryCandidateExtractionThreshold < 2 || categoryCandidateExtractionThreshold > 50
+          || typeof categoryCandidateConfidenceThreshold !== 'number' || !isFinite(categoryCandidateConfidenceThreshold) || categoryCandidateConfidenceThreshold < 0.5 || categoryCandidateConfidenceThreshold > 1
+          || !Number.isInteger(categoryCandidateExtractionMaxTokens) || categoryCandidateExtractionMaxTokens < 100 || categoryCandidateExtractionMaxTokens > 2000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Automatic category candidate extraction limits are invalid', code: 'VALIDATION_ERROR' },
+            { status: 400 },
           );
         }
 
@@ -1085,22 +1102,23 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate factMaxAgeDays
-        if (typeof factMaxAgeDays !== 'number' || !isFinite(factMaxAgeDays) || factMaxAgeDays < 0 || factMaxAgeDays > 365) {
-          return NextResponse.json<ApiError>(
-            { error: 'Fact max age days must be between 0 and 365', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
         const memoryResult = await setMemorySettings({
           enabled,
+          automaticPreferenceExtractionEnabled,
+          automaticInterestExtractionEnabled,
           extractionThreshold,
-          maxFactsPerCategory,
-          maxFactsPerQuery,
-          autoExtractOnThreadEnd,
+          maxInterestsPerUser,
+          inferredPreferencesRequireConfirmation,
           extractionMaxTokens,
-          factMaxAgeDays,
+          categoryMemoryEnabled,
+          categoryMemoryMaxActiveItems,
+          categoryMemoryMaxRetrievedItems,
+          categoryMemoryTokenBudget,
+          suggestionsEnabled,
+          automaticCategoryCandidateExtractionEnabled,
+          categoryCandidateExtractionThreshold,
+          categoryCandidateConfidenceThreshold,
+          categoryCandidateExtractionMaxTokens,
         }, user.email);
         await invalidateQueryCache();
         const memoryMeta = await getSettingMetadata('memory-settings');

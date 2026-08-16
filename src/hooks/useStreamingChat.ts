@@ -1117,8 +1117,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           mode,
           // Include chat preferences if provided
           webSearchEnabled: preferences?.webSearchEnabled,
-          targetLanguage: preferences?.targetLanguage,
-          responseTone: preferences?.responseTone,
+          // Defaults are intentionally omitted so server-side Personal Memory
+          // can resolve them. Non-default UI choices are explicit overrides.
+          targetLanguage: preferences?.targetLanguage !== 'en' ? preferences?.targetLanguage : undefined,
+          responseTone: preferences?.responseTone !== 'default' ? preferences?.responseTone : undefined,
           showCitationTrajectory: preferences?.showCitationTrajectory,
           thinkingEnabled: preferences?.thinkingEnabled,
           toolHints: preferences?.toolHints,
