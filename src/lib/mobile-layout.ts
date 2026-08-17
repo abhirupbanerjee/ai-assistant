@@ -1,16 +1,13 @@
 /**
- * Mobile floating-control geometry.
+ * Mobile chat top-clearance geometry.
  *
  * This value is duplicated as the CSS custom property `--mobile-top-clearance`
  * in `src/app/globals.css`. Keep the two in sync.
  *
- * Breakdown:
- * - env(safe-area-inset-top): OS-reported notch/Dynamic Island/status bar height.
- * - 8px: gap from safe-area to control top.
- * - 48px: control touch target.
- * - 8px: clearance below control before message content begins.
+ * Only the OS-reported notch/Dynamic Island/status bar area is reserved. The
+ * floating menu and artifact controls deliberately overlay the scrollable chat.
  */
-export const MOBILE_TOP_CLEARANCE = 'calc(env(safe-area-inset-top, 0px) + 64px)';
+export const MOBILE_TOP_CLEARANCE = 'env(safe-area-inset-top, 0px)';
 
 /**
  * Resolve a CSS length (possibly a calc()) to pixels using the browser's

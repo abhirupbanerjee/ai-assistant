@@ -1125,7 +1125,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   return (
 
     <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${EDGE_TO_EDGE_MOBILE_HEADER ? '' : 'pt-[calc(env(safe-area-inset-top,0px)+64px)] md:pt-0'}`}>
-      {/* Summarization Banner — on mobile it sits beneath the fixed FABs. */}
+      {/* Summarization Banner — reserve only the device status-bar/notch inset;
+          the fixed FABs intentionally overlay this scrollable content. */}
       <ChatSummaryBanner
         isSummarized={activeThread?.isSummarized ?? false}
         summaryData={summaryData}
@@ -1140,9 +1141,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onScroll={handleMessagesScroll}
         className={`flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative group${streamingState.isStreaming ? ' is-streaming' : ''}`}
       >
-        {/* Mobile scroll-start clearance: protects first messages, loading skeletons,
-            and first-turn errors from colliding with the fixed FABs. The spacer is
-            inside the scroller so it scrolls away once the conversation grows. */}
+        {/* Mobile scroll-start clearance reserves only the device status-bar/notch
+            inset. Messages intentionally scroll underneath the fixed FABs. */}
         {EDGE_TO_EDGE_MOBILE_HEADER && hasFirstContent && (
           <div
             className="md:hidden"

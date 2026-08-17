@@ -14,10 +14,10 @@
   --accent-border: #bfdbfe;
   --accent-text: #1e40af;
 
-  /* Mobile floating-control clearance: safe area + 8px gap + 48px control + 8px clearance.
-     Shared by MobileFABs, ChatWindow scroll-start spacer, ChatSummaryBanner, and
-     OfflineBanner offset so the geometry cannot drift between components. */
-  --mobile-top-clearance: calc(env(safe-area-inset-top, 0px) + 64px);
+  /* Mobile chat top clearance reserves only the device status-bar/notch area.
+     The menu and artifact FABs intentionally overlay the scrolling conversation
+     so the chat can use the full remaining viewport height. */
+  --mobile-top-clearance: env(safe-area-inset-top, 0px);
 }
 
 html, body {

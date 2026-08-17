@@ -16,7 +16,10 @@
 // branding and Help into the thread navigation, removes both chat top bars,
 // and changes the mobile drawer/FAB layout. Cached v12 HTML or chunks would
 // otherwise preserve the obsolete header structure and stale interactions.
-const CACHE_VERSION = 'v13';
+// v14 evicts the app shell that reserved a full 64px mobile FAB row above
+// active threads. The FABs now overlay chat content while only the device
+// status-bar/notch safe area remains reserved in standalone PWA mode.
+const CACHE_VERSION = 'v14';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 

@@ -12,7 +12,8 @@ interface MobileFABsProps {
 
 /**
  * Floating Action Buttons for mobile view.
- * Positioned at top of screen to avoid overlap with input area.
+ * Positioned above the scrolling conversation so chat content can use the full
+ * viewport and pass underneath the controls.
  * - Left FAB: Opens Threads menu
  * - Right FAB: Opens Artifacts menu (only shown when there's an active thread)
  *
@@ -38,15 +39,14 @@ export default function MobileFABs({
 
   const offlineOffset = isOnline ? 0 : 40; // height of OfflineBanner
   const topStyle = {
-    // Position the control at the top of its reserved clearance zone. The
-    // --mobile-top-clearance variable describes the full safe-area + control
-    // row, so using it here as the top coordinate creates a second empty row.
+    // Reserve only the OS status-bar/notch inset. The controls themselves are
+    // overlays and intentionally do not reserve a separate content row.
     top: `calc(env(safe-area-inset-top, 0px) + 8px + ${offlineOffset}px)`,
   };
 
   return (
     <>
-      {/* Threads FAB - Top Left (below header, respects safe-area-inset-top for notched devices) */}
+      {/* Threads FAB - overlays chat below the device safe area */}
       <button
         onClick={openThreadsMenu}
         style={topStyle}
@@ -63,7 +63,7 @@ export default function MobileFABs({
         )}
       </button>
 
-      {/* Artifacts FAB - Top Right (below header, respects safe-area-inset-top for notched devices) */}
+      {/* Artifacts FAB - overlays chat below the device safe area */}
       {hasActiveThread && (
         <button
           onClick={openArtifactsMenu}

@@ -27,10 +27,9 @@ export default function ChatWelcome({
 }: ChatWelcomeProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-4">
-      {/* On mobile the welcome surface is edge-to-edge under the fixed FABs.
-          Add top safe-area padding so the title and prompts avoid the control
-          corners while the background extends behind them. */}
-      <MessageSquare className={`w-12 h-12 text-gray-300 mb-4 ${EDGE_TO_EDGE_MOBILE_HEADER ? 'mt-[calc(env(safe-area-inset-top,0px)+72px)] md:mt-0' : 'md:mt-0'}`} />
+      {/* Keep the empty-chat welcome below the device status area. The fixed
+          FABs intentionally overlay this surface, matching active threads. */}
+      <MessageSquare className={`w-12 h-12 text-gray-300 mb-4 ${EDGE_TO_EDGE_MOBILE_HEADER ? 'mt-[var(--mobile-top-clearance)] md:mt-0' : 'md:mt-0'}`} />
       <h2 className="text-lg font-medium text-gray-900 mb-2">
         {title}
       </h2>
