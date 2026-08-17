@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { calculateCategoryMemoryPermission, isCategoryMemoryActive, normalizeCategoryMemoryTitle } from './db/compat/category-memory';
 import { formatSharedCategoryContext } from './category-memory';
+import { resolveChatCategoryId } from './chat-category';
 import { detectCategoryMemoryAdvisories, lexicalSimilarity, normalizeCategoryMemoryText } from './category-memory-moderation';
 import {
   isAutomaticCategoryExtractionEligible,
+  parseCategoryMemoryExtractionCandidate,
   redactCategoryCandidateInput,
   validateAutomaticCategoryCandidate,
 } from './category-memory-learning';
@@ -94,6 +96,43 @@ test('automatic candidate validation accepts only reusable neutral category fact
   assert.equal(validateAutomaticCategoryCandidate({
     memoryType: 'fact', title: 'Endpoint', content: 'The key is [REDACTED_SECRET].', confidence: 0.99, reusable: true,
   }, 0.85), null);
+});
+
+test('category candidate parser accepts complete and fenced JSON objects', () => {
+  const candidate = {
+    memoryType: 'terminology',
+    title: 'Recovery time objective',
+    content: 'RTO means recovery time objective in continuity documentation.',
+    confidence: 0.92,
+    reusable: true,
+  };
+  const raw = JSON.stringify({ candidates: [candidate] });
+
+  assert.deepEqual(parseCategoryMemoryExtractionCandidate(raw, 0.85), candidate);
+  assert.deepEqual(parseCategoryMemoryExtractionCandidate(`\`\`\`json\n${raw}\n\`\`\``, 0.85), candidate);
+  assert.deepEqual(parseCategoryMemoryExtractionCandidate(`Result:\n${raw}\nEnd.`, 0.85), candidate);
+});
+
+test('category candidate parser rejects empty, multiple, and malformed outputs', () => {
+  const candidate = {
+    memoryType: 'fact',
+    title: 'Primary deployment region',
+    content: 'The primary deployment region is eastus2.',
+    confidence: 0.95,
+    reusable: true,
+  };
+
+  assert.equal(parseCategoryMemoryExtractionCandidate('{"candidates":[]}', 0.85), null);
+  assert.equal(parseCategoryMemoryExtractionCandidate(JSON.stringify({ candidates: [candidate, candidate] }), 0.85), null);
+  assert.equal(parseCategoryMemoryExtractionCandidate('"candidates":[]}', 0.85), null);
+  assert.equal(parseCategoryMemoryExtractionCandidate('{"candidates":[', 0.85), null);
+});
+
+test('newly created thread category takes precedence before active thread state updates', () => {
+  assert.equal(resolveChatCategoryId({ categories: [{ id: 17 }] }, undefined), 17);
+  assert.equal(resolveChatCategoryId({ categories: [{ id: 17 }] }, { categories: [{ id: 9 }] }), 17);
+  assert.equal(resolveChatCategoryId(null, { categories: [{ id: 9 }] }), 9);
+  assert.equal(resolveChatCategoryId(null, null), undefined);
 });
 
 test('automatic category extraction is strictly surface, settings, scope, and threshold isolated', () => {

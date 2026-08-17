@@ -6,6 +6,7 @@ import {
 } from './memory';
 import type { PersonalInterest, PersonalPreferenceProfile } from './db/compat';
 import { validatePersonalPreferencePatch } from './db/compat';
+import { toPersonalPreferencePatch } from './personal-memory-profile';
 
 const baseInterest = (overrides: Partial<PersonalInterest>): PersonalInterest => ({
   id: 1,
@@ -88,4 +89,43 @@ test('pending preference validation trims language values without coercion', () 
   });
   assert.equal(validatePersonalPreferencePatch({}).ok, false);
   assert.equal(validatePersonalPreferencePatch([]).ok, false);
+});
+
+test('personal preference save projection strips loaded profile metadata', () => {
+  const loadedProfile = {
+    userId: 42,
+    preferredLanguage: 'en',
+    translationLanguage: null,
+    translationMode: 'never' as const,
+    tone: 'professional' as const,
+    verbosity: 'balanced' as const,
+    complexity: 'technical' as const,
+    preferredFormat: 'bullets' as const,
+    preferredDiagramFormat: 'mermaid' as const,
+    preferredDocumentFormat: 'pdf' as const,
+    includeExamples: true,
+    includeCitations: null,
+    source: 'user_set',
+    sources: {},
+    learningEnabled: true,
+    createdAt: '2026-08-16T00:00:00.000Z',
+    updatedAt: '2026-08-16T00:00:00.000Z',
+  };
+
+  const patch = toPersonalPreferencePatch(loadedProfile);
+
+  assert.deepEqual(Object.keys(patch), [
+    'preferredLanguage',
+    'translationLanguage',
+    'translationMode',
+    'tone',
+    'verbosity',
+    'complexity',
+    'preferredFormat',
+    'preferredDiagramFormat',
+    'preferredDocumentFormat',
+    'includeExamples',
+    'includeCitations',
+  ]);
+  assert.deepEqual(validatePersonalPreferencePatch(patch), { ok: true, value: patch });
 });

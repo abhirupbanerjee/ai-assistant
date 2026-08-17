@@ -4,19 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Brain, Check, Download, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
+import {
+  toPersonalPreferencePatch,
+  type EditablePersonalPreferenceProfile,
+} from '@/lib/personal-memory-profile';
 
-interface Profile {
-  preferredLanguage: string | null;
-  translationLanguage: string | null;
-  translationMode: 'never' | 'when_requested' | 'always';
-  tone: 'default' | 'friendly' | 'formal' | 'direct' | 'professional';
-  verbosity: 'brief' | 'balanced' | 'detailed';
-  complexity: 'simple' | 'standard' | 'technical' | 'executive';
-  preferredFormat: 'auto' | 'bullets' | 'steps' | 'prose' | 'table';
-  preferredDiagramFormat: 'auto' | 'mermaid' | 'ascii' | 'infographic';
-  preferredDocumentFormat: 'auto' | 'markdown' | 'docx' | 'pdf';
-  includeExamples: boolean | null;
-  includeCitations: boolean | null;
+interface Profile extends EditablePersonalPreferenceProfile {
   source: 'user_set' | 'inferred';
   learningEnabled: boolean;
 }
@@ -175,7 +168,7 @@ export default function PersonalMemorySection() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
             <span className="text-xs text-gray-500">Stored as <strong>{data.profile.source === 'user_set' ? 'configured by you' : 'learned'}</strong>. Explicit instructions in your current message always win for that turn.</span>
-            <Button onClick={() => run('save', () => request('PATCH', { action: 'update_preferences', preferences: draft }))} disabled={busy !== null}>{busy === 'save' ? <Loader2 className="mr-2 animate-spin" size={16} /> : <Save className="mr-2" size={16} />}Save preferences</Button>
+            <Button onClick={() => run('save', () => request('PATCH', { action: 'update_preferences', preferences: toPersonalPreferencePatch(draft) }))} disabled={busy !== null}>{busy === 'save' ? <Loader2 className="mr-2 animate-spin" size={16} /> : <Save className="mr-2" size={16} />}Save preferences</Button>
           </div>
         </div>
       </section>

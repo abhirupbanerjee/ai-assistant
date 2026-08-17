@@ -6,6 +6,7 @@ import { RefreshCw } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo, ArtifactCanvasItem, ArtifactComment, ThreadUploadItem } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import { resolveCssLengthToPixels, MOBILE_TOP_CLEARANCE } from '@/lib/mobile-layout';
+import { resolveChatCategoryId } from '@/lib/chat-category';
 import { EDGE_TO_EDGE_MOBILE_HEADER } from '@/lib/feature-flags';
 import MessageBubble from './MessageBubble';
 import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
@@ -835,7 +836,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     });
   }, []);
 
-  const createThread = useCallback(async (): Promise<string | null> => {
+  const createThread = useCallback(async (): Promise<Thread | null> => {
     try {
       const body: { categoryIds?: number[]; selectedModel?: string } = {};
       if (pendingCategoryId) {
@@ -852,10 +853,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       });
 
       if (response.ok) {
-        const thread = await response.json();
+        const thread = await response.json() as Thread;
         setThreadId(thread.id);
         onThreadCreated?.(thread);
-        return thread.id;
+        return thread;
       }
     } catch (err) {
       console.error('Failed to create thread:', err);
@@ -870,13 +871,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     isSendingRef.current = true;
 
     let currentThreadId = threadId;
+    let createdThread: Thread | null = null;
     if (!currentThreadId) {
-      currentThreadId = await createThread();
-      if (!currentThreadId) {
+      createdThread = await createThread();
+      if (!createdThread) {
         isSendingRef.current = false;
         setError('Failed to create conversation');
         return;
       }
+      currentThreadId = createdThread.id;
     }
 
     const userMessage: Message = {
@@ -909,7 +912,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     // Include activeCategoryId derived from the thread's first category for memory isolation
     const prefsToUse = {
       ...(preferences || chatPreferences),
-      activeCategoryId: activeThread?.categories?.[0]?.id,
+      activeCategoryId: resolveChatCategoryId(createdThread, activeThread),
     };
     const sendOptions = {
       truncateFromMessageId: options?.truncateFromMessageId,
@@ -925,7 +928,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     setPendingUploads([]);
     setPendingUrlSources([]);
     onClearArtifactComments?.();
-  }, [threadId, createThread, sendStreamingMessage, chatPreferences, artifactComments, onClearArtifactComments]);
+  }, [threadId, createThread, sendStreamingMessage, chatPreferences, activeThread, artifactComments, onClearArtifactComments]);
 
 
 

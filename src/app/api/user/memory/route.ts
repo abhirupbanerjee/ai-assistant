@@ -148,7 +148,16 @@ export async function PATCH(request: NextRequest) {
       case 'update_preferences':
         {
           const validated = validatePersonalPreferencePatch(body.preferences);
-          if (!validated.ok) return error(validated.error, 'VALIDATION_ERROR', 400);
+          if (!validated.ok) {
+            console.warn('[PersonalMemory] Preference update rejected', {
+              userId: user.id,
+              fields: body.preferences && typeof body.preferences === 'object'
+                ? Object.keys(body.preferences)
+                : [],
+              validationError: validated.error,
+            });
+            return error(validated.error, 'VALIDATION_ERROR', 400);
+          }
           return NextResponse.json({ profile: await updatePersonalPreferenceProfile(user.id, validated.value) });
         }
       case 'set_learning':
