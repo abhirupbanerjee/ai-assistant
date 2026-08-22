@@ -13,22 +13,20 @@ import type {
   ProviderSettings,
 } from '../provider-factory';
 import { SUPPORTED_LANGUAGES, buildTranslationPrompt } from '../provider-factory';
-import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
-
-let mistralClient: Mistral | null = null;
+import { isProviderConfigured } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 /**
- * Get or create Mistral client using centralized provider helper (DB-first, then env var fallback)
+ * Get or create Mistral client via org-aware credential resolution (BYOK orgs
+ * use only their own credential — no platform fallback). Constructed per call
+ * (stateless wrapper around the key) — no module-scope client.
  */
 async function getMistralClient(): Promise<Mistral> {
-  if (!mistralClient) {
-    const apiKey = await getApiKey('mistral');
-    if (!apiKey) {
-      throw new Error('Mistral API key not configured');
-    }
-    mistralClient = new Mistral({ apiKey });
+  const cred = await resolveProviderCredentialForRequest('mistral');
+  if (!cred.apiKey) {
+    throw new Error('Mistral API key not configured');
   }
-  return mistralClient;
+  return new Mistral({ apiKey: cred.apiKey });
 }
 
 /**

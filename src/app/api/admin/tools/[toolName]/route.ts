@@ -20,6 +20,7 @@ import { isMcpTool, getMcpToolDefinitions } from '@/lib/mcp/mcp-tools';
 import { isMcpEnabled } from '@/lib/mcp/config';
 import { invalidateTavilyCache } from '@/lib/redis';
 import { upsertToolConfigAsync } from '@/lib/db/compat';
+import { blockLegacyWrite } from '@/lib/legacy-writes';
 
 /**
  * Mask sensitive data like API keys in responses
@@ -166,6 +167,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const { toolName } = await params;
+
+    // Phase F: the Tavily web-search key is now owned by the consolidated
+    // AI & API Setup page. Reads (GET) remain functional.
+    if (toolName === 'web_search') {
+      const blocked = await blockLegacyWrite();
+      if (blocked) return blocked;
+    }
 
     // Initialize tools system
     await initializeTools();

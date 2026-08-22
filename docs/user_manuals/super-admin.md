@@ -2,20 +2,20 @@
 
 > **Audience:** Super Admins only  
 > **Access:** `/admin` dashboard (same as Admin)  
-> **Scope:** All admin capabilities PLUS exclusive financial data access
+> **Scope:** All admin capabilities, implicit administration of every organization, global credential audit, and platform financial data access
 
 ---
 
 ## Overview
 
-The **Super Admin** role is the highest privilege tier in AI Assistant. It is seeded from the `ADMIN_EMAILS` environment variable and grants all Admin capabilities plus exclusive access to sensitive financial data.
+The **Super Admin** role is the highest privilege tier in AI Assistant. It is seeded from the `ADMIN_EMAILS` environment variable and grants all Admin capabilities, implicit `org_admin` authority over every organization, global credential-audit access, and exclusive access to platform-managed financial data.
 
 ### Role Hierarchy
 
 | Role | Cost Data | Usage Data | Admin UI | SuperUser UI |
 |------|-----------|------------|----------|-------------|
 | **Super Admin** | ✅ Full access | ✅ Full access | ✅ Full | ✅ Full |
-| **Admin** | ❌ Zeroed out | ✅ Token counts only | ✅ Full | ✅ Full |
+| **Admin** | ❌ Platform cost; own-org BYOK only if explicitly `org_admin` | ✅ Token counts in permitted scope | ✅ Full | ✅ Full |
 | **Superuser** | ❌ None | ❌ None | ❌ None | ✅ Category-scoped |
 | **User** | ❌ None | ❌ None | ❌ None | ❌ None |
 
@@ -24,7 +24,9 @@ The **Super Admin** role is the highest privilege tier in AI Assistant. It is se
 | Feature | Admin | Super Admin |
 |---------|-------|-------------|
 | Manage categories, users, documents | ✅ | ✅ |
-| Configure LLM providers and models | ✅ | ✅ |
+| Configure own-organization providers/models | Only with explicit `org_admin` membership | ✅ Every organization |
+| Create/select organizations | ❌ | ✅ |
+| Review credential audit across organizations | ❌ | ✅ |
 | Manage tools, skills, prompts | ✅ | ✅ |
 | View token usage statistics | ✅ | ✅ |
 | View **cost data** ($ amounts) | ❌ | ✅ |
@@ -53,7 +55,38 @@ ADMIN_EMAILS=admin@example.com,superadmin@example.com
 
 Super Admins have the same sidebar menu as Admins (all 11 top-level tabs + Settings submenu). See [ADMIN_GUIDE.md](ADMIN_GUIDE.md) for the complete navigation reference.
 
-The key difference: Super Admins see **cost data** where Admins see token-only data.
+The key differences are organization scope and financial scope: Super Admins administer every organization and can see **platform-managed cost data**. An `org_admin` can see BYOK cost only for their own organization.
+
+## Organization Management and Global Audit
+
+**Location:** Admin → Settings → AI & API Setup
+
+Super Admins are implicit administrators of all organizations; no `organization_memberships` row is required. From the organization selector, a Super Admin can:
+
+- select the Default, `ENTITY`, or `INDIVIDUAL` organization;
+- create an `ENTITY` or `INDIVIDUAL` organization;
+- choose `PLATFORM_MANAGED` or `ORGANIZATION_BYOK` credential mode;
+- manage provider credentials and capability-to-provider/model assignments;
+- manage organization members and assign `org_admin` or `member`;
+- inspect readiness and capability health; and
+- view organization-attributed tokens and authorized cost.
+
+Provider credentials are organization-owned—there is no per-user BYOK. BYOK never silently falls back to a platform key when its organization credential is missing or disabled.
+
+### Global Credential Audit
+
+Super Admins can review redacted credential events across organizations. Events include create, replace, disable, enable, test, and rotate operations with actor and timestamp where available. Raw provider keys are never returned or stored in audit detail.
+
+Use **Test Connection**, **Replace Key**, or **Disable Connection**. There is no **Show Key** action.
+
+### Cost Visibility by Credential Mode
+
+| Credential mode | Who can view cost |
+|---|---|
+| `PLATFORM_MANAGED` | Super Admin only |
+| `ORGANIZATION_BYOK` | The organization's `org_admin` for that organization; Super Admins retain cross-organization administrative scope |
+
+The `token_usage_log` attribution includes organization and, for BYOK, the exact credential identifier. A missing BYOK key makes the capability unavailable rather than attributing a fallback platform cost.
 
 ## Exclusive Features
 
@@ -144,6 +177,8 @@ The Infrastructure Dashboard shows live status of all services. Super Admins see
 - Enable multi-factor authentication via your OAuth provider (Azure AD, Google)
 - Rotate `ADMIN_EMAILS` if a super admin leaves the organization
 - Super admins cannot be deleted via UI — remove from `ADMIN_EMAILS` and restart
+- Configure organization provider credentials only through **AI & API Setup**; legacy provider/settings pages are read-only while the redesigned UI is enabled
+- Review the global redacted credential audit regularly; never copy raw keys into notes or audit comments
 
 ### Best Practices
 
@@ -184,3 +219,4 @@ The Infrastructure Dashboard shows live status of all services. Super Admins see
 - [USER_GUIDE.md](USER_GUIDE.md) — End user guide
 - [docs/tech/auth.md](../tech/auth.md) — Authentication architecture
 - [docs/features/LLM.md](../features/LLM.md) — LLM architecture reference
+- [docs/tech/AI-API-Setup-Redesign.md](../tech/AI-API-Setup-Redesign.md) — Organization tenancy, credential vault, audit, cost attribution, and rollback

@@ -22,6 +22,11 @@ export interface RequestContext {
   userId?: string;
   /** User message for context-aware tool decisions */
   userMessage?: string;
+  /**
+   * Organization ID for tenancy-scoped credential resolution (AI & API Setup
+   * Redesign). Absent → the DEFAULT organization (parity with legacy runtime).
+   */
+  organizationId?: number;
 }
 
 /**
@@ -53,7 +58,11 @@ export function getRequestContext(): RequestContext {
  * ```
  */
 export function runWithContext<T>(context: RequestContext, fn: () => T): T {
-  return requestContextStorage.run(context, fn);
+  // Merge with the parent context so nested `runWithContext`/`runWithContextAsync`
+  // scopes (agent executor, tools) inherit fields set by the outer route — most
+  // importantly `organizationId` — unless they explicitly override them.
+  const parent = requestContextStorage.getStore();
+  return requestContextStorage.run({ ...parent, ...context }, fn);
 }
 
 /**
@@ -67,5 +76,6 @@ export async function runWithContextAsync<T>(
   context: RequestContext,
   fn: () => Promise<T>
 ): Promise<T> {
-  return requestContextStorage.run(context, fn);
+  const parent = requestContextStorage.getStore();
+  return requestContextStorage.run({ ...parent, ...context }, fn);
 }

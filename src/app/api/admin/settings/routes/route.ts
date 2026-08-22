@@ -14,6 +14,7 @@ import {
   setRoutesSettings,
   type RoutesSettings,
 } from '@/lib/db/compat';
+import { blockLegacyWrite } from '@/lib/legacy-writes';
 
 /**
  * GET - Retrieve current routes settings
@@ -56,6 +57,10 @@ export async function PUT(request: NextRequest) {
     if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
+
+    // Phase F: route defaults are now owned by the consolidated AI & API Setup page.
+    const blocked = await blockLegacyWrite();
+    if (blocked) return blocked;
 
     const body = await request.json();
     const { route2Enabled, route3Enabled, route5Enabled, primaryRoute } = body;

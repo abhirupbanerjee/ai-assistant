@@ -23,6 +23,7 @@ Technical architecture and system design documentation.
 | [tech/DATABASE.md](tech/DATABASE.md) | PostgreSQL schema, Qdrant collections, Redis patterns, Kysely ORM | Database tables, relationships, vector storage, caching strategy |
 | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) | Docker deployment, profile-based provider selection, scalability guide, backup/restore, PWA deployment | Container orchestration, environment configuration, infrastructure selection, operations, health checks |
 | [tech/auth.md](tech/auth.md) | Authentication system setup and configuration | Microsoft OAuth, Google OAuth, credentials login, access control, user management, Auth.js migration |
+| [tech/AI-API-Setup-Redesign.md](tech/AI-API-Setup-Redesign.md) | Organization-aware AI provider and credential architecture | Organization tenancy, BYOK vault, capability registry, runtime resolution, vector isolation, cost attribution, feature flags, migration and rollback |
 | [tech/Bot-Config-architecture.md](tech/Bot-Config-architecture.md) | Configuration architecture and settings management | Configuration layers, settings hierarchy |
 | [tech/UI_WIREFRAMES.md](tech/UI_WIREFRAMES.md) | Interface designs and user flow diagrams | UI components, user workflows |
 
@@ -153,6 +154,7 @@ Guides for different user roles and workflows.
 ### Authentication & Access Control
 
 - [tech/auth.md](tech/auth.md) - **Complete authentication guide** (OAuth setup, credentials login, admin management)
+- [tech/AI-API-Setup-Redesign.md § Organization Tenancy](tech/AI-API-Setup-Redesign.md#organization-tenancy) - Organization membership roles, workspace ownership, and global-role mapping
 - [tech/SOLUTION.md § Authentication Flow](tech/SOLUTION.md#12-authentication-flow) - Authentication architecture
 - [tech/SOLUTION.md § User Roles & Permissions](tech/SOLUTION.md#user-roles--permissions) - Role hierarchy
 - [user_manuals/ADMIN_GUIDE.md § Users](user_manuals/ADMIN_GUIDE.md#4-users) - User management
@@ -173,6 +175,7 @@ Guides for different user roles and workflows.
 
 ### AI Configuration
 
+- [tech/AI-API-Setup-Redesign.md](tech/AI-API-Setup-Redesign.md) - **AI & API Setup architecture** (organization credentials, capability registry, health, migration, and rollback)
 - [features/LLM.md](features/LLM.md) - **Authoritative LLM Architecture** (Routes 2/3/5, all providers, SDKs, fallback)
 - [features/routes.md](features/routes.md) - **Three-Route LLM Architecture** (Route 2: Direct, Route 3: Ollama, Route 5: Aggregator Gateways, admin gating)
 - [features/PROMPTS.md](features/PROMPTS.md) - System and category prompts

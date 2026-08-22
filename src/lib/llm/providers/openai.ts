@@ -9,30 +9,32 @@
  */
 
 import OpenAI from 'openai';
-import { getApiKey } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../../provider-credential';
 import { isUnsupportedThinkingParamError } from '@/lib/llm-thinking';
 
-// ============ Client Singleton ============
-
-let openaiClient: OpenAI | null = null;
+// ============ Client (ProviderClientFactory, keyed by credential) ============
 
 export function resetOpenAIClient(): void {
-  openaiClient = null;
+  sharedProviderClientFactory.clear();
 }
 
 export async function getOpenAIDirectClient(): Promise<OpenAI> {
-  if (!openaiClient) {
-    const apiKey = await getApiKey('openai');
-    if (!apiKey) {
-      throw new Error('OpenAI API key not configured. Set OPENAI_API_KEY or configure in Admin > LLM > Providers.');
-    }
-    openaiClient = new OpenAI({
-      apiKey,
-      baseURL: 'https://api.openai.com/v1', // Direct, bypasses LiteLLM
-      timeout: 300 * 1000, // 5 minutes — matches other provider timeouts
-    });
+  const cred = await resolveProviderCredentialForRequest('openai');
+  if (!cred.apiKey) {
+    throw new Error('OpenAI API key not configured. Set OPENAI_API_KEY or configure in Admin > LLM > Providers.');
   }
-  return openaiClient;
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'openai',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: 'https://api.openai.com/v1', // Direct, bypasses LiteLLM
+    timeoutMs: 300 * 1000, // 5 minutes — matches other provider timeouts
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for openai');
+  }
+  return built.client;
 }
 
 // ============ Model Detection ============

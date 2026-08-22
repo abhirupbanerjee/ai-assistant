@@ -8,7 +8,7 @@
  */
 
 import OpenAI from 'openai';
-import { getApiKey } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from './provider-credential';
 import { getSpeechSettings } from '@/lib/db/compat/config';
 import type { SttProvider, SttProviderConfig, SpeechSettings } from '@/lib/db/config';
 
@@ -26,8 +26,7 @@ export const PROVIDER_MAX_FILE_SIZE: Record<SttProvider, number> = {
 async function transcribeOpenAI(
   config: SttProviderConfig, buffer: Buffer, filename: string
 ): Promise<{ text: string; duration: number }> {
-  const { getApiKey } = await import('@/lib/provider-helpers');
-  const apiKey = await getApiKey('openai');
+  const { apiKey } = await resolveProviderCredentialForRequest('openai');
   if (!apiKey) throw new Error('OpenAI API key not configured');
   const client = new OpenAI({
     apiKey,
@@ -46,7 +45,7 @@ async function transcribeOpenAI(
 async function transcribeFireworks(
   config: SttProviderConfig, buffer: Buffer, filename: string
 ): Promise<{ text: string; duration: number }> {
-  const apiKey = await getApiKey('fireworks');
+  const { apiKey } = await resolveProviderCredentialForRequest('fireworks');
   if (!apiKey) throw new Error('Fireworks API key not configured');
   const client = new OpenAI({
     apiKey,
@@ -65,7 +64,7 @@ async function transcribeFireworks(
 async function transcribeMistral(
   config: SttProviderConfig, buffer: Buffer, filename: string
 ): Promise<{ text: string; duration: number }> {
-  const apiKey = await getApiKey('mistral');
+  const { apiKey } = await resolveProviderCredentialForRequest('mistral');
   if (!apiKey) throw new Error('Mistral API key not configured');
   const client = new OpenAI({
     apiKey,
@@ -85,7 +84,7 @@ async function transcribeGemini(
   config: SttProviderConfig, buffer: Buffer, filename: string
 ): Promise<{ text: string; duration: number }> {
   const { GoogleGenAI } = await import('@google/genai');
-  const apiKey = await getApiKey('gemini');
+  const { apiKey } = await resolveProviderCredentialForRequest('gemini');
   if (!apiKey) throw new Error('Gemini API key not configured');
   const ai = new GoogleGenAI({ apiKey });
 

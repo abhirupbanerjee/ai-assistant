@@ -42,6 +42,17 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 | Delete category | `categories` | `compat/categories.ts` |
 | Category prompts | `category_prompts` | `compat/category-prompts.ts` |
 
+### Organization Tenancy & AI Setup
+
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Resolve request organization | `organizations`, `organization_memberships`, `workspaces` | `org-context.ts`, `organization.ts` |
+| List/manage authorized organizations | `organizations`, `organization_memberships` | `app/api/admin/ai-setup/_service.ts` |
+| Load provider/capability registry | `providers`, `capabilities`, `provider_capabilities` | `provider-registry.ts`, `app/api/admin/ai-setup/_service.ts` |
+| Resolve organization capability | `organization_capability_config`, provider credential tables | `capability-resolver.ts` |
+| Create/replace/disable BYOK credential | `organization_provider_credentials`, `credential_audit_log` | `credential-vault.ts` |
+| Attribute usage | `token_usage_log` | `compat/token-usage.ts`, `token-logger.ts` |
+
 ### Document Management (RAG)
 
 | Operation | Table(s) | Access Module |
@@ -100,6 +111,8 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 | Check thinking capability | `enabled_models` | `compat/enabled-models.ts` (`isModelThinkingCapable`) |
 | Refresh model capabilities | `enabled_models` | `compat/enabled-models.ts` (`refreshModelCapabilities`) |
 | Log model latency | `model_latency_log` | `compat/model-latency.ts` |
+| Registry provider support | `providers`, `capabilities`, `provider_capabilities` | `provider-registry.ts` |
+| Organization provider/model selection | `organization_capability_config` | `capability-resolver.ts`, AI Setup API |
 
 ### Tool System
 
@@ -210,12 +223,12 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 
 | Operation | Table(s) | Access Module |
 |-----------|----------|---------------|
-| Export all data | All 67 tables | `compat/backup-async.ts` |
-| Import all data | All 67 tables | `compat/backup-async.ts` |
+| Export all data | All 76 tables | `compat/backup-async.ts` |
+| Import all data | All 76 tables | `compat/backup-async.ts` |
 
 ---
 
-## Complete Table Inventory (67 Tables)
+## Complete Table Inventory (76 Tables)
 
 | Table | Category | Purpose |
 |-------|----------|---------|
@@ -285,6 +298,15 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 | `agent_bot_version_tools` | Agent Bots | Version-tool mapping |
 | `agent_bot_usage` | Agent Bots | Usage analytics per bot |
 | `load_test_results` | Testing | k6 load test result records |
+| `organizations` | Tenancy | Tenant root and credential mode |
+| `organization_memberships` | Tenancy | `org_admin`/`member` authorization |
+| `providers` | AI Registry | Server-side provider registry |
+| `capabilities` | AI Registry | Capability registry with importance |
+| `provider_capabilities` | AI Registry | Provider-to-capability support matrix |
+| `platform_provider_credentials` | Credentials | Platform-managed credential references |
+| `organization_provider_credentials` | Credentials | Envelope-encrypted organization BYOK credentials |
+| `organization_capability_config` | AI Registry | Per-organization provider/model/credential selection |
+| `credential_audit_log` | Credentials | Redacted credential mutation/test history |
 
 ---
 
@@ -313,6 +335,8 @@ Pure functions (validators, slug generators, constants) live in `src/lib/db/util
 
 ### 4. Migration Strategy
 Kysely runs idempotent DDL migrations in `runPostgresMigrations()` on startup.
+
+The AI & API Setup tenancy schema is PostgreSQL/Kysely-only. Legacy SQLite modules are frozen and carry a `FROZEN — LEGACY SQLITE MODULE` marker; do not implement organization or credential-vault writes in both database paths. The migration sequence uses [`scripts/pre-migration-readiness.ts`](../../scripts/pre-migration-readiness.ts), [`scripts/backfill-org-tenancy.ts`](../../scripts/backfill-org-tenancy.ts), and [`scripts/backfill-vector-tenancy.ts`](../../scripts/backfill-vector-tenancy.ts). See [AI & API Setup Redesign](AI-API-Setup-Redesign.md) for phase ordering and rollback.
 
 ---
 

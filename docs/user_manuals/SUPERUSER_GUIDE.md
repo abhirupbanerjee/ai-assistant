@@ -590,6 +590,10 @@ The Settings tab provides access to configuration options for superusers.
 | **Cache** | View cache configuration (read-only) |
 | **Backup** | View and download category-specific backups |
 
+AI provider credentials and organization capability assignments are managed by a Super Admin or the organization's `org_admin` through **AI & API Setup**. Superusers do not enter or view provider keys. The legacy LLM, Reranker, Document Processing, and Speech settings remain read-only and may display a redirect to the consolidated admin page.
+
+Your category, document, RAG tuning, and workspace activity executes in the owning organization's context. This tenant scope is applied automatically to provider resolution, vector search, and usage attribution; it does not change the category permissions described in this guide.
+
 ### RAG Tuning
 
 The RAG Tuning section allows you to interactively test how different retrieval parameters affect search results for your categories.

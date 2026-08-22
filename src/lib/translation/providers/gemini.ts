@@ -12,19 +12,21 @@ import type {
   ProviderSettings,
 } from '../provider-factory';
 import { SUPPORTED_LANGUAGES, buildTranslationPrompt } from '../provider-factory';
-import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
+import { isProviderConfigured } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 /**
- * Get Gemini API key using centralized provider helper (DB-first, then env var fallback)
+ * Get Gemini API key via org-aware credential resolution (BYOK orgs use only
+ * their own credential — no platform fallback).
  */
 async function getGeminiApiKey(): Promise<string> {
-  const apiKey = await getApiKey('gemini');
-  if (!apiKey) {
+  const cred = await resolveProviderCredentialForRequest('gemini');
+  if (!cred.apiKey) {
     throw new Error('Gemini API key not configured');
   }
-  return apiKey;
+  return cred.apiKey;
 }
 
 /**

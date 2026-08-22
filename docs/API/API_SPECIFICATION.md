@@ -128,7 +128,7 @@ When `AUTH_DISABLED=true` in environment:
 | PATCH | `/api/admin/users` | Yes | Admin | Update user role |
 | DELETE | `/api/admin/users` | Yes | Admin | Remove user |
 | GET | `/api/admin/settings` | Yes | Admin | Get all settings |
-| PATCH | `/api/admin/settings` | Yes | Admin | Update settings |
+| PUT | `/api/admin/settings` | Yes | Admin | Update settings; consolidated AI/provider writes may return `409 LEGACY_WRITE_DISABLED` |
 | GET | `/api/admin/stats` | Yes | Admin | Get system statistics |
 | GET | `/api/admin/providers` | Yes | Admin | Check provider status |
 | POST | `/api/admin/refresh` | Yes | Admin | Reindex all documents |
@@ -275,6 +275,20 @@ When `AUTH_DISABLED=true` in environment:
 | DELETE | `/api/admin/llm/models/{id}` | Yes | Admin | Remove model |
 | POST | `/api/admin/llm/models/refresh` | Yes | Admin | Refresh model capabilities |
 | GET | `/api/admin/llm/discover` | Yes | Admin | Discover available models |
+| GET | `/api/admin/ai-setup` | Yes | Super Admin/Admin | Consolidated organization, registry, health, redacted credentials, and capability overview |
+| POST | `/api/admin/ai-setup/organizations` | Yes | Super Admin/Admin | Create `ENTITY`/`INDIVIDUAL` organization and auto-promote first `org_admin` |
+| PATCH | `/api/admin/ai-setup/organizations/{id}` | Yes | Super Admin/own Org Admin | Update organization name or credential mode |
+| PUT | `/api/admin/ai-setup/organizations/{id}/capabilities` | Yes | Super Admin/own Org Admin | Save capability/provider/model configuration |
+| GET | `/api/admin/ai-setup/organizations/{id}/credentials` | Yes | Super Admin/own organization | List redacted credential metadata |
+| POST | `/api/admin/ai-setup/organizations/{id}/credentials` | Yes | Super Admin/own Org Admin | Create or replace an encrypted credential |
+| POST | `/api/admin/ai-setup/organizations/{id}/credentials/{credentialId}` | Yes | Super Admin/own organization | Test, replace, disable, enable, or rotate credential |
+| GET | `/api/admin/ai-setup/organizations/{id}/members` | Yes | Super Admin/own organization | List organization members |
+| POST | `/api/admin/ai-setup/organizations/{id}/members` | Yes | Super Admin/own Org Admin | Add member or delegate `org_admin` |
+| PATCH | `/api/admin/ai-setup/organizations/{id}/members/{userId}` | Yes | Super Admin/own Org Admin | Change member role; last administrator is protected |
+| DELETE | `/api/admin/ai-setup/organizations/{id}/members/{userId}` | Yes | Super Admin/own Org Admin | Remove member; last administrator is protected |
+| GET | `/api/admin/ai-setup/organizations/{id}/audit` | Yes | Super Admin/own organization | Read redacted organization credential audit |
+| GET | `/api/admin/ai-setup/audit` | Yes | Super Admin | Read redacted global credential audit |
+| GET | `/api/admin/ai-setup/organizations/{id}/usage` | Yes | Super Admin/own organization | Read scoped usage and visibility-filtered cost (`days` clamped 1–365) |
 | POST | `/api/autonomous/{planId}/pause` | Yes | Owner | Pause autonomous plan |
 | POST | `/api/autonomous/{planId}/resume` | Yes | Owner | Resume paused plan |
 | POST | `/api/autonomous/{planId}/stop` | Yes | Owner | Stop autonomous plan |
@@ -2192,9 +2206,14 @@ curl -X GET https://ai.abhirup.app/api/admin/settings \
 
 ---
 
-#### `PATCH /api/admin/settings`
+#### `PUT /api/admin/settings`
 
 Update settings by type.
+
+While the consolidated AI & API Setup feature is enabled, legacy writes for `llm`,
+`embedding`, `reranker`, `ocr`, and `tavily` return `409 LEGACY_WRITE_DISABLED`. Use the
+organization-scoped AI & API Setup endpoints for provider credentials and capability
+routing. Non-consolidated setting types remain writable.
 
 **Authentication**: Required
 **Role**: Admin only
@@ -2212,18 +2231,18 @@ Update settings by type.
 }
 ```
 
-**Example Request (Update LLM)**:
+**Example Request (Update RAG tuning)**:
 
 ```bash
-curl -X PATCH https://ai.abhirup.app/api/admin/settings \
+curl -X PUT https://ai.abhirup.app/api/admin/settings \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
-    "type": "llm",
+    "type": "rag",
     "settings": {
-      "model": "gpt-4.1-mini",
-      "temperature": 0.7,
-      "maxTokens": 4000
+      "chunkSize": 1000,
+      "chunkOverlap": 200,
+      "topK": 10
     }
   }'
 ```
@@ -4999,6 +5018,11 @@ Download a generated output file.
 
 Manage LLM providers and enabled models for the system.
 
+> **Legacy write behavior:** while the consolidated AI & API Setup feature is enabled,
+> provider create/update/delete operations are read-only compatibility routes and return
+> `409` with `{ "error": "...", "code": "LEGACY_WRITE_DISABLED" }`. Use the consolidated
+> organization credential endpoints documented below. Provider reads remain available.
+
 #### `GET /api/admin/llm/providers`
 
 List all configured LLM providers.
@@ -5327,6 +5351,125 @@ Discover available models from providers.
   }>;
 }
 ```
+
+---
+
+### 27A. Admin - Consolidated AI & API Setup
+
+These endpoints use the standard NextAuth session cookie and require the global
+`super_admin` or `admin` role. Organization scope is always resolved and enforced by the
+server: a `super_admin` may access every organization, while a regular `admin` can view
+only its own organization and can mutate it only when its membership role is `org_admin`.
+Supplying another organization ID never grants access. The global audit endpoint is
+`super_admin`-only.
+
+Credential responses and audit entries are always redacted. A submitted `secret` is
+write-only: the raw value is never returned or included in audit output.
+
+| Method | Endpoint | Request | Success response |
+|--------|----------|---------|------------------|
+| GET | `/api/admin/ai-setup` | Optional `orgId` query selection, revalidated server-side | Consolidated viewer/org scope, registry, health, redacted credentials, and capability config |
+| POST | `/api/admin/ai-setup/organizations` | `{ name, type: "ENTITY" \| "INDIVIDUAL", credentialMode, adminEmail? }` | `201 { id, memberships }`; first member is `org_admin`; `DEFAULT` rejected |
+| PATCH | `/api/admin/ai-setup/organizations/{id}` | `{ name?, credentialMode? }` | Updated organization |
+| PUT | `/api/admin/ai-setup/organizations/{id}/capabilities` | `{ capabilities: CapabilityConfig[] }` | `{ ok, saved, cleared }`; empty `providerId` clears a capability |
+| GET | `/api/admin/ai-setup/organizations/{id}/credentials` | — | `{ credentials: RedactedCredential[] }` |
+| POST | `/api/admin/ai-setup/organizations/{id}/credentials` | `{ providerId, secret, isDefault?, credentialId? }` | `201` create or `200` replace; raw `secret` is never echoed |
+| POST | `/api/admin/ai-setup/organizations/{id}/credentials/{credentialId}` | `{ action: "test" \| "replace" \| "disable" \| "enable" \| "rotate", secret? }` | Test availability or mutation result; replacement requires `secret` |
+| GET | `/api/admin/ai-setup/organizations/{id}/members` | — | `{ members: Member[] }` |
+| POST | `/api/admin/ai-setup/organizations/{id}/members` | `{ userId? , email?, role?: "org_admin" \| "member" }` | `201 { ok, userId, role }`; delegation demotes prior active administrator |
+| PATCH | `/api/admin/ai-setup/organizations/{id}/members/{userId}` | `{ role: "org_admin" \| "member" }` | `{ ok, userId, role }`; last administrator cannot be demoted |
+| DELETE | `/api/admin/ai-setup/organizations/{id}/members/{userId}` | — | `{ ok: true }`; last administrator cannot be removed |
+| GET | `/api/admin/ai-setup/organizations/{id}/audit` | — | Up to 500 newest redacted organization credential audit entries |
+| GET | `/api/admin/ai-setup/audit` | — | Up to 500 newest redacted global entries; `super_admin` only |
+| GET | `/api/admin/ai-setup/organizations/{id}/usage` | Optional `days` (default 30; numeric values clamped to 1–365) | Organization, cost-visibility verdict, totals, and per-credential usage |
+
+Representative response types:
+
+```typescript
+interface AiSetupOrganization {
+  id: number;
+  name: string;
+  type: "DEFAULT" | "ENTITY" | "INDIVIDUAL";
+  isDefault: boolean;
+  credentialMode: "PLATFORM_MANAGED" | "ORGANIZATION_BYOK";
+  status: string;
+  isolationMode: string;
+  createdAt: string;
+  updatedAt: string;
+  activeCredentialCount?: number;
+  membershipRole?: "org_admin" | "member" | null;
+}
+
+interface CapabilityConfig {
+  capabilityId: string;
+  providerId: string;
+  credentialId: string | null;
+  modelOrServiceId: string | null;
+  enabled: boolean;
+}
+
+interface RedactedCredential {
+  credentialId: string;
+  providerId: string;
+  status: string;
+  isDefault: boolean;
+  credentialVersion: number;
+  lastVerifiedAt: string | null;
+  redactedDetail: string; // Placeholder only; never raw key material
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Member {
+  userId: number;
+  email: string;
+  name: string | null;
+  role: "org_admin" | "member";
+  status: string;
+}
+
+interface CredentialAuditEntry {
+  id: number;
+  organizationId: number | null;
+  providerId: string;
+  credentialId: string | null;
+  actorUserId: number | null;
+  actorEmail: string | null;
+  action: string;
+  redactedDetail: string | null;
+  createdAt: string;
+}
+
+interface OrganizationUsage {
+  org: AiSetupOrganization;
+  cost: {
+    canView: boolean;
+    reason: "platform" | "org" | "denied" | "byok_missing_credential";
+  };
+  usage: {
+    totalTokens: number;
+    totalCalls: number;
+    totalCost: number; // Zeroed when cost visibility is denied
+    byCredential: Array<{
+      credentialId: string | null;
+      providerId: string | null;
+      totalTokens: number;
+      callCount: number;
+      totalCost: number;
+    }>;
+    costUnavailable: boolean;
+  };
+}
+```
+
+Common errors use `{ error: string, code: string }` and include `400` invalid body/ID
+or validation, `401 AUTH_REQUIRED`, `403 ADMIN_REQUIRED`/`FORBIDDEN`, `404 NOT_FOUND`,
+and `500 INTERNAL`. A non-numeric usage `days` value returns `400 INVALID_DAYS`.
+
+Cost visibility is independent of usage visibility: platform-managed cost is
+`super_admin`-only; an own-organization `org_admin` can see BYOK cost only when an active
+organization credential exists. Otherwise cost values are zeroed and the reason is
+`denied` or `byok_missing_credential`.
 
 ---
 

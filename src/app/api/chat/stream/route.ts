@@ -20,6 +20,7 @@ import { runCategoryMemoryCandidateLearning } from '@/lib/category-memory-learni
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
+import { resolveUserOrganizationId } from '@/lib/org-membership';
 import { generateResponseWithTools } from '@/lib/openai';
 import { recordTokenUsage } from '@/lib/token-logger';
 import {
@@ -116,6 +117,11 @@ export async function POST(request: NextRequest) {
           safeClose();
           return;
         }
+
+        // Resolve the session user's organization server-side (never from the
+        // client) and write it into the request context so credential/vector
+        // tenancy and usage attribution are scoped to the right tenant.
+        const organizationId = await resolveUserOrganizationId(user);
 
         const body = await request.json() as StreamChatRequest;
         const {
@@ -506,6 +512,7 @@ export async function POST(request: NextRequest) {
               categoryIds: categoryIds,
               userId: user.id,
               userMessage: message,
+              organizationId: organizationId ?? undefined,
             },
             async () => {
               try {
@@ -763,6 +770,7 @@ export async function POST(request: NextRequest) {
             categoryIds: categoryIds,
             userId: user.id,
             userMessage: message,
+            organizationId: organizationId ?? undefined,
           },
           async () => {
             // ============ Phase 2: RAG Retrieval ============
@@ -1502,7 +1510,18 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // Log token usage for dashboard
+            // Log token usage for dashboard.
+            //
+            // `credentialId` is intentionally NOT stamped here: the main-chat
+            // path dispatches through `withModelFallback` / `generateResponseWithTools`
+            // (a multi-provider fallback chain), where each attempt resolves its
+            // own credential per-model via `resolveProviderCredentialForRequest`
+            // and does not propagate the winning credential back to this layer.
+            // No single credential id is determinable at this logging layer, so
+            // org-level attribution (organization_id, read from the request
+            // context inside `recordTokenUsage`) is left intact and the
+            // credential-level cost is attributable only where a single resolved
+            // credential is known (embeddings / autonomous paths stamp it).
             recordTokenUsage({
               userId: dbUser?.id,
               category: 'chat',

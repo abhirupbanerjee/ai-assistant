@@ -14,6 +14,8 @@ The selector runs through a 5-step pipeline each time a chat message is sent wit
 
 Filters to active, enabled models on healthy routes. Automatically excludes deprecated models (`gpt-4.1-mini`, `gpt-4.1-nano`).
 
+The scoring selector itself remains model/route based and does not decrypt or inspect organization credentials. After Auto chooses a model, dispatch runs in the request's `organizationId` context and resolves the LLM capability/credential for that organization. In `ORGANIZATION_BYOK` mode, a missing or disabled organization key makes the capability unavailable; dispatch does not silently borrow a platform key. Normal model fallback can then evaluate other usable models/routes under the same organization context.
+
 ### Step 2 — Vision Hard Filter
 
 If the message includes images, narrows candidates to vision-capable models only.
@@ -147,6 +149,9 @@ The auto-selector learns from user ratings. When a user clicks 👍 or 👎 on a
 | [`src/lib/db/compat/config.ts`](src/lib/db/compat/config.ts) | Scoring weights settings |
 | [`src/lib/services/model-discovery.ts`](src/lib/services/model-discovery.ts) | `DEPRECATED_MODELS` set |
 | [`src/lib/agent/auto-role.ts`](src/lib/agent/auto-role.ts) | Per-agent-role Auto resolution |
+| [`src/lib/request-context.ts`](../../src/lib/request-context.ts) | Carries organization ID from request entry point through dispatch |
+| [`src/lib/capability-resolver.ts`](../../src/lib/capability-resolver.ts) | Resolves the selected model's organization-scoped LLM provider/credential |
+| [`src/lib/provider-client-factory.ts`](../../src/lib/provider-client-factory.ts) | Builds/caches provider clients by credential ID and version |
 
 ## Admin Configuration
 
@@ -156,4 +161,6 @@ Admins can influence auto-selection through:
 - **Scoring Weights** (`model-scoring-weights`): Customize capability/contextFit/cost/latency weight balance
 - **Model Enable/Disable**: Only enabled models participate; deprecated models are auto-excluded
 - **Capability Toggles**: Tool calling, vision, parallel tools, thinking, and forced tool flags per model affect capability scores
+
+Provider credentials and organization capability assignments are managed in **Admin → Settings → AI & API Setup**, not in the Auto selector. See [AI & API Setup Redesign](../tech/AI-API-Setup-Redesign.md) and [LLM Architecture](LLM.md).
 - **Cost Configuration**: Input/output costs per model affect the cost scoring component

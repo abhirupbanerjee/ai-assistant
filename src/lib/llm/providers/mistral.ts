@@ -9,25 +9,21 @@
  */
 
 import { Mistral } from '@mistralai/mistralai';
-import { getApiKey } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from '../../provider-credential';
 
-// ============ Client Singleton ============
-
-let mistralClient: Mistral | null = null;
+// ============ Client (per-call; Mistral SDK is not in the factory union) ============
 
 export function resetMistralClient(): void {
-  mistralClient = null;
+  // Mistral SDK clients are constructed per call (stateless wrapper around the
+  // key), so there is no module-scope client to reset. Retained for API compat.
 }
 
 async function getMistralClient(): Promise<Mistral> {
-  if (!mistralClient) {
-    const apiKey = await getApiKey('mistral');
-    if (!apiKey) {
-      throw new Error('Mistral API key not configured. Set MISTRAL_API_KEY or configure in Admin > LLM > Providers.');
-    }
-    mistralClient = new Mistral({ apiKey });
+  const cred = await resolveProviderCredentialForRequest('mistral');
+  if (!cred.apiKey) {
+    throw new Error('Mistral API key not configured. Set MISTRAL_API_KEY or configure in Admin > LLM > Providers.');
   }
-  return mistralClient;
+  return new Mistral({ apiKey: cred.apiKey });
 }
 
 // ============ Model Detection ============

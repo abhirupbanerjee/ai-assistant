@@ -131,10 +131,13 @@ The model is enabled immediately via Admin UI → database — no restart, no pr
 
 | What | File | Required? |
 |------|------|-----------|
+| Seed provider/capability registry rows | [`src/lib/provider-registry.ts`](../../src/lib/provider-registry.ts) and tenancy backfill/migration seed | **Yes** — drives the consolidated setup UI |
 | Add provider constants | `src/lib/db/llm-providers.ts` | **Yes** |
 | Add discovery function | `src/lib/services/model-discovery.ts` | **Yes** |
 | Add capability patterns | `src/lib/services/model-discovery.ts` | **Yes** |
 | Add route classification | `src/lib/llm-fallback.ts` | **Yes** — add to `isRoute2/3/5Model()` |
+
+The consolidated **Admin → Settings → AI & API Setup** page is registry-driven. Do not add a hardcoded frontend provider card. A provider appears when the server supplies `providers`, `capabilities`, and `provider_capabilities` rows. Registry data alone does not implement runtime support: the provider adapter, model discovery, route classification, and capability patterns below are still required where applicable.
 
 ---
 
@@ -407,7 +410,19 @@ After both edits: restart the stack. The model appears in **Admin → Settings �
 
 If you need to add support for a completely new LLM provider (e.g., Cohere, xAI, Together AI), follow these steps:
 
-### Step 1: Add Provider Constants
+### Step 1: Add Registry Rows
+
+Add or seed:
+
+1. A `providers` row with the stable provider ID, display metadata, enabled state, and sort order.
+2. A `provider_capabilities` row for every supported capability.
+3. `model_or_service_ids` when the provider exposes a constrained server-known list.
+
+Reuse capability IDs from `capabilities`; assign the correct `REQUIRED`, `RECOMMENDED`, or `OPTIONAL` importance only when introducing a genuinely new capability. The registry is loaded server-side by [`src/lib/provider-registry.ts`](../../src/lib/provider-registry.ts) and the AI Setup API.
+
+Do not edit [`src/components/admin/settings/AiApiSetup.tsx`](../../src/components/admin/settings/AiApiSetup.tsx) to add a provider card. The page renders the registry returned by the server.
+
+### Step 2: Add Provider Constants
 
 Edit `src/lib/db/llm-providers.ts`:
 
@@ -427,7 +442,7 @@ const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> =
 };
 ```
 
-### Step 2: Add Discovery Function
+### Step 3: Add Discovery Function
 
 Edit `src/lib/services/model-discovery.ts`:
 
@@ -459,7 +474,7 @@ async function discoverCohereModels(apiKey: string): Promise<DiscoveredModel[]> 
 }
 ```
 
-### Step 3: Add to Discovery Switch
+### Step 4: Add to Discovery Switch
 
 In the same file, add case to `discoverModels()` function:
 
@@ -491,7 +506,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
 }
 ```
 
-### Step 4: Add Route Classification
+### Step 5: Add Route Classification
 
 Edit `src/lib/llm-fallback.ts` and add the new provider's model ID prefixes to the appropriate route detection function. For example, if Cohere uses a `cohere/` prefix on Route 2:
 
@@ -504,11 +519,11 @@ export function isRoute2Model(model: string): boolean {
 }
 ```
 
-### Step 5: Add Capability Patterns
+### Step 6: Add Capability Patterns
 
 Add patterns for the new provider's models in `src/lib/services/model-discovery.ts` (see [Capability Detection Patterns](#capability-detection-patterns)).
 
-### Step 6: Add Default Output Tokens
+### Step 7: Add Default Output Tokens
 
 In `src/lib/services/model-discovery.ts`, add to `DEFAULT_OUTPUT_TOKENS`:
 
@@ -524,7 +539,7 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
 };
 ```
 
-### Step 7: Update discoverAllModels
+### Step 8: Update discoverAllModels
 
 Add to the providers list in `discoverAllModels()`:
 
@@ -535,13 +550,17 @@ export async function discoverAllModels(): Promise<{...}> {
 }
 ```
 
-### Step 8: Test
+### Step 9: Test
 
 1. Add API key to `.env.local`: `COHERE_API_KEY=your-key`
 2. Restart the application
-3. Go to **Admin > Settings > LLM** and verify provider appears
-4. Click **Test** to verify connection
-5. Click **Add Models** to discover available models
+3. Go to **Admin → Settings → AI & API Setup** and verify the provider appears from the registry.
+4. Configure the provider for the target organization using platform-managed or organization BYOK mode.
+5. Click **Test Connection** to verify the credential without exposing it.
+6. Run the provider's model discovery flow and verify discovered models/capability flags where the provider supports discovery.
+7. Exercise the provider under at least two organizations to verify credential isolation and usage attribution.
+
+See [AI & API Setup Redesign](AI-API-Setup-Redesign.md) for organization credential modes, health states, and runtime resolution.
 
 ---
 

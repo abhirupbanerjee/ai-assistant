@@ -47,6 +47,14 @@ import { EMBEDDING_MODELS, type EmbeddingModelDefinition } from '@/lib/constants
 import { isLocalEmbeddingModel } from '@/lib/local-embeddings';
 import { wasFallbackUsedRecently, clearFallbackEvents } from '@/lib/openai';
 import type { ApiError } from '@/types';
+import { getDb } from '@/lib/db/kysely';
+import { readFeatureFlagCombinations } from '@/lib/feature-flag-combinations';
+import {
+  blockLegacyWrite,
+  isConsolidatedSettingsType,
+  areLegacyWritesDisabled,
+  isConsolidatedSettingsKey,
+} from '@/lib/legacy-writes';
 
 // Extended embedding model info with availability status
 interface AvailableEmbeddingModel extends EmbeddingModelDefinition {
@@ -119,7 +127,11 @@ export async function GET() {
     const retentionMeta = await getSettingMetadata('retention-settings');
     const ocrMeta = await getSettingMetadata('ocr-settings');
     const displayMeta = await getSettingMetadata('display-settings');
+    const featureFlags = await readFeatureFlagCombinations(await getDb());
     return NextResponse.json({
+      featureFlags: {
+        aiApiSetupUiEnabled: featureFlags.aiApiSetupUiEnabled,
+      },
       rag: {
         ...ragSettings,
         updatedAt: ragMeta?.updatedAt || new Date().toISOString(),
@@ -276,6 +288,13 @@ export async function PUT(request: NextRequest) {
         { error: 'Type and settings are required', code: 'VALIDATION_ERROR' },
         { status: 400 }
       );
+    }
+
+    // Phase F: refuse writes to settings keys now owned by the consolidated
+    // AI & API Setup page. Reads (GET) above remain functional for rollback.
+    if (isConsolidatedSettingsType(type)) {
+      const blocked = await blockLegacyWrite();
+      if (blocked) return blocked;
     }
 
     let result;
@@ -1578,8 +1597,13 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'restoreAllDefaults': {
-        // Delete all settings from SQLite to fall back to JSON config defaults
-        const settingKeys = [
+        // Delete all settings from SQLite to fall back to JSON config defaults.
+        // Phase F: the consolidated AI & API Setup page now owns LLM, embeddings,
+        // reranker, OCR, and Tavily — those legacy rows are the rollback data
+        // source, so skip deleting them while legacy writes are blocked. The
+        // non-AI settings (RAG, branding, memory, etc.) still reset.
+        const legacyWritesDisabled = await areLegacyWritesDisabled();
+        const settingKeys = ([
           'rag-settings',
           'llm-settings',
           'tavily-settings',
@@ -1598,7 +1622,9 @@ export async function PUT(request: NextRequest) {
           'token-limits-settings',
           'display-settings',
           'model-token-limits',
-        ] as const;
+        ] as const).filter(
+          (key) => !legacyWritesDisabled || !isConsolidatedSettingsKey(key)
+        );
 
         for (const key of settingKeys) {
           await deleteSetting(key);

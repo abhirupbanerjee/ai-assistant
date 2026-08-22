@@ -6,18 +6,20 @@
  */
 
 import OpenAI from 'openai';
-import { getApiKey } from '@/lib/provider-helpers';
-
-let client: OpenAI | null = null;
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../../provider-credential';
 
 export async function getFireworksClient(): Promise<OpenAI> {
-  if (!client) {
-    const apiKey = await getApiKey('fireworks');
-    client = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: 'https://api.fireworks.ai/inference/v1',
-      timeout: 300 * 1000, // 5 minutes — matches LiteLLM/OpenAI/Anthropic timeout
-    });
+  const cred = await resolveProviderCredentialForRequest('fireworks');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'fireworks',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: 'https://api.fireworks.ai/inference/v1',
+    timeoutMs: 300 * 1000, // 5 minutes — matches LiteLLM/OpenAI/Anthropic timeout
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for fireworks');
   }
-  return client;
+  return built.client;
 }

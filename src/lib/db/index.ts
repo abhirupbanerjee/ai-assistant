@@ -7,6 +7,20 @@
  * - Default settings initialization
  */
 
+/* ============================================================================
+ * FROZEN — LEGACY SQLITE MODULE (AI & API Setup Redesign, Phase A)
+ *
+ * Per plan Decision 3, PostgreSQL (Kysely) is the single migration path and
+ * legacy SQLite modules are frozen for new schema changes. Do NOT add the
+ * organization tenancy tables/columns (organizations, organization_memberships,
+ * providers, capabilities, provider_capabilities,
+ * platform_provider_credentials, organization_provider_credentials,
+ * organization_capability_config, credential_audit_log,
+ * workspaces.organization_id, usage.organization_id) to this module or to
+ * schema.sql. New schema changes go through src/lib/db/kysely.ts.
+ * ============================================================================
+ */
+
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';

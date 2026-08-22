@@ -6,6 +6,7 @@
 
 import { DocumentAnalysisClient, AzureKeyCredential } from '@azure/ai-form-recognizer';
 import { getOcrSettings } from '@/lib/db/compat/config';
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 // ============================================
 // Types
@@ -26,40 +27,45 @@ export interface AzureDIResult {
 // Client Singleton
 // ============================================
 
-let azureDIClient: DocumentAnalysisClient | null = null;
-
 /**
- * Reset the Azure DI client (call when credentials change)
+ * Reset the Azure DI client (call when credentials change).
+ * DocumentAnalysisClient is constructed per call; nothing module-scoped to reset.
+ * Retained for API compatibility with admin settings routes.
  */
-export function resetAzureDIClient(): void {
-  azureDIClient = null;
-}
+export function resetAzureDIClient(): void {}
 
 /**
  * Get or create Azure DI client
- * Priority: OCR settings (DB) → env vars
+ *
+ * Org-aware resolution (AI & API Setup Redesign): a BYOK organization uses
+ * only its own `azure-di` credential and fails closed when it is missing —
+ * never silently falling back to the platform key. PLATFORM_MANAGED / legacy
+ * orgs preserve the pre-Phase-D priority (OCR settings → env vars).
  */
 async function getAzureDIClient(): Promise<DocumentAnalysisClient> {
-  if (!azureDIClient) {
-    // Priority: OCR settings → env vars
+  const cred = await resolveProviderCredentialForRequest('azure-di');
+
+  let endpoint = cred.apiBase;
+  let key = cred.apiKey;
+  if (cred.credentialId === 'platform' || cred.credentialId === 'legacy') {
+    // Legacy/platform parity only. BYOK orgs keep their own credential.
     const ocrSettings = await getOcrSettings();
-    const endpoint = ocrSettings.azureDiEndpoint || process.env.AZURE_DI_ENDPOINT;
-    const key = ocrSettings.azureDiKey || process.env.AZURE_DI_KEY;
-
-    if (!endpoint || !key) {
-      throw new Error('Azure Document Intelligence not configured. Set credentials in Settings > Document Processing or use AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.');
-    }
-
-    if (!endpoint.startsWith('https://')) {
-      throw new Error(`Invalid Azure DI endpoint URL: "${endpoint}". Must be an HTTPS URL (e.g., https://your-resource.cognitiveservices.azure.com)`);
-    }
-
-    azureDIClient = new DocumentAnalysisClient(
-      endpoint,
-      new AzureKeyCredential(key)
-    );
+    endpoint = ocrSettings.azureDiEndpoint || process.env.AZURE_DI_ENDPOINT || null;
+    key = ocrSettings.azureDiKey || process.env.AZURE_DI_KEY || null;
   }
-  return azureDIClient;
+
+  if (!endpoint || !key) {
+    throw new Error('Azure Document Intelligence not configured. Set credentials in Settings > Document Processing or use AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.');
+  }
+
+  if (!endpoint.startsWith('https://')) {
+    throw new Error(`Invalid Azure DI endpoint URL: "${endpoint}". Must be an HTTPS URL (e.g., https://your-resource.cognitiveservices.azure.com)`);
+  }
+
+  return new DocumentAnalysisClient(
+    endpoint,
+    new AzureKeyCredential(key)
+  );
 }
 
 // ============================================

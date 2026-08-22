@@ -13,11 +13,7 @@
  */
 
 import OpenAI from 'openai';
-import { AIProjectClient } from '@azure/ai-projects';
-import { DefaultAzureCredential } from '@azure/identity';
-import { getApiBase } from '@/lib/provider-helpers';
-
-let client: OpenAI | null = null;
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../../provider-credential';
 
 /**
  * Strip the azure-foundry/ prefix to get the bare model deployment name.
@@ -27,24 +23,25 @@ export function stripAzureFoundryPrefix(modelId: string): string {
 }
 
 export function resetAzureFoundryClient(): void {
-  client = null;
+  sharedProviderClientFactory.clear();
 }
 
 export async function getAzureFoundryClient(): Promise<OpenAI> {
-  if (!client) {
-    const apiBase = await getApiBase('azure-foundry');
-    if (!apiBase) {
-      throw new Error('Azure AI Foundry not configured (AZURE_FOUNDRY_ENDPOINT required)');
-    }
-    const project = new AIProjectClient(
-      apiBase.replace(/\/$/, ''),
-      new DefaultAzureCredential(),
-    );
-    // Returns a standard openai client (from the 'openai' package).
-    // Supports .chat.completions.create() — all dispatch sites unchanged.
-    client = project.getOpenAIClient();
+  const cred = await resolveProviderCredentialForRequest('azure-foundry');
+  if (!cred.apiBase) {
+    throw new Error('Azure AI Foundry not configured (AZURE_FOUNDRY_ENDPOINT required)');
   }
-  return client;
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'azure-foundry',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: cred.apiBase,
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for azure-foundry');
+  }
+  return built.client;
 }
 
 /**

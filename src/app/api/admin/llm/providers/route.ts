@@ -19,6 +19,7 @@ import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
 import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
 import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
 import type { ApiError } from '@/types';
+import { blockLegacyWrite } from '@/lib/legacy-writes';
 
 // GET /api/admin/llm/providers - List all providers
 export async function GET() {
@@ -70,6 +71,11 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    // Phase F: provider rows (llm_providers) are now written via CredentialVault /
+    // the consolidated AI & API Setup page. Reads (GET) remain functional.
+    const blocked = await blockLegacyWrite();
+    if (blocked) return blocked;
 
     const body = await request.json() as CreateProviderInput;
 

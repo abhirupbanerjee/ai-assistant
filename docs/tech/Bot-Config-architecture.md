@@ -642,7 +642,26 @@ When a user sends a message, the complete prompt is assembled in this order:
 
 ---
 
-## 10. Comparison Table
+## 10. Provider & Capability Registry
+
+AI and external-service configuration uses a server-side capability-first registry:
+
+| Table | Purpose |
+|---|---|
+| `providers` | Provider identity, display metadata, enablement, and ordering |
+| `capabilities` | Functions such as LLM, embeddings, reranking, web search, document intelligence, image generation, podcast audio, STT, and TTS; each has `REQUIRED`, `RECOMMENDED`, or `OPTIONAL` importance |
+| `provider_capabilities` | Supported provider/capability combinations and optional model/service IDs |
+| `organization_capability_config` | Organization selection of provider, credential, model/service, and enablement |
+
+The consolidated **Admin → Settings → AI & API Setup** page reads these rows from the server. It does not own a separate hardcoded provider catalog. Adding a provider therefore means adding/seeding registry rows and implementing the corresponding runtime adapter or model-discovery support; it does not require creating a provider card in the setup UI.
+
+At runtime, organization context selects either platform-managed credentials or organization BYOK. The provider key is entered once per organization/provider and capabilities reference it; no per-user credential layer exists. Health is evaluated as `READY`, `DEGRADED`, `UNAVAILABLE`, or `NOT_CONFIGURED`.
+
+See [AI & API Setup Redesign](AI-API-Setup-Redesign.md) and [Adding a New LLM Model](addLLM.md).
+
+---
+
+## 11. Comparison Table
 
 | Aspect | System Prompt | Category Prompt | Starter Prompts | Skills | Tools | Data Sources | Function APIs | Memory |
 |--------|--------------|-----------------|-----------------|--------|-------|--------------|---------------|--------|
@@ -694,11 +713,23 @@ function_api_configs (id, name, base_url, auth_type, tools_schema, endpoint_mapp
 
 -- Function API to category mappings
 function_api_categories (api_id, category_id)
+
+-- Server-side AI/API registry
+providers (id, name, enabled, sort_order, ...)
+capabilities (id, name, importance, sort_order, ...)
+provider_capabilities (provider_id, capability_id, is_supported, model_or_service_ids, ...)
+
+-- Organization selection and credential ownership
+organizations (id, type, credential_mode, status, ...)
+organization_memberships (organization_id, user_id, role, status, ...)
+organization_capability_config (organization_id, capability_id, provider_id, credential_id, model_or_service_id, ...)
+organization_provider_credentials (organization_id, provider_id, credential_id, secret_ciphertext, dek_wrapped, aad, credential_version, ...)
+credential_audit_log (organization_id, provider_id, credential_id, actor_user_id, action, redacted_detail, ...)
 ```
 
 ---
 
-## 11. Agent Configuration (Beta)
+## 12. Agent Configuration (Beta)
 
 **What it is:** Configuration for the Autonomous Agent system that enables multi-step task execution with planning, execution, quality checking, and summarization.
 

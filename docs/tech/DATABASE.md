@@ -4,6 +4,8 @@
 
 This document provides detailed schema definitions, column descriptions, and data models for the AI Assistant database.
 
+> **AI & API Setup tenancy update:** The authoritative PostgreSQL/Kysely schema also includes organization tenancy, provider/capability registry, organization credential vault, and credential audit tables described in [AI & API Setup Tenancy Schema](#ai--api-setup-tenancy-schema). Legacy SQLite modules are frozen for this redesign; do not duplicate these additions in both database implementations.
+
 **For architecture documentation** (connection pooling, operations mapping), see [DB-techstack.md](DB-techstack.md).
 
 **Storage Components:**
@@ -1602,6 +1604,7 @@ Workspace configurations for embed and standalone chatbot instances.
 | max_file_size_mb | INTEGER | Maximum upload file size |
 | created_by | TEXT | User ID of creator |
 | created_by_role | TEXT | `super_admin`, `admin`, or `superuser` |
+| organization_id | INTEGER | FK to `organizations.id`; owning tenant. Added nullable for migration and backfilled to the Default organization before tenancy enforcement. |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
 
@@ -1784,6 +1787,161 @@ Per-wave working memory for autonomous agent plans. Stores deterministic summari
 - `idx_plan_memories_keywords` — GIN index on keywords for future retrieval optimization
 
 **Feature gate:** controlled by `agent_working_memory_enabled` setting (default `false`).
+
+## AI & API Setup Tenancy Schema
+
+These PostgreSQL tables support organization tenancy, the capability-first registry, and encrypted organization credentials. All timestamps are returned as strings by the PostgreSQL type parser.
+
+### organizations
+
+Tenant root. Exactly one row is the `DEFAULT` organization used for compatibility and requests without explicit tenant context.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL | Primary key |
+| name | TEXT | Display name |
+| type | TEXT | `DEFAULT`, `ENTITY`, or `INDIVIDUAL` |
+| is_default | BOOLEAN | True only for the compatibility Default organization |
+| credential_mode | TEXT | `PLATFORM_MANAGED` or `ORGANIZATION_BYOK` |
+| status | TEXT | `active`, `disabled`, or `suspended` |
+| isolation_mode | TEXT | `SOFT` or `HARD` |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+### organization_memberships
+
+Organization-local authorization. The composite `(organization_id, user_id)` key prevents duplicate memberships.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| organization_id | BIGINT | FK to `organizations.id` |
+| user_id | INTEGER | FK to `users.id` |
+| role | TEXT | `org_admin` or `member` |
+| status | TEXT | `active` or `disabled` |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+Global `super_admin` users are implicit administrators of every organization and do not require membership rows. Existing `admin`, `superuser`, and `user` accounts are backfilled as Default-organization members.
+
+### providers
+
+Server-side provider registry used by the consolidated UI and runtime resolver.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | Stable provider identifier |
+| name | TEXT | Display name |
+| description | TEXT | Optional description |
+| enabled | BOOLEAN | Registry enablement |
+| sort_order | INTEGER | Display order |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+### capabilities
+
+Server-side capability registry.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | Stable capability identifier |
+| name | TEXT | Display name |
+| description | TEXT | Optional description |
+| importance | TEXT | `REQUIRED`, `RECOMMENDED`, or `OPTIONAL` |
+| sort_order | INTEGER | Display order |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+### provider_capabilities
+
+Many-to-many provider support matrix. The composite `(provider_id, capability_id)` key identifies one mapping.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| provider_id | TEXT | FK to `providers.id` |
+| capability_id | TEXT | FK to `capabilities.id` |
+| is_supported | BOOLEAN | Whether the provider supports the capability |
+| model_or_service_ids | JSONB | Optional supported models/services |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+### platform_provider_credentials
+
+References platform-managed credentials. Existing legacy provider keys are mapped as secure references rather than copied into organization BYOK rows.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| provider_id | TEXT | Primary key and FK to `providers.id` |
+| secret_ref | TEXT | Secure source/reference; not a displayable key |
+| kek_version | INTEGER | Encryption-key version metadata |
+| status | TEXT | `active` or `disabled` |
+| last_verified_at | TIMESTAMPTZ | Last successful verification |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+### organization_provider_credentials
+
+Organization BYOK vault rows. Secrets use per-credential DEKs wrapped by `DATA_SOURCE_ENCRYPTION_KEY`; both encrypted blobs are bound with AAD to organization, provider, and credential identity.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL | Internal row primary key |
+| organization_id | BIGINT | FK to `organizations.id` |
+| provider_id | TEXT | FK to `providers.id` |
+| credential_id | TEXT | Stable public credential identifier |
+| secret_ciphertext | TEXT | `v2:` AES-256-GCM secret ciphertext |
+| dek_wrapped | TEXT | `v2:` AES-256-GCM wrapped DEK |
+| kek_version | INTEGER | KEK version used to wrap the DEK |
+| aad | TEXT | Stored tenant/provider/credential binding |
+| is_default | BOOLEAN | Default credential for this organization/provider |
+| status | TEXT | `active` or `disabled` |
+| credential_version | INTEGER | Cache-invalidation version, initially 1 |
+| last_verified_at | TIMESTAMPTZ | Last successful connection test |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+The `trg_bump_org_credential_version` trigger invokes `bump_org_credential_version()` before updates. A mutation of encrypted material or credential state therefore changes `credential_version` even when performed outside the normal application path. Provider clients are cached by `credential_id + credential_version`.
+
+### organization_capability_config
+
+Organization selection for each capability. The composite `(organization_id, capability_id)` key permits one active selection per capability.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| organization_id | BIGINT | FK to `organizations.id` |
+| capability_id | TEXT | FK to `capabilities.id` |
+| provider_id | TEXT | FK to `providers.id` |
+| credential_id | TEXT | Optional organization credential selection |
+| model_or_service_id | TEXT | Optional model/service selection |
+| enabled | BOOLEAN | Capability enablement |
+| configuration | JSONB | Capability-specific configuration |
+| created_at / updated_at | TIMESTAMPTZ | Lifecycle timestamps |
+
+### credential_audit_log
+
+Append-only redacted history for credential operations.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL | Primary key |
+| organization_id | BIGINT | Owning organization, nullable for platform/global events |
+| provider_id | TEXT | Provider involved |
+| credential_id | TEXT | Optional stable credential identifier |
+| actor_user_id | INTEGER | User that performed the action, when known |
+| action | TEXT | `created`, `replaced`, `disabled`, `enabled`, `tested`, or `rotated` |
+| redacted_detail | TEXT | Redacted metadata only; never the raw key |
+| created_at | TIMESTAMPTZ | Event timestamp |
+
+### token_usage_log tenancy columns
+
+The existing token-usage table adds:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| organization_id | BIGINT | Organization that owns the request/usage |
+| credential_id | TEXT | Exact BYOK credential used; `NULL` for platform, legacy, or unattributed usage |
+
+`credential_id` deliberately has no foreign key to `organization_provider_credentials`: usage rows are immutable history and must survive credential replacement or disablement. Financial visibility is mode-aware: platform-managed cost is super-admin-only; an `org_admin` may view BYOK cost for their own organization.
+
+### Migration notes
+
+- Run [`scripts/pre-migration-readiness.ts`](../../scripts/pre-migration-readiness.ts) before organization backfill.
+- [`scripts/backfill-org-tenancy.ts`](../../scripts/backfill-org-tenancy.ts) is idempotent and maps existing data to the Default organization without deleting legacy rows.
+- [`scripts/backfill-vector-tenancy.ts`](../../scripts/backfill-vector-tenancy.ts) adds `organization_id` to Qdrant payload metadata without re-embedding.
+- The PostgreSQL/Kysely path is authoritative. The legacy SQLite layer carries a frozen marker and must not receive parallel tenancy features.
+- See [AI & API Setup Redesign](AI-API-Setup-Redesign.md) for runtime resolution, vault design, flags, and rollback.
 
 ---
 

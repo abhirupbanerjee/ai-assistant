@@ -4,6 +4,16 @@
  * CRUD operations for managing LLM provider configurations (API keys, endpoints)
  */
 
+/* ============================================================================
+ * FROZEN — LEGACY SQLITE MODULE (AI & API Setup Redesign, Phase A)
+ *
+ * Per plan Decision 3, PostgreSQL (Kysely) is the single migration path and
+ * legacy SQLite modules are frozen for new schema changes. The new server-side
+ * provider/capability registry (providers, capabilities, provider_capabilities)
+ * lives in the PostgreSQL/Kysely schema only (src/lib/db/kysely.ts).
+ * ============================================================================
+ */
+
 import { execute, queryOne, queryAll } from './index';
 import { safeEncrypt, safeDecrypt } from '../encryption';
 

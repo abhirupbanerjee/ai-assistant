@@ -39,7 +39,7 @@ type PromptsSection = 'system-prompt' | 'category-prompts';
 // Tools is now a flat L1 item (management only). ToolsSection retained for backward-compat
 // but no longer used as a sidebar submenu.
 type ToolsSection = 'management';
-type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'ai-setup' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -83,6 +83,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'branding', label: 'Branding' },
       { id: 'tokens', label: 'Tokens' },
       { id: 'usage', label: 'Usage' },
+      { id: 'ai-setup', label: 'AI & API Setup' },
       { id: 'api-keys', label: 'API Keys' },
       { id: 'routes', label: 'Routes' },
       { id: 'llm', label: 'LLM' },

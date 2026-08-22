@@ -86,7 +86,7 @@ Two strategies, configurable per-category via Admin > Settings > RAG:
 | Collection | Name pattern | Purpose |
 |-----------|-------------|---------|
 | Global | `global_documents` | Documents not assigned to any category |
-| Category | `policy_{slug}` | Per-category document isolation |
+| Category | `category_{slug}` | Per-category document grouping |
 
 **Payload schema per point:**
 
@@ -97,6 +97,7 @@ Two strategies, configurable per-category via Admin > Settings > RAG:
   pageNumber: number;       // Source page (1-based)
   originalId: string;       // Unique chunk ID for dedup/delete
   text: string;             // Chunk text content
+  organization_id: number;  // Owning tenant; mandatory when vector tenancy is enabled
 }
 ```
 
@@ -106,6 +107,17 @@ Two strategies, configurable per-category via Admin > Settings > RAG:
 - `query()` with `hybridSearch=true` — Dense + BM25 sparse search with RRF merge
 - `deleteDocuments()` — Delete by `originalId` payload filter
 - `getDocumentChunksByDocId()` — Fetch all chunks for a document (used by reprocessing)
+
+#### Organization Isolation
+
+Per-category collections are retained; collection consolidation is deferred. Tenant isolation is enforced in the Qdrant wrapper rather than relying on collection names:
+
+- ingestion stamps `organization_id` into every point payload when vector tenancy is enabled;
+- the single search wrapper merges a mandatory organization condition with caller-supplied category/document filters;
+- caller filters cannot replace or omit the organization boundary; and
+- existing points are migrated by [`scripts/backfill-vector-tenancy.ts`](../../scripts/backfill-vector-tenancy.ts), which changes payload metadata only.
+
+Vectors and sparse vectors are untouched, so adding tenant ownership requires **no re-embedding**. Requests without explicit organization context use the Default organization for legacy parity. `vector-tenancy-enabled` requires `org-tenancy-enabled`; invalid flag combinations fail startup.
 
 ### 1.5 Background Ingestion
 
@@ -175,7 +187,7 @@ The system automatically selects the highest-priority provider that's available 
 5. **Sort:** Final ranking by reranker score
 6. **Redis cache:** Reranked results cached with 24h TTL
 
-**Configuration:** Admin > Settings > Reranker
+**Provider configuration:** Admin → Settings → AI & API Setup. Retrieval/reranking behavior remains configurable in RAG settings where exposed.
 
 ---
 
@@ -194,18 +206,17 @@ The system automatically selects the highest-priority provider that's available 
 5. **Data source descriptions** — Available external API descriptions
 6. **Skills** — Resolved skill instructions
 
-### 4.2 LLM Routing (Four-Route Architecture)
+### 4.2 LLM Routing (Three-Route Architecture)
 
 All providers use direct native SDKs/APIs — no proxy intermediary.
 
 | Route | Provider | Use Case |
 |-------|----------|----------|
-| **Route 1** | LiteLLM proxy | General chat, embeddings, transcription |
-| **Route 2** | Direct SDKs | Anthropic Claude, Fireworks AI, DeepSeek, Moonshot |
+| **Route 2** | Direct providers | OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot |
 | **Route 3** | Local Ollama | Air-gapped deployments |
-| **Route 4** | Ollama Cloud | Hosted Ollama models via native API |
+| **Route 5** | Aggregator gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud |
 
-Model detection is prefix-based: `anthropic/`, `claude-`, `fireworks/`, `ollama-`, `deepseek-`, `moonshot/`, etc. See [`docs/features/LLM.md`](LLM.md) for the authoritative reference.
+Model detection is prefix-based and runs after organization-aware capability/credential resolution. See [`docs/features/LLM.md`](LLM.md) for the authoritative provider, route, fallback, and credential-resolution reference.
 
 ### 4.3 Tool Calling
 

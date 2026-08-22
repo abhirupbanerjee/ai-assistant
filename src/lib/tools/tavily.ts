@@ -3,6 +3,27 @@ import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { validateUrlIsPublic } from '../ssrf-guard';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 import { numInRange } from '../tools';
+import { resolveProviderCredentialForRequest } from '../provider-credential';
+
+// ============ Org-aware API key resolution ============
+
+/**
+ * Resolve the org-aware Tavily API key.
+ *
+ * A BYOK organization uses only its own `tavily` credential and fails closed
+ * when it is missing — never silently falling back to the platform key.
+ * PLATFORM_MANAGED / legacy orgs resolve from web-search settings → env, the
+ * exact pre-Phase-D priority.
+ */
+async function resolveTavilyApiKey(): Promise<string | null> {
+  const cred = await resolveProviderCredentialForRequest('tavily');
+  if (cred.credentialId === 'platform' || cred.credentialId === 'legacy') {
+    const { config: settings } = await getWebSearchConfig();
+    return settings.apiKey || process.env.TAVILY_API_KEY || null;
+  }
+  // BYOK org credential, or null when unavailable (fail closed).
+  return cred.apiKey;
+}
 
 // ============ URL Extract Types ============
 
@@ -46,8 +67,7 @@ export interface CrawlResult {
  * Check if Tavily is configured (has API key)
  */
 export async function isTavilyConfigured(): Promise<boolean> {
-  const { config: settings } = await getWebSearchConfig();
-  return !!(settings.apiKey || process.env.TAVILY_API_KEY);
+  return !!(await resolveTavilyApiKey());
 }
 
 export interface ExtractOptions {
@@ -96,9 +116,9 @@ export async function extractWebContent(urls: string[], options?: ExtractOptions
     return results;
   }
 
-  // Get API key
+  // Get API key (org-aware) and the remaining web-search settings.
   const { config: settings } = await getWebSearchConfig();
-  const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+  const apiKey = await resolveTavilyApiKey();
 
   if (!apiKey) {
     return urls.map(url => ({
@@ -219,9 +239,8 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
     };
   }
 
-  // Get API key
-  const { config: settings } = await getWebSearchConfig();
-  const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+  // Get API key (org-aware)
+  const apiKey = await resolveTavilyApiKey();
 
   if (!apiKey) {
     return {
@@ -382,9 +401,8 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
     };
   }
 
-  // Get API key
-  const { config: settings } = await getWebSearchConfig();
-  const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+  // Get API key (org-aware)
+  const apiKey = await resolveTavilyApiKey();
 
   if (!apiKey) {
     return {
@@ -1059,8 +1077,8 @@ export const tavilyWebSearch: ToolDefinition = {
     const configOverride = options?.configOverride || {};
     const settings = { ...globalSettings, ...configOverride };
 
-    // Check settings first, fall back to environment variable
-    const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+    // Org-aware API key (BYOK orgs use only their own credential).
+    const apiKey = await resolveTavilyApiKey();
 
     // Check if web search is enabled
     if (!enabled) {

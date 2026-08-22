@@ -128,15 +128,19 @@ The application is suitable for production deployment with documented mitigation
 
 #### H-3: LLM API Keys Stored in Database Unencrypted
 - **CVSS Score:** 8.2 (High)
-- **Status:** ✅ **CLOSED**
-- **File:** `src/lib/db/compat/llm-providers.ts` (lines 109, 131, 205–215)
-- **Description:** LLM provider API keys (OpenAI, Mistral, etc.) stored as plaintext in `llm_providers.api_key` column.
+- **Status:** ✅ **CLOSED — SUPERSEDED BY CREDENTIAL VAULT**
+- **File:** `src/lib/credential-vault.ts`, `src/lib/db/kysely.ts`, `src/app/api/admin/ai-setup/`
+- **Description:** The original finding concerned provider API keys stored in plaintext in legacy provider configuration. Organization BYOK credentials now use the dedicated CredentialVault and consolidated AI & API Setup mutation paths.
 - **Impact:** Database compromise exposes all external LLM provider credentials.
-- **Remediation:** 
-  - Encrypt API keys on write using `src/lib/encryption.ts` (PBKDF2 + AES-256-GCM)
-  - Decrypt on read in `getProviderApiKey()`
-  - Graceful fallback for plaintext legacy keys
-- **Verification:** Encryption/decryption tested; legacy keys still readable.
+- **Remediation:**
+  - Envelope encryption with a fresh 32-byte DEK per credential and AES-256-GCM for both secret encryption and DEK wrapping.
+  - `DATA_SOURCE_ENCRYPTION_KEY` acts as the KEK; organization credential writes/decryptions fail closed when it is absent or malformed.
+  - AES-GCM AAD binds ciphertext to `organization_id + provider_id + credential_id`, preventing cross-tenant row swapping.
+  - New encrypted blobs use the tagged `v2:` format; legacy encrypted values remain decryptable only for migration compatibility.
+  - Raw keys are never returned by setup APIs. UI actions are Test Connection, Replace Key, and Disable Connection—never Show Key.
+  - Every mutation/test emits a redacted `credential_audit_log` entry.
+  - `credential_version` is protected by a database trigger and participates in provider-client cache keys to invalidate stale credentials.
+- **Verification:** Vault round-trip, AAD tamper/isolation, fail-closed KEK, mutation redaction, BYOK isolation, and credential-version invalidation tests pass. The final redesign security review reported no blocking findings.
 
 ---
 
@@ -294,6 +298,22 @@ The application is suitable for production deployment with documented mitigation
 | 10 | Additional hardening (A–D) | Medium | Config + new endpoint | Low |
 
 **Total effort:** ~2 days of development + testing
+
+### Organization Credential Security Controls
+
+The AI & API Setup redesign extends H-3 remediation beyond encryption at rest:
+
+| Control | Implementation |
+|---|---|
+| Tenant cryptographic binding | AAD includes organization, provider, and credential identity. |
+| Secret-key separation | Per-credential DEK; master KEK only wraps DEKs. |
+| Fail-closed operation | Organization BYOK is rejected if the KEK is missing/malformed; no plaintext development fallback. |
+| Least disclosure | APIs/UI expose redacted detail only and never support key reveal. |
+| Auditing | Redacted create, replace, disable, enable, test, and rotate actions are appended to `credential_audit_log`. |
+| Cache safety | Provider clients are keyed by `credential_id + credential_version`; a DB trigger guarantees version movement on updates. |
+| Tenant runtime isolation | `ORGANIZATION_BYOK` never silently falls back to a platform key. |
+
+For full architecture, operations, and rollback guidance, see [AI & API Setup Redesign](AI-API-Setup-Redesign.md).
 
 ---
 

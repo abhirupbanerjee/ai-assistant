@@ -8,7 +8,7 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import type { ModelSpec, AgentModelConfig } from '@/types/agent';
-import { getApiKey, getApiBase } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../provider-credential';
 import { recordTokenUsage } from '@/lib/token-logger';
 import { callOllamaCloud } from '@/lib/services/ollama-cloud';
 import {
@@ -24,12 +24,91 @@ import { isModelThinkingCapable } from '@/lib/db/compat/enabled-models';
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 
-let openaiClient: OpenAI | null = null;
-let anthropicClient: Anthropic | null = null;
-let fireworksClient: OpenAI | null = null;
-let ollamaClient: OpenAI | null = null;
-let moonshotClient: OpenAI | null = null;
-let deepseekClient: OpenAI | null = null;
+// Phase D (plan §7): module-scope provider client singletons were removed.
+// Clients are obtained from the shared ProviderClientFactory (LRU keyed by
+// credential_id + credential_version) using org-aware credential resolution.
+
+async function getOpenAIClient(): Promise<OpenAI> {
+  const cred = await resolveProviderCredentialForRequest('openai');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'openai',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: 'https://api.openai.com/v1',
+  });
+  if (built.kind !== 'openai') throw new Error('ProviderClientFactory returned a non-OpenAI client for openai');
+  return built.client;
+}
+
+async function getAnthropicClient(): Promise<Anthropic> {
+  const cred = await resolveProviderCredentialForRequest('anthropic');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'anthropic',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: null,
+  });
+  if (built.kind !== 'anthropic') throw new Error('ProviderClientFactory returned a non-Anthropic client for anthropic');
+  return built.client;
+}
+
+async function getFireworksClient(): Promise<OpenAI> {
+  const cred = await resolveProviderCredentialForRequest('fireworks');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'fireworks',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: FIREWORKS_BASE_URL,
+  });
+  if (built.kind !== 'openai') throw new Error('ProviderClientFactory returned a non-OpenAI client for fireworks');
+  return built.client;
+}
+
+async function getOllamaClient(): Promise<OpenAI> {
+  const cred = await resolveProviderCredentialForRequest('ollama');
+  const baseURL = ((cred.apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'ollama',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: 'ollama',
+    apiBase: baseURL,
+  });
+  if (built.kind !== 'openai') throw new Error('ProviderClientFactory returned a non-OpenAI client for ollama');
+  return built.client;
+}
+
+async function getMoonshotClient(): Promise<OpenAI> {
+  const cred = await resolveProviderCredentialForRequest('moonshot');
+  const { getMoonshotBaseUrl } = await import('@/lib/moonshot-config');
+  const baseURL = await getMoonshotBaseUrl();
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'moonshot',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: baseURL,
+  });
+  if (built.kind !== 'openai') throw new Error('ProviderClientFactory returned a non-OpenAI client for moonshot');
+  return built.client;
+}
+
+async function getDeepSeekClient(): Promise<OpenAI> {
+  const cred = await resolveProviderCredentialForRequest('deepseek');
+  const baseURL = (cred.apiBase || DEEPSEEK_BASE_URL).replace(/\/+$/, '');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'deepseek',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: baseURL,
+  });
+  if (built.kind !== 'openai') throw new Error('ProviderClientFactory returned a non-OpenAI client for deepseek');
+  return built.client;
+}
 
 /**
  * Extract <think>...</think> reasoning blocks from model output.
@@ -116,6 +195,10 @@ export async function generateWithModel(
   options: GenerateOptions = {}
 ): Promise<LLMResponse> {
   const prepared = await prepareGenerationOptions(modelSpec, options);
+  // Resolve the credential that will serve this call so usage rows carry the
+  // correct `credential_id` (BYOK attribution) and org context is inherited
+  // from the request.
+  const cred = await resolveProviderCredentialForRequest(modelSpec.provider);
 
   try {
     const response = await dispatchGenerateWithModel(modelSpec, prompt, prepared);
@@ -123,6 +206,7 @@ export async function generateWithModel(
       category: 'autonomous',
       model: response.model,
       totalTokens: response.tokens_used,
+      credentialId: cred.credentialId,
     });
     return response;
   } catch (error) {
@@ -145,6 +229,7 @@ export async function generateWithModel(
         category: 'autonomous',
         model: response.model,
         totalTokens: response.tokens_used,
+        credentialId: cred.credentialId,
       });
       return response;
     }
@@ -207,15 +292,8 @@ async function generateOpenAI(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  if (!openaiClient) {
-    // Use direct OpenAI API (Route 2) — no LiteLLM proxy
-    const apiKey = await getApiKey('openai');
-
-    openaiClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: 'https://api.openai.com/v1',
-    });
-  }
+  // Use direct OpenAI API (Route 2) — no LiteLLM proxy
+  const openaiClient = await getOpenAIClient();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (systemPrompt) {
@@ -326,7 +404,7 @@ async function generateGemini(
 ): Promise<LLMResponse> {
   const { GoogleGenAI } = await import('@google/genai');
 
-  const apiKey = await getApiKey('gemini');
+  const { apiKey } = await resolveProviderCredentialForRequest('gemini');
   if (!apiKey) {
     throw new Error('Gemini API key not configured');
   }
@@ -371,7 +449,7 @@ async function generateMistral(
 ): Promise<LLMResponse> {
   const { Mistral } = await import('@mistralai/mistralai');
 
-  const apiKey = await getApiKey('mistral');
+  const { apiKey } = await resolveProviderCredentialForRequest('mistral');
   if (!apiKey) {
     throw new Error('Mistral API key not configured');
   }
@@ -414,10 +492,7 @@ async function generateAnthropic(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  if (!anthropicClient) {
-    const apiKey = await getApiKey('anthropic');
-    anthropicClient = new Anthropic({ apiKey: apiKey || undefined });
-  }
+  const anthropicClient = await getAnthropicClient();
 
   // Strip anthropic/ prefix if present
   const modelId = model.startsWith('anthropic/') ? model.slice('anthropic/'.length) : model;
@@ -457,13 +532,7 @@ async function generateFireworks(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  if (!fireworksClient) {
-    const apiKey = await getApiKey('fireworks');
-    fireworksClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: FIREWORKS_BASE_URL,
-    });
-  }
+  const fireworksClient = await getFireworksClient();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (systemPrompt) {
@@ -527,11 +596,7 @@ async function generateOllama(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  if (!ollamaClient) {
-    const apiBase = await getApiBase('ollama');
-    const baseURL = ((apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
-    ollamaClient = new OpenAI({ apiKey: 'ollama', baseURL });
-  }
+  const ollamaClient = await getOllamaClient();
 
   // Strip ollama- or ollama/ prefix for the API call
   const ollamaModel = model.startsWith('ollama/') ? model.slice('ollama/'.length)
@@ -616,14 +681,7 @@ async function generateMoonshot(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  if (!moonshotClient) {
-    const apiKey = await getApiKey('moonshot');
-    const { getMoonshotBaseUrl } = await import('@/lib/moonshot-config');
-    moonshotClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: await getMoonshotBaseUrl(),
-    });
-  }
+  const moonshotClient = await getMoonshotClient();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (systemPrompt) {
@@ -686,14 +744,7 @@ async function generateDeepSeek(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  if (!deepseekClient) {
-    const apiKey = await getApiKey('deepseek');
-    const apiBase = await getApiBase('deepseek');
-    deepseekClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: (apiBase || DEEPSEEK_BASE_URL).replace(/\/+$/, ''),
-    });
-  }
+  const deepseekClient = await getDeepSeekClient();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (systemPrompt) {
@@ -746,12 +797,7 @@ async function generateDeepSeek(
 
 /** Reset all cached LLM clients so they re-read API keys on next use */
 export function resetLlmClients(): void {
-  openaiClient = null;
-  anthropicClient = null;
-  fireworksClient = null;
-  ollamaClient = null;
-  moonshotClient = null;
-  deepseekClient = null;
+  sharedProviderClientFactory.clear();
   // Reset Azure Foundry singleton (uses its own module-level cache)
   import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
 }

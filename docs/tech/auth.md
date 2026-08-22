@@ -332,6 +332,30 @@ ALLOWED_DOMAINS=company.com,partner.org
 
 > **Note:** Emails listed in `ADMIN_EMAILS` are seeded as `super_admin` on first startup. Existing users matching `ADMIN_EMAILS` are automatically re-promoted to `super_admin`. The `super_admin` role is the only role that can view aggregated cost data and provider account balances.
 
+### Organization Membership Roles
+
+Organization tenancy adds a second authorization layer without replacing global application roles. `organization_memberships` uses two organization-local roles:
+
+| Membership role | Scope |
+|---|---|
+| `org_admin` | Manage provider credentials, capability assignments, members, audit history, and authorized BYOK usage/cost for that organization. |
+| `member` | Consume the organization's configured services; cannot administer provider credentials or membership. |
+
+Existing global roles map into tenancy as follows:
+
+| Global role | Organization mapping |
+|---|---|
+| `super_admin` | Implicit `org_admin` of every organization. No membership row is required. May create/select organizations and view global credential audit and platform-managed cost. |
+| `admin` | Backfilled as `member` of the Default organization. Requires explicit `org_admin` membership for organization credential administration. |
+| `superuser` | Backfilled as `member`; category-scoped management remains governed by category assignments. |
+| `user` | Backfilled as `member`. |
+
+Each workspace is owned by one organization. Request handling derives `organizationId` from the authenticated/workspace context and propagates it to credential resolution, vector search, and usage logging. Requests without explicit tenant context use the Default organization for compatibility.
+
+Organization BYOK credentials belong to the organization, not to individual users. There is no per-user BYOK mode. These provider credentials are distinct from the email/password login credentials described below.
+
+See [AI & API Setup Redesign](AI-API-Setup-Redesign.md) for credential modes, runtime resolution, and cost-visibility rules.
+
 ### Managing Users (Admin UI)
 
 1. Navigate to **Admin** > **Users**

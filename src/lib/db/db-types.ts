@@ -741,6 +741,7 @@ export interface WorkspacesTable {
   auth_required: Generated<number>;
   web_search_enabled: Generated<number>;
   sources_enabled: Generated<number>;
+  organization_id: number | null;
 }
 
 // ============ Workspace Categories ============
@@ -1135,11 +1136,132 @@ export interface TokenUsageLogTable {
   input_tokens: number | null;
   output_tokens: number | null;
   metadata_json: string | null;
+  organization_id: number | null;
+  /** Vault credential used to serve the request (AI & API Setup Redesign, Phase E). */
+  credential_id: string | null;
   created_at: Generated<string>;
 }
 
 export type TokenUsageLog = Selectable<TokenUsageLogTable>;
 export type NewTokenUsageLog = Insertable<TokenUsageLogTable>;
+
+// ============ AI & API Setup Redesign — Phase A (tenancy & registry) ============
+// See plans/AI_API_Setup_Redesign_Implementation_Plan.md §10. Tables are created
+// empty by the inline migrations in src/lib/db/kysely.ts (runPostgresMigrations).
+// All timestamps are strings per the global pg type parser overrides.
+
+export interface OrganizationsTable {
+  id: Generated<number>;
+  name: string;
+  type: 'DEFAULT' | 'ENTITY' | 'INDIVIDUAL';
+  is_default: Generated<boolean>;
+  credential_mode: 'PLATFORM_MANAGED' | 'ORGANIZATION_BYOK';
+  status: 'active' | 'disabled' | 'suspended';
+  isolation_mode: 'SOFT' | 'HARD';
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type Organization = Selectable<OrganizationsTable>;
+export type NewOrganization = Insertable<OrganizationsTable>;
+export type OrganizationUpdate = Updateable<OrganizationsTable>;
+
+export interface OrganizationMembershipsTable {
+  organization_id: number;
+  user_id: number;
+  role: 'org_admin' | 'member';
+  status: 'active' | 'disabled';
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type OrganizationMembership = Selectable<OrganizationMembershipsTable>;
+export type NewOrganizationMembership = Insertable<OrganizationMembershipsTable>;
+
+export interface ProvidersTable {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: Generated<boolean>;
+  sort_order: number;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type Provider = Selectable<ProvidersTable>;
+export type NewProvider = Insertable<ProvidersTable>;
+
+export interface CapabilitiesTable {
+  id: string;
+  name: string;
+  description: string | null;
+  importance: 'REQUIRED' | 'RECOMMENDED' | 'OPTIONAL';
+  sort_order: number;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type Capability = Selectable<CapabilitiesTable>;
+export type NewCapability = Insertable<CapabilitiesTable>;
+
+export interface ProviderCapabilitiesTable {
+  provider_id: string;
+  capability_id: string;
+  is_supported: Generated<boolean>;
+  model_or_service_ids: unknown | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface PlatformProviderCredentialsTable {
+  provider_id: string;
+  secret_ref: string;
+  kek_version: number;
+  status: 'active' | 'disabled';
+  last_verified_at: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface OrganizationProviderCredentialsTable {
+  id: Generated<number>;
+  organization_id: number;
+  provider_id: string;
+  credential_id: string;
+  secret_ciphertext: string;
+  dek_wrapped: string;
+  kek_version: number;
+  aad: string;
+  is_default: Generated<boolean>;
+  status: 'active' | 'disabled';
+  credential_version: Generated<number>;
+  last_verified_at: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface OrganizationCapabilityConfigTable {
+  organization_id: number;
+  capability_id: string;
+  provider_id: string;
+  credential_id: string | null;
+  model_or_service_id: string | null;
+  enabled: Generated<boolean>;
+  configuration: unknown;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface CredentialAuditLogTable {
+  id: Generated<number>;
+  organization_id: number | null;
+  provider_id: string;
+  credential_id: string | null;
+  actor_user_id: number | null;
+  action: 'created' | 'replaced' | 'disabled' | 'enabled' | 'tested' | 'rotated';
+  redacted_detail: string | null;
+  created_at: Generated<string>;
+}
 
 // ============ Complete Database Interface ============
 
@@ -1236,6 +1358,16 @@ export interface DB {
   mcp_servers: McpServersTable;
   // Browser Sessions (remote browser)
   browser_sessions: BrowserSessionsTable;
+  // AI & API Setup Redesign (Phase A) — tenancy & registry
+  organizations: OrganizationsTable;
+  organization_memberships: OrganizationMembershipsTable;
+  providers: ProvidersTable;
+  capabilities: CapabilitiesTable;
+  provider_capabilities: ProviderCapabilitiesTable;
+  platform_provider_credentials: PlatformProviderCredentialsTable;
+  organization_provider_credentials: OrganizationProviderCredentialsTable;
+  organization_capability_config: OrganizationCapabilityConfigTable;
+  credential_audit_log: CredentialAuditLogTable;
 }
 
 // ============ Browser Sessions ============

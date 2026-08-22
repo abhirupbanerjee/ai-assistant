@@ -40,6 +40,7 @@ import {
 } from '@/lib/workspace/rate-limiter';
 import { getWorkspaceCategorySlugs, getCategoryIdsBySlugs } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
+import { resolveUserOrganizationIdByUserId } from '@/lib/org-membership';
 import { generateResponseWithTools } from '@/lib/openai';
 import { recordTokenUsage } from '@/lib/token-logger';
 import { selectBestModel, isAutoSentinel } from '@/lib/auto-model-selector';
@@ -158,6 +159,9 @@ export async function POST(
           return;
         }
 
+        // Resolve the session owner's organization server-side for tenancy.
+        const organizationId = await resolveUserOrganizationIdByUserId(session.user_id ?? null);
+
         // Rate limiting for embed mode
         if (workspace.type === 'embed') {
           const rateLimit = await checkAndIncrementRateLimit(workspace.id, ipHash, sessionId);
@@ -267,6 +271,7 @@ export async function POST(
             messageId: assistantMessageId,
             categoryIds: categoryIds,
             userId: session.user_id ? String(session.user_id) : undefined,
+            organizationId: organizationId ?? undefined,
           },
           async () => {
             // ============ Phase 2: RAG Retrieval ============

@@ -12,7 +12,7 @@
 
 import { getRerankerSettings, type RerankerProvider } from './db/compat/config';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
-import { getApiKey } from './provider-helpers';
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from './provider-credential';
 import type { RetrievedChunk } from '@/types';
 
 /**
@@ -79,33 +79,37 @@ interface CohereClientInterface {
   }): Promise<{ results: CohereRerankResult[] }>;
 }
 
-// Lazy-loaded Cohere client
-let cohereClient: CohereClientInterface | null = null;
-
 /**
  * Reset the Cohere client (call when API key changes)
  */
 export function resetCohereClient(): void {
-  cohereClient = null;
+  // The shared factory caches clients by credential_id + credential_version;
+  // clearing it forces every provider to re-resolve its key on next use.
+  sharedProviderClientFactory.clear();
 }
 
 /**
- * Get or create Cohere client
+ * Get or create Cohere client via the shared ProviderClientFactory.
  * Uses API key from Settings > Reranker (DB-first), falls back to COHERE_API_KEY env var
  */
 async function getCohereClient(): Promise<CohereClientInterface> {
-  if (cohereClient) return cohereClient;
+  const cred = await resolveProviderCredentialForRequest('cohere');
 
-  const settings = await getRerankerSettings();
-  const apiKey = settings.cohereApiKey || process.env.COHERE_API_KEY;  // DB first
-
-  if (!apiKey) {
+  if (!cred.apiKey) {
     throw new Error('Cohere API key not configured. Set in Settings > Reranker or COHERE_API_KEY environment variable.');
   }
 
-  const { CohereClient } = await import('cohere-ai');
-  cohereClient = new CohereClient({ token: apiKey }) as CohereClientInterface;
-  return cohereClient;
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'cohere',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: null,
+  });
+  if (built.kind !== 'cohere') {
+    throw new Error('ProviderClientFactory returned a non-Cohere client for cohere');
+  }
+  return built.client as unknown as CohereClientInterface;
 }
 
 /**
@@ -151,7 +155,7 @@ async function rerankWithFireworks(
   chunks: RetrievedChunk[],
   minScore: number
 ): Promise<RetrievedChunk[]> {
-  const apiKey = await getApiKey('fireworks');
+  const { apiKey } = await resolveProviderCredentialForRequest('fireworks');
   if (!apiKey) {
     throw new Error('Fireworks API key not configured. Set in Settings > Providers or FIREWORKS_AI_API_KEY environment variable.');
   }

@@ -19,7 +19,8 @@ import type {
   GeminiResponse,
   ImagenResponse,
 } from '@/types/image-gen';
-import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
+import { isProviderConfigured } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 // ===== Constants =====
 
@@ -28,11 +29,11 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 // ===== API Key Management =====
 
 async function getGoogleApiKey(): Promise<string> {
-  const apiKey = await getApiKey('gemini');
-  if (!apiKey) {
+  const cred = await resolveProviderCredentialForRequest('gemini');
+  if (!cred.apiKey) {
     throw new Error('Google API key not configured');
   }
-  return apiKey;
+  return cred.apiKey;
 }
 
 // ===== Generation Result =====

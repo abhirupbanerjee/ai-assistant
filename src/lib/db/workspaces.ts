@@ -5,6 +5,16 @@
  * Handles workspace management, category linking, and access control.
  */
 
+/* ============================================================================
+ * FROZEN — LEGACY SQLITE MODULE (AI & API Setup Redesign, Phase A)
+ *
+ * Per plan Decision 3, PostgreSQL (Kysely) is the single migration path and
+ * legacy SQLite modules are frozen for new schema changes. Do NOT add the
+ * organization tenancy schema (e.g. workspaces.organization_id) here — that FK
+ * lands in the PostgreSQL/Kysely schema only (src/lib/db/kysely.ts).
+ * ============================================================================
+ */
+
 import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase, queryAll, queryOne, execute, transaction } from './index';

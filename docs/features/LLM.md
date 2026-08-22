@@ -164,6 +164,30 @@ All translation providers use direct API calls — no LiteLLM proxy.
 
 ---
 
+## Organization-Aware Capability Resolution
+
+Provider/model routing now begins with organization context rather than a process-wide API-key singleton:
+
+1. Chat, workspace, and internal-service entry points place `organizationId` in [`RequestContext`](../../src/lib/request-context.ts:14). Nested contexts merge with their parent so tools inherit the tenant.
+2. [`resolveCapability()`](../../src/lib/capability-resolver.ts) loads the organization's capability configuration, provider, model/service, and credential mode.
+3. `PLATFORM_MANAGED` resolves the selected platform credential. `ORGANIZATION_BYOK` resolves the selected active organization credential (or active default for the provider).
+4. If BYOK is missing, disabled, or invalid, the capability is `UNAVAILABLE`. It never silently falls back to a platform key.
+5. [`ProviderClientFactory`](../../src/lib/provider-client-factory.ts:243) creates or reuses the provider client.
+
+Requests without explicit organization context resolve through the single Default organization for legacy parity. During the dual-read migration path, a missing new configuration row can use legacy settings; an existing BYOK configuration with a missing key cannot.
+
+### Capability Registry and Health
+
+The server-side `providers`, `capabilities`, and `provider_capabilities` registry drives both setup UI and runtime choices. `organization_capability_config` stores each organization's provider, optional credential, optional model/service, and enablement.
+
+Capabilities are classified as `REQUIRED`, `RECOMMENDED`, or `OPTIONAL` and report `READY`, `DEGRADED`, `UNAVAILABLE`, or `NOT_CONFIGURED`. See [AI & API Setup Redesign](../tech/AI-API-Setup-Redesign.md) for the complete registry and credential-mode model.
+
+### Versioned Provider Client LRU
+
+Provider clients are held in a bounded, TTL-aware LRU keyed by `credential_id + credential_version`. Replacing, rotating, or disabling a credential changes the database-protected version, causing each worker to miss the old cache entry and construct a client with current credential material. This replaces mutable module-scope credential singletons and prevents stale/cross-organization key reuse.
+
+---
+
 ## Fallback Order
 
 The fallback chain is managed by [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallback.ts) — `withModelFallback()`.
@@ -297,6 +321,12 @@ createInternalCompletion(model, opts)
 | [`src/lib/services/ollama-cloud.ts`](../../src/lib/services/ollama-cloud.ts) | Ollama Cloud provider (Route 5) |
 | [`src/lib/services/model-discovery.ts`](../../src/lib/services/model-discovery.ts) | Provider API model discovery, capability patterns |
 | [`src/lib/db/llm-providers.ts`](../../src/lib/db/llm-providers.ts) | Provider CRUD, `DEFAULT_PROVIDERS` |
+| [`src/lib/provider-registry.ts`](../../src/lib/provider-registry.ts) | Server-side providers/capabilities registry definitions |
+| [`src/lib/capability-resolver.ts`](../../src/lib/capability-resolver.ts) | Organization-aware capability, mode, provider, model, and credential resolution |
+| [`src/lib/provider-client-factory.ts`](../../src/lib/provider-client-factory.ts) | Bounded TTL/LRU provider-client cache keyed by credential ID and version |
+| [`src/lib/provider-credential.ts`](../../src/lib/provider-credential.ts) | Shared organization-aware provider credential/factory integration |
+| [`src/lib/request-context.ts`](../../src/lib/request-context.ts) | Async propagation of organization ID to nested services/tools |
+| [`src/lib/credential-vault.ts`](../../src/lib/credential-vault.ts) | Envelope-encrypted organization BYOK storage and redacted audit writes |
 
 ---
 
@@ -318,7 +348,7 @@ createInternalCompletion(model, opts)
 | `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` | Azure AI Foundry | Entra ID auth (alternative to API key) |
 | `OLLAMA_CLOUD_API_KEY` | Ollama Cloud | Chat |
 
-All keys can also be configured via Admin UI (Settings > LLM > Providers), which takes precedence over environment variables.
+Environment values provide platform-managed credentials. Organization BYOK keys are configured through **Admin → Settings → AI & API Setup**, encrypted by CredentialVault, and never displayed after submission. Legacy LLM/provider settings are read-only redirects while the redesigned UI is enabled.
 
 ### Routes Settings
 
@@ -331,7 +361,18 @@ interface RoutesSettings {
 }
 ```
 
-Configured via Admin > Settings > Routes or `PUT /api/admin/settings/routes`.
+When the redesigned UI is enabled, route/provider selection is managed through **Admin → Settings → AI & API Setup**. The legacy Routes page is read-only and legacy writes return `409 LEGACY_WRITE_DISABLED`. RAG settings remain independently writable.
+
+### AI & API Setup Feature Flags
+
+| Settings key | Purpose |
+|---|---|
+| `org-tenancy-enabled` | Organization ownership/context |
+| `org-credential-resolver-enabled` | Organization-aware credential resolution |
+| `vector-tenancy-enabled` | Qdrant organization filtering |
+| `ai-api-setup-ui-enabled` | Consolidated UI and legacy-page retirement |
+
+[`assertFeatureFlagCombinations()`](../../src/lib/feature-flag-combinations.ts:55) runs on startup. Vector tenancy and the organization credential resolver each require organization tenancy; invalid combinations abort boot.
 
 ---
 
@@ -344,16 +385,16 @@ The following documents contain stale references to LiteLLM proxy, Route 1, or o
 | [`docs/tech/liteLLM-implementation-guide.md`](../tech/liteLLM-implementation-guide.md) | **STALE** | Entire document is LiteLLM-centric. Route 1 architecture, YAML config, sync flow. Needs full rewrite or archival. |
 | [`docs/tech/SOLUTION.md`](../tech/SOLUTION.md) | **STALE** | "Four-Tier LLM Architecture" diagram (Tier 1 = LiteLLM). "Three-Route Architecture" with Route 1. Tech stack says "via LiteLLM". |
 | [`docs/features/routes.md`](routes.md) | **STALE** | Title says "Three-Route". Shows Route 1 (LiteLLM: OpenAI, Gemini, Mistral). No Route 5. Needs rewrite. |
-| [`docs/tech/addLLM.md`](../tech/addLLM.md) | **STALE** | Route classification table (Route 1/Route 2). Extensive LiteLLM sync/YAML sections. Missing Azure Foundry provider. |
-| [`docs/features/RAG.md`](RAG.md) | **STALE** | "Four-Route Architecture" table with Route 1 and Route 4. |
-| [`docs/user_manuals/ADMIN_GUIDE.md`](../user_manuals/ADMIN_GUIDE.md) | **STALE** | Provider grouping by Route 1/Route 2. "Two-route architecture" description. |
+| [`docs/tech/addLLM.md`](../tech/addLLM.md) | **PARTIALLY UPDATED** | Provider onboarding now includes server-side registry rows and consolidated setup verification; older historical LiteLLM material still requires separate archival/cleanup. |
+| [`docs/features/RAG.md`](RAG.md) | **UPDATED** | Current three-route generation summary and organization-filtered Qdrant tenancy documented. |
+| [`docs/user_manuals/ADMIN_GUIDE.md`](../user_manuals/ADMIN_GUIDE.md) | **UPDATED** | Consolidated organization-aware AI & API Setup workflow and legacy redirects documented. |
 | [`docs/features/air-gapped-deployment.md`](air-gapped-deployment.md) | **STALE** | Route 1 referenced in architecture overview. |
 | [`docs/developer/issues-known-fix.md`](../developer/issues-known-fix.md) | **STALE** | Tier 1/1b/2/3 breakdown predates current architecture. |
 | [`docs/tech/INFRASTRUCTURE.md`](../tech/INFRASTRUCTURE.md) | **STALE** | LiteLLM listed as always-on service, health checks, env vars. |
 | [`docs/tech/scaling.md`](../tech/scaling.md) | **STALE** | LiteLLM proxy in scaling architecture. |
 | [`docs/tech/fresh-vm-setup.md`](../tech/fresh-vm-setup.md) | **STALE** | LiteLLM setup commands, `OPENAI_BASE_URL` pointing to LiteLLM. |
 | [`docs/features/agent-bot.md`](agent-bot.md) | **STALE** | LiteLLM references in known issues. |
-| [`docs/INDEX.md`](../INDEX.md) | **STALE** | "Two-Route LLM Architecture" references. Version history entries. |
+| [`docs/INDEX.md`](../INDEX.md) | **UPDATED** | Links the authoritative routing and AI & API Setup architecture references. Historical version entries may intentionally retain period terminology. |
 
 ---
 

@@ -20,6 +20,7 @@ import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
 import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
 import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
 import type { ApiError } from '@/types';
+import { blockLegacyWrite } from '@/lib/legacy-writes';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -77,6 +78,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Phase F: provider key updates (llm_providers) now flow through the
+    // consolidated AI & API Setup page. Reads (GET) remain functional.
+    const blocked = await blockLegacyWrite();
+    if (blocked) return blocked;
+
     const { id } = await params;
     const body = await request.json() as UpdateProviderInput;
 
@@ -123,6 +129,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         { status: 403 }
       );
     }
+
+    // Phase F: provider deletion/clearing (llm_providers) now flows through the
+    // consolidated AI & API Setup page. Reads (GET) remain functional.
+    const blocked = await blockLegacyWrite();
+    if (blocked) return blocked;
 
     const { id } = await params;
 

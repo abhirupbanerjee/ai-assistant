@@ -9,6 +9,7 @@ import * as crypto from 'crypto';
 import type { VectorStoreClient, VectorQueryResult, CollectionNameHelpers } from './types';
 import type { ChunkMetadata } from '@/types';
 import { getEmbeddingSettings, getRagSettings } from '../db/compat/config';
+import { resolveVectorTenancyOrgId } from '../org-context';
 
 // Collection naming conventions
 const CATEGORY_PREFIX = 'category_';
@@ -177,6 +178,62 @@ function convertFilter(filter: Record<string, unknown>): { must?: Array<Record<s
 }
 
 /**
+ * Payload key holding the owning organization id (plan §8, Decision 8).
+ */
+export const ORG_ID_PAYLOAD_KEY = 'organization_id';
+
+/**
+ * Stamp the owning organization id onto a point payload. Pure metadata — the
+ * vector is untouched, so no re-embedding is required.
+ */
+export function stampOrganizationId(
+  payload: Record<string, unknown>,
+  organizationId: number | null
+): Record<string, unknown> {
+  if (organizationId == null) return payload;
+  return { ...payload, [ORG_ID_PAYLOAD_KEY]: organizationId };
+}
+
+/**
+ * Merge the mandatory `organization_id` condition into a caller-supplied filter
+ * so tenant isolation composes with (and never replaces) existing category or
+ * document scoping. Returns `undefined` when there is nothing to filter on.
+ */
+export function buildOrgAwareFilter(
+  organizationId: number | null,
+  filter?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const merged: Record<string, unknown> = {};
+  if (filter) {
+    Object.assign(merged, filter);
+  }
+  // Apply the mandatory tenant condition LAST so a caller-supplied
+  // `organization_id` (or `[ORG_ID_PAYLOAD_KEY]`) can never overwrite it —
+  // tenant isolation composes with category/document scoping but always wins.
+  if (organizationId != null) {
+    merged[ORG_ID_PAYLOAD_KEY] = organizationId;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
+ * Build the Qdrant scroll filter for full-document reads
+ * (`getDocumentChunksByDocId` / `getDocumentChunksByDocName`). Composes the
+ * mandatory `organization_id` tenant condition with the caller's document
+ * filter (documentId or documentName) so full-document retrieval is org-scoped
+ * exactly like `query()`. When there is nothing to filter on (e.g. vector
+ * tenancy disabled and no document filter) an empty filter is returned,
+ * matching `convertFilter(undefined)`.
+ */
+export function buildOrgAwareScrollFilter(
+  organizationId: number | null,
+  docFilter: Record<string, unknown>
+): { must?: Array<Record<string, unknown>> } {
+  const effective = buildOrgAwareFilter(organizationId, docFilter);
+  return convertFilter(effective ?? {});
+}
+
+/**
  * Qdrant implementation of VectorStoreClient
  */
 export class QdrantVectorStore implements VectorStoreClient {
@@ -330,6 +387,10 @@ export class QdrantVectorStore implements VectorStoreClient {
       // If settings can't be loaded, skip sparse vectors
     }
 
+    // Stamp the owning organization id onto the payload (plan §8). This is
+    // payload metadata only — the vector is untouched (no re-embedding).
+    const organizationId = await resolveVectorTenancyOrgId();
+
     // Convert to Qdrant point format
     const points = ids.map((id, i) => ({
       id: stringToUuid(id),
@@ -337,11 +398,14 @@ export class QdrantVectorStore implements VectorStoreClient {
       ...(hybridEnabled
         ? { sparse_vectors: { text: tokenizeForSparseVector(documents[i]) } }
         : {}),
-      payload: {
-        ...metadatas[i],
-        text: documents[i],
-        originalId: id, // Store original ID for retrieval
-      },
+      payload: stampOrganizationId(
+        {
+          ...metadatas[i],
+          text: documents[i],
+          originalId: id, // Store original ID for retrieval
+        },
+        organizationId
+      ),
     }));
 
     // Batch upsert (100 points at a time)
@@ -426,14 +490,16 @@ export class QdrantVectorStore implements VectorStoreClient {
     }
 
     const qdrant = getClient();
+    // Full-document reads are org-scoped exactly like `query()`: the mandatory
+    // `organization_id` tenant condition composes with the document filter.
+    const organizationId = await resolveVectorTenancyOrgId();
+    const scrollFilter = buildOrgAwareScrollFilter(organizationId, { documentId });
     const results: { id: string; vector: number[]; text: string; metadata: ChunkMetadata }[] = [];
     let offset: string | number | undefined = undefined;
 
     do {
       const response = await qdrant.scroll(collectionName, {
-        filter: {
-          must: [{ key: 'documentId', match: { value: documentId } }],
-        },
+        filter: scrollFilter,
         with_vector: true,
         with_payload: true,
         limit: 100,
@@ -474,14 +540,16 @@ export class QdrantVectorStore implements VectorStoreClient {
     }
 
     const qdrant = getClient();
+    // Full-document reads are org-scoped exactly like `query()`: the mandatory
+    // `organization_id` tenant condition composes with the document filter.
+    const organizationId = await resolveVectorTenancyOrgId();
+    const scrollFilter = buildOrgAwareScrollFilter(organizationId, { documentName });
     const results: { id: string; text: string; metadata: ChunkMetadata }[] = [];
     let offset: string | number | undefined = undefined;
 
     do {
       const response = await qdrant.scroll(collectionName, {
-        filter: {
-          must: [{ key: 'documentName', match: { value: documentName } }],
-        },
+        filter: scrollFilter,
         with_vector: false,
         with_payload: true,
         limit: 100,
@@ -538,6 +606,13 @@ export class QdrantVectorStore implements VectorStoreClient {
     // to ensure consistency between Qdrant's filtering and RAG's filtering.
     const threshold = scoreThreshold ?? 0.3;
 
+    // Inject the mandatory `organization_id` filter (plan §8). Tenant isolation
+    // composes with any caller-supplied category/document filter via
+    // buildOrgAwareFilter(); this method is the single search entry point, so no
+    // raw qdrant.search() runs outside the org-filtered wrapper.
+    const organizationId = await resolveVectorTenancyOrgId();
+    const effectiveFilter = buildOrgAwareFilter(organizationId, filter);
+
     const searchParams: Parameters<typeof qdrant.search>[1] = {
       vector: queryEmbedding,
       limit: nResults,
@@ -545,8 +620,8 @@ export class QdrantVectorStore implements VectorStoreClient {
       score_threshold: threshold,
     };
 
-    if (filter && Object.keys(filter).length > 0) {
-      searchParams.filter = convertFilter(filter);
+    if (effectiveFilter) {
+      searchParams.filter = convertFilter(effectiveFilter);
     }
 
     const denseResults = await qdrant.search(collectionName, searchParams);
@@ -567,8 +642,8 @@ export class QdrantVectorStore implements VectorStoreClient {
           score_threshold: 0,
         };
 
-        if (filter && Object.keys(filter).length > 0) {
-          (sparseSearchParams as Record<string, unknown>).filter = convertFilter(filter);
+        if (effectiveFilter) {
+          (sparseSearchParams as Record<string, unknown>).filter = convertFilter(effectiveFilter);
         }
 
         const sparseResults = await qdrant.search(collectionName, sparseSearchParams);
@@ -707,6 +782,58 @@ export class QdrantVectorStore implements VectorStoreClient {
 
     if (updatedCount > 0) {
       console.log(`[Qdrant] Backfilled sparse vectors for ${updatedCount} points in ${collectionName}`);
+    }
+    return updatedCount;
+  }
+
+  /**
+   * Backfill the `organization_id` payload field for existing points (plan §8).
+   *
+   * Uses Qdrant `setPayload`, which mutates payload metadata only — vectors and
+   * sparse vectors are untouched, so NO re-embedding is required. Idempotent:
+   * points that already carry the target organization id are skipped.
+   *
+   * Returns the number of points stamped.
+   */
+  async backfillOrganizationIds(collectionName: string, organizationId: number): Promise<number> {
+    if (!(await this.collectionExists(collectionName))) {
+      console.log(`[Qdrant] Collection ${collectionName} does not exist, skipping org backfill`);
+      return 0;
+    }
+
+    const qdrant = getClient();
+    let updatedCount = 0;
+    let offset: string | number | undefined = undefined;
+
+    do {
+      const response = await qdrant.scroll(collectionName, {
+        with_vector: false,
+        with_payload: true,
+        limit: 100,
+        ...(offset !== undefined ? { offset } : {}),
+      });
+
+      const pointIds: Array<string | number> = [];
+      for (const point of response.points) {
+        const payload = point.payload || {};
+        if (payload[ORG_ID_PAYLOAD_KEY] === organizationId) continue;
+        pointIds.push(point.id);
+      }
+
+      if (pointIds.length > 0) {
+        await qdrant.setPayload(collectionName, {
+          payload: { [ORG_ID_PAYLOAD_KEY]: organizationId },
+          points: pointIds,
+        });
+        updatedCount += pointIds.length;
+      }
+
+      const next = response.next_page_offset;
+      offset = (typeof next === 'string' || typeof next === 'number') ? next : undefined;
+    } while (offset !== undefined);
+
+    if (updatedCount > 0) {
+      console.log(`[Qdrant] Backfilled organization_id for ${updatedCount} points in ${collectionName}`);
     }
     return updatedCount;
   }

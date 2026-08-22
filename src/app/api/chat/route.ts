@@ -21,6 +21,7 @@ import {
 } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
+import { resolveUserOrganizationId } from '@/lib/org-membership';
 import {
   buildModelsToTry,
   withModelFallback,
@@ -74,6 +75,8 @@ export async function POST(request: NextRequest) {
 
     // Get user from database for memory
     const dbUser = await getUserByEmail(user.email);
+    // Resolve the session user's organization server-side for tenancy.
+    const organizationId = await resolveUserOrganizationId(user);
     const memorySettings = await getMemorySettings();
     const summarizationSettings = await getSummarizationSettings();
 
@@ -193,6 +196,7 @@ export async function POST(request: NextRequest) {
               messageId: assistantMessageId,
               categoryIds: categoryIds,
               userId: user.id,
+              organizationId: organizationId ?? undefined,
             },
             () =>
               ragQuery(

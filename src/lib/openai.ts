@@ -179,7 +179,7 @@ import {
   getHistoryForAPI,
   type ConversationContext,
 } from './conversation-context';
-import { getApiKey, getApiBase } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from './provider-credential';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
 import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, streamMistralCompletion, isMistralEmbeddingModel, createMistralEmbedding, createMistralEmbeddings } from '@/lib/llm/providers/mistral';
@@ -249,17 +249,20 @@ function getAnthropicModelId(model: string): string {
   return model.startsWith('anthropic/') ? model.slice('anthropic/'.length) : model;
 }
 
-let anthropicClient: Anthropic | null = null;
-
 async function getAnthropicClient(): Promise<Anthropic> {
-  if (!anthropicClient) {
-    const apiKey = await getApiKey('anthropic');
-    anthropicClient = new Anthropic({
-      apiKey: apiKey || undefined,
-      timeout: 300 * 1000, // 5 minutes — matches LiteLLM/OpenAI timeout
-    });
+  const cred = await resolveProviderCredentialForRequest('anthropic');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'anthropic',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: null,
+    timeoutMs: 300 * 1000, // 5 minutes — matches LiteLLM/OpenAI timeout
+  });
+  if (built.kind !== 'anthropic') {
+    throw new Error('ProviderClientFactory returned a non-Anthropic client for anthropic');
   }
-  return anthropicClient;
+  return built.client;
 }
 
 // ============ Fireworks Direct Client ============
@@ -278,18 +281,20 @@ function getFireworksModelId(model: string): string {
     : model;
 }
 
-let fireworksClient: OpenAI | null = null;
-
 async function getFireworksClient(): Promise<OpenAI> {
-  if (!fireworksClient) {
-    const apiKey = await getApiKey('fireworks');
-    fireworksClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: 'https://api.fireworks.ai/inference/v1',
-      timeout: 300 * 1000, // 5 minutes ��� matches LiteLLM/OpenAI/Anthropic timeout
-    });
+  const cred = await resolveProviderCredentialForRequest('fireworks');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'fireworks',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: 'https://api.fireworks.ai/inference/v1',
+    timeoutMs: 300 * 1000, // 5 minutes — matches LiteLLM/OpenAI/Anthropic timeout
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for fireworks');
   }
-  return fireworksClient;
+  return built.client;
 }
 
 /**
@@ -333,19 +338,21 @@ function getOllamaModelId(model: string): string {
   return model;
 }
 
-let ollamaClient: OpenAI | null = null;
-
 async function getOllamaClient(): Promise<OpenAI> {
-  if (!ollamaClient) {
-    const apiBase = await getApiBase('ollama');
-    const baseURL = ((apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
-    ollamaClient = new OpenAI({
-      apiKey: 'ollama', // Ollama doesn't require a real API key
-      baseURL,
-      timeout: 300 * 1000, // 5 minutes — matches other clients
-    });
+  const cred = await resolveProviderCredentialForRequest('ollama');
+  const baseURL = ((cred.apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'ollama',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: 'ollama', // Ollama doesn't require a real API key
+    apiBase: baseURL,
+    timeoutMs: 300 * 1000, // 5 minutes — matches other clients
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for ollama');
   }
-  return ollamaClient;
+  return built.client;
 }
 
 // ============ Moonshot Direct Client ============
@@ -375,19 +382,22 @@ function getMoonshotModelId(model: string): string {
   return model.startsWith('moonshot/') ? model.slice('moonshot/'.length) : model;
 }
 
-let moonshotClient: OpenAI | null = null;
-
 async function getMoonshotClient(): Promise<OpenAI> {
-  if (!moonshotClient) {
-    const apiKey = await getApiKey('moonshot');
-    const { getMoonshotBaseUrl } = await import('./moonshot-config');
-    moonshotClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: await getMoonshotBaseUrl(),
-      timeout: 300 * 1000, // 5 minutes — matches other clients
-    });
+  const cred = await resolveProviderCredentialForRequest('moonshot');
+  const { getMoonshotBaseUrl } = await import('./moonshot-config');
+  const baseURL = await getMoonshotBaseUrl();
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'moonshot',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: baseURL,
+    timeoutMs: 300 * 1000, // 5 minutes — matches other clients
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for moonshot');
   }
-  return moonshotClient;
+  return built.client;
 }
 
 /**
@@ -398,32 +408,54 @@ function getDeepSeekModelId(model: string): string {
   return model.startsWith('deepseek/') ? model.slice('deepseek/'.length) : model;
 }
 
-let deepseekClient: OpenAI | null = null;
-
 async function getDeepSeekClient(): Promise<OpenAI> {
-  if (!deepseekClient) {
-    const apiKey = await getApiKey('deepseek');
-    const apiBase = await getApiBase('deepseek');
-    deepseekClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: (apiBase || 'https://api.deepseek.com/v1').replace(/\/+$/, ''),
-      timeout: 300 * 1000, // 5 minutes — matches other clients
-    });
+  const cred = await resolveProviderCredentialForRequest('deepseek');
+  const baseURL = (cred.apiBase || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'deepseek',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: baseURL,
+    timeoutMs: 300 * 1000, // 5 minutes — matches other clients
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for deepseek');
   }
-  return deepseekClient;
+  return built.client;
 }
 
 /** Reset all cached LLM clients so they re-read API keys on next use */
 export function resetLlmClients(): void {
-  anthropicClient = null;
-  fireworksClient = null;
-  ollamaClient = null;
-  moonshotClient = null;
-  deepseekClient = null;
+  sharedProviderClientFactory.clear();
   // Reset Azure Foundry singleton (uses its own module-level cache)
   import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
   // Reset OpenAI direct singleton
   import('@/lib/llm/providers/openai').then(m => m.resetOpenAIClient()).catch(() => {});
+}
+
+/**
+ * Record embedding usage with the credential that actually served the call.
+ * Resolves the provider credential id (BYOK org credential vs platform) so
+ * usage rows carry `credential_id`; `organization_id` is read from the request
+ * context inside `recordTokenUsage`.
+ */
+async function recordEmbeddingUsage(opts: {
+  providerId: string;
+  model: string;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+}): Promise<void> {
+  const cred = await resolveProviderCredentialForRequest(opts.providerId);
+  recordTokenUsage({
+    category: 'embeddings',
+    model: opts.model,
+    totalTokens: opts.totalTokens,
+    inputTokens: opts.inputTokens,
+    outputTokens: opts.outputTokens,
+    credentialId: cred.credentialId,
+  });
 }
 
 export async function createEmbedding(text: string): Promise<number[]> {
@@ -443,8 +475,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
       const fwClient = await getFireworksClient();
       const fwModel = getFireworksEmbeddingModelId(model);
       const response = await fwClient.embeddings.create({ model: fwModel, input: text });
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'fireworks',
         model,
         totalTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
         inputTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
@@ -456,8 +488,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
     // Route Mistral embedding models directly (bypass LiteLLM)
     if (isMistralEmbeddingModel(model)) {
       const vector = await createMistralEmbedding(text);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'mistral',
         model,
         totalTokens: Math.ceil(text.length / 4),
         inputTokens: Math.ceil(text.length / 4),
@@ -469,8 +501,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
     // Route Gemini embedding models directly (bypass LiteLLM)
     if (isGeminiEmbeddingModel(model)) {
       const vector = await createGeminiEmbedding(text);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'gemini',
         model,
         totalTokens: Math.ceil(text.length / 4),
         inputTokens: Math.ceil(text.length / 4),
@@ -482,8 +514,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
     // Route OpenAI embedding models directly (bypass LiteLLM)
     if (isOpenAIEmbeddingModel(model)) {
       const vector = await createOpenAIEmbedding(text, model);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'openai',
         model,
         totalTokens: Math.ceil(text.length / 4),
         inputTokens: Math.ceil(text.length / 4),
@@ -567,8 +599,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       const fwModel = getFireworksEmbeddingModelId(model);
       const response = await fwClient.embeddings.create({ model: fwModel, input: texts });
       const embeddings = response.data.map(d => d.embedding);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'fireworks',
         model,
         totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
         inputTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
@@ -583,8 +615,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
     // Route Mistral embedding models directly (bypass LiteLLM)
     if (isMistralEmbeddingModel(model)) {
       const vectors = await createMistralEmbeddings(texts);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'mistral',
         model,
         totalTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
         inputTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
@@ -599,8 +631,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
     // Route Gemini embedding models directly (bypass LiteLLM)
     if (isGeminiEmbeddingModel(model)) {
       const vectors = await createGeminiEmbeddings(texts);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'gemini',
         model,
         totalTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
         inputTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
@@ -615,8 +647,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
     // Route OpenAI embedding models directly (bypass LiteLLM)
     if (isOpenAIEmbeddingModel(model)) {
       const vectors = await createOpenAIEmbeddings(texts, model);
-      recordTokenUsage({
-        category: 'embeddings',
+      await recordEmbeddingUsage({
+        providerId: 'openai',
         model,
         totalTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
         inputTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),

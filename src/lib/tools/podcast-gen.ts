@@ -18,7 +18,7 @@ import { numInRange } from '../tools';
 import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/compat';
 import { getRequestContext } from '@/lib/request-context';
 import { getDisclaimerConfigIfEnabled } from '../disclaimer';
-import { getApiKey } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../provider-credential';
 import { getTemperatureForModel } from '@/lib/llm-thinking';
 import { getLlmSettings } from '@/lib/db/compat/config';
 import { pcmToWav, GEMINI_TTS_PCM_OPTIONS, estimateDurationFromPCM } from '@/lib/audio/pcm-to-wav';
@@ -115,27 +115,29 @@ export async function isPodcastGenEnabled(): Promise<boolean> {
 
 // ===== OpenAI Clients =====
 
-// TTS client: Direct OpenAI API for TTS (not available via LiteLLM)
-let ttsClient: OpenAI | null = null;
-
+// TTS client: Direct OpenAI API for TTS (not available via LiteLLM), built by
+// the shared ProviderClientFactory (keyed by credential_id + credential_version).
 /**
  * Get client for TTS (always direct OpenAI API)
  */
 async function getTTSClient(): Promise<OpenAI> {
-  if (!ttsClient) {
-    // TTS always uses direct OpenAI API (not available via LiteLLM)
-    const apiKey = await getApiKey('openai');
-    if (!apiKey) {
-      throw new Error('OpenAI API key not configured for TTS');
-    }
-
-    ttsClient = new OpenAI({
-      apiKey,
-      baseURL: 'https://api.openai.com/v1', // Force direct OpenAI, bypass LiteLLM proxy
-      timeout: 120 * 1000, // 2 minutes for audio generation
-    });
+  const cred = await resolveProviderCredentialForRequest('openai');
+  if (!cred.apiKey) {
+    throw new Error('OpenAI API key not configured for TTS');
   }
-  return ttsClient;
+
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'openai',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: 'https://api.openai.com/v1', // Force direct OpenAI, bypass LiteLLM proxy
+    timeoutMs: 120 * 1000, // 2 minutes for audio generation
+  });
+  if (built.kind !== 'openai') {
+    throw new Error('ProviderClientFactory returned a non-OpenAI client for TTS');
+  }
+  return built.client;
 }
 
 // ===== Content Formatter =====
@@ -336,7 +338,7 @@ async function generateAudioWithGemini(
 ): Promise<{ buffer: Buffer; duration: number; format: AudioFormat }> {
   const { GoogleGenAI } = await import('@google/genai');
 
-  const apiKey = await getApiKey('gemini');
+  const { apiKey } = await resolveProviderCredentialForRequest('gemini');
   if (!apiKey) {
     throw new Error('Gemini API key not configured for TTS');
   }

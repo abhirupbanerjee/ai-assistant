@@ -12,6 +12,7 @@
 import { Kysely, PostgresDialect, sql } from 'kysely';
 import { Pool, types as pgTypes } from 'pg';
 import type { DB } from './db-types';
+import { assertFeatureFlagCombinations, readFeatureFlagCombinations } from '../feature-flag-combinations';
 
 // Parse PostgreSQL TIMESTAMP / TIMESTAMPTZ columns as strings instead of Date objects.
 // The entire codebase (types, interfaces, compat layer) expects ISO date strings.
@@ -1696,6 +1697,321 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // Backfill for databases where the table pre-existed before the `task` column.
   await sql`ALTER TABLE browser_sessions ADD COLUMN IF NOT EXISTS task TEXT`.execute(database);
   console.log('[Kysely] Ensured browser_sessions table + indexes exist');
+
+  // ===================================================================
+  // AI & API Setup Redesign — Phase A: Additive Schema
+  // (see plans/AI_API_Setup_Redesign_Implementation_Plan.md §10, §12.3)
+  //
+  // Additive only: nine empty registry/tenancy tables plus nullable
+  // `organization_id` columns on workspaces and token_usage_log. No data is
+  // backfilled here and no runtime behavior changes — `org-tenancy-enabled`
+  // is seeded off. NOT NULL enforcement is deferred to Phase B.
+  // ===================================================================
+
+  // Organizations — tenant model (Decision 1/2/4).
+  await sql`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'ENTITY' CHECK (type IN ('DEFAULT', 'ENTITY', 'INDIVIDUAL')),
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      credential_mode TEXT NOT NULL DEFAULT 'PLATFORM_MANAGED' CHECK (credential_mode IN ('PLATFORM_MANAGED', 'ORGANIZATION_BYOK')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled', 'suspended')),
+      isolation_mode TEXT NOT NULL DEFAULT 'SOFT' CHECK (isolation_mode IN ('SOFT', 'HARD')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  // Single-Default invariant: at most one organization may be the default.
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS organizations_single_default_idx ON organizations (is_default) WHERE is_default = TRUE`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_organizations_type ON organizations(type)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_organizations_status ON organizations(status)`.execute(database);
+  console.log('[Kysely] Ensured organizations table exists (Phase A)');
+
+  // Organization memberships — user → organization (role: org_admin|member).
+  await sql`
+    CREATE TABLE IF NOT EXISTS organization_memberships (
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('org_admin', 'member')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (organization_id, user_id)
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_organization_memberships_user ON organization_memberships(user_id)`.execute(database);
+  console.log('[Kysely] Ensured organization_memberships table exists (Phase A)');
+
+  // Server-side provider capability registry (Decision 4) — single source of truth.
+  await sql`
+    CREATE TABLE IF NOT EXISTS providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled)`.execute(database);
+  console.log('[Kysely] Ensured providers table exists (Phase A)');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS capabilities (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      importance TEXT NOT NULL DEFAULT 'OPTIONAL' CHECK (importance IN ('REQUIRED', 'RECOMMENDED', 'OPTIONAL')),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_capabilities_importance ON capabilities(importance)`.execute(database);
+  console.log('[Kysely] Ensured capabilities table exists (Phase A)');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS provider_capabilities (
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      capability_id TEXT NOT NULL REFERENCES capabilities(id) ON DELETE CASCADE,
+      is_supported BOOLEAN NOT NULL DEFAULT TRUE,
+      model_or_service_ids JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (provider_id, capability_id)
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_provider_capabilities_capability ON provider_capabilities(capability_id)`.execute(database);
+  console.log('[Kysely] Ensured provider_capabilities table exists (Phase A)');
+
+  // Platform-level credentials (env-sourced, read-only from the browser).
+  await sql`
+    CREATE TABLE IF NOT EXISTS platform_provider_credentials (
+      provider_id TEXT PRIMARY KEY REFERENCES providers(id) ON DELETE CASCADE,
+      secret_ref TEXT NOT NULL,
+      kek_version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+      last_verified_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  console.log('[Kysely] Ensured platform_provider_credentials table exists (Phase A)');
+
+  // Organization-scoped credentials (BYOK). `credential_id` is the stable
+  // external identifier; `id` is the row PK. The composite unique constraint
+  // allows multiple keys per (organization, provider).
+  await sql`
+    CREATE TABLE IF NOT EXISTS organization_provider_credentials (
+      id BIGSERIAL PRIMARY KEY,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      credential_id TEXT NOT NULL,
+      secret_ciphertext TEXT NOT NULL,
+      dek_wrapped TEXT NOT NULL,
+      kek_version INTEGER NOT NULL DEFAULT 1,
+      aad TEXT NOT NULL,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+      last_verified_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (organization_id, provider_id, credential_id)
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_provider_creds_org ON organization_provider_credentials(organization_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_provider_creds_provider ON organization_provider_credentials(provider_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_provider_creds_credential ON organization_provider_credentials(credential_id)`.execute(database);
+  console.log('[Kysely] Ensured organization_provider_credentials table exists (Phase A)');
+
+  // Per-organization capability → provider/credential/model configuration.
+  await sql`
+    CREATE TABLE IF NOT EXISTS organization_capability_config (
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      capability_id TEXT NOT NULL REFERENCES capabilities(id) ON DELETE CASCADE,
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      credential_id TEXT,
+      model_or_service_id TEXT,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      configuration JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (organization_id, capability_id)
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_capability_config_provider ON organization_capability_config(provider_id)`.execute(database);
+  console.log('[Kysely] Ensured organization_capability_config table exists (Phase A)');
+
+  // Credential audit log (Decision 11) — written by the vault service on mutation.
+  await sql`
+    CREATE TABLE IF NOT EXISTS credential_audit_log (
+      id BIGSERIAL PRIMARY KEY,
+      organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+      provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      credential_id TEXT,
+      actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL CHECK (action IN ('created', 'replaced', 'disabled', 'enabled', 'tested', 'rotated')),
+      redacted_detail TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_credential_audit_log_org ON credential_audit_log(organization_id, created_at DESC)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_credential_audit_log_provider ON credential_audit_log(provider_id, created_at DESC)`.execute(database);
+  console.log('[Kysely] Ensured credential_audit_log table exists (Phase A)');
+
+  // Nullable organization_id on workspaces (Decision 1). NOT NULL is deferred
+  // to Phase B after backfill. FK lands in the PostgreSQL schema only; the
+  // legacy SQLite workspaces module is frozen.
+  await sql`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS organization_id INTEGER`.execute(database);
+  await sql`ALTER TABLE workspaces DROP CONSTRAINT IF EXISTS workspaces_organization_id_fkey`.execute(database);
+  await sql`ALTER TABLE workspaces ADD CONSTRAINT workspaces_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_workspaces_organization_id ON workspaces(organization_id)`.execute(database);
+  console.log('[Kysely] Ensured workspaces.organization_id column + FK exist (Phase A)');
+
+  // Nullable organization_id on the usage event table. This repository's usage
+  // table is `token_usage_log` (see compat/token-usage.ts); the plan refers to
+  // it conceptually as `usage_events`. NOT NULL + backfill deferred to Phase B.
+  await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS organization_id INTEGER`.execute(database);
+  await sql`ALTER TABLE token_usage_log DROP CONSTRAINT IF EXISTS token_usage_log_organization_id_fkey`.execute(database);
+  await sql`ALTER TABLE token_usage_log ADD CONSTRAINT token_usage_log_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_organization ON token_usage_log(organization_id)`.execute(database);
+  console.log('[Kysely] Ensured token_usage_log.organization_id column + FK exist (Phase A)');
+
+  // Phase E (AI & API Setup Redesign, plan §9/§12.3): `credential_id` links a
+  // usage row to the vault-stored credential that served the request. It is
+  // nullable text (the vault credential_id is a string, not the row PK) and is
+  // stamped by the token logger alongside organization_id. No FK to
+  // organization_provider_credentials because a credential may be replaced or
+  // disabled after the row is written and usage rows must be immutable history.
+  await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS credential_id TEXT`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_credential ON token_usage_log(credential_id)`.execute(database);
+  console.log('[Kysely] Ensured token_usage_log.credential_id column + index exist (Phase E)');
+
+  // Seed `org-tenancy-enabled` = true (Phase D). ON CONFLICT DO NOTHING
+  // preserves any explicit value an operator may have set; the flag defaults on
+  // from Phase D onward.
+  await sql`
+    INSERT INTO settings (key, value, updated_by)
+    VALUES ('org-tenancy-enabled', 'true', 'system')
+    ON CONFLICT (key) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Ensured org-tenancy-enabled setting exists (default on)');
+
+  // ===================================================================
+  // AI & API Setup Redesign — Phase B: Backfill + Vault
+  // (see plans/AI_API_Setup_Redesign_Implementation_Plan.md §6, §12.3, §17)
+  //
+  // Adds the `credential_version` column that Phase A deferred (§7/§10) plus a
+  // PostgreSQL trigger that increments it on every key mutation. The trigger is
+  // the backstop for ad-hoc SQL and backup restores; the application write path
+  // (src/lib/credential-vault.ts) also increments it explicitly, and the trigger
+  // only bumps when no explicit bump was made, so the two never double-count.
+  // The trigger also refreshes `updated_at` on every row change.
+  // ===================================================================
+
+  await sql`ALTER TABLE organization_provider_credentials ADD COLUMN IF NOT EXISTS credential_version INTEGER NOT NULL DEFAULT 1`.execute(database);
+  console.log('[Kysely] Ensured organization_provider_credentials.credential_version column exists (Phase B)');
+
+  await sql`
+    CREATE OR REPLACE FUNCTION bump_org_credential_version()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF NEW.credential_version = OLD.credential_version THEN
+        NEW.credential_version := OLD.credential_version + 1;
+      END IF;
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `.execute(database);
+  await sql`DROP TRIGGER IF EXISTS trg_bump_org_credential_version ON organization_provider_credentials`.execute(database);
+  await sql`
+    CREATE TRIGGER trg_bump_org_credential_version
+    BEFORE UPDATE ON organization_provider_credentials
+    FOR EACH ROW EXECUTE FUNCTION bump_org_credential_version()
+  `.execute(database);
+  console.log('[Kysely] Ensured credential_version bump trigger exists (Phase B)');
+
+  // Seed `org-credential-resolver-enabled` = true (Phase D). ON CONFLICT DO
+  // NOTHING preserves any explicit value; the flag defaults on from Phase D.
+  await sql`
+    INSERT INTO settings (key, value, updated_by)
+    VALUES ('org-credential-resolver-enabled', 'true', 'system')
+    ON CONFLICT (key) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Ensured org-credential-resolver-enabled setting exists (default on)');
+
+  // Seed `vector-tenancy-enabled` = true (Phase D). Absent keys already resolve
+  // to false in readFeatureFlagCombinations(); seeding it makes the ON default
+  // explicit and discoverable in the settings table.
+  await sql`
+    INSERT INTO settings (key, value, updated_by)
+    VALUES ('vector-tenancy-enabled', 'true', 'system')
+    ON CONFLICT (key) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Ensured vector-tenancy-enabled setting exists (default on)');
+
+  // ===================================================================
+  // AI & API Setup Redesign — Phase D: Resolver Switch (plan §12.3).
+  //
+  // One-time flip of the three Phase D flags for deployments that already
+  // seeded them OFF in Phases A/C. A marker key gates the UPDATE so it runs
+  // exactly once — afterwards an operator can set any flag back to 'false' to
+  // roll the phase back without the boot path re-flipping it.
+  // ===================================================================
+  await sql`
+    UPDATE settings
+    SET value = 'true', updated_by = 'system'
+    WHERE key IN ('org-tenancy-enabled', 'org-credential-resolver-enabled', 'vector-tenancy-enabled')
+      AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'phase-d-resolver-switch-applied')
+  `.execute(database);
+  await sql`
+    INSERT INTO settings (key, value, updated_by)
+    SELECT 'phase-d-resolver-switch-applied', 'true', 'system'
+    WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = 'phase-d-resolver-switch-applied')
+  `.execute(database);
+  console.log('[Kysely] Applied one-time Phase D resolver-switch flag flip');
+
+  // ===================================================================
+  // AI & API Setup Redesign — Phase E: Enable BYOK (plan §12.3).
+  //
+  // Flip `ai-api-setup-ui-enabled` = true (consolidated AI & API Setup page).
+  // The flag has no dependency on the other three (plan §17), but is flipped in
+  // a one-time, marker-gated UPDATE so an operator can set it back to 'false'
+  // without the boot path re-flipping it. The key is seeded ON for fresh
+  // installs; the UPDATE turns ON deployments that seeded it OFF earlier.
+  // ===================================================================
+  await sql`
+    INSERT INTO settings (key, value, updated_by)
+    VALUES ('ai-api-setup-ui-enabled', 'true', 'system')
+    ON CONFLICT (key) DO NOTHING
+  `.execute(database);
+  await sql`
+    UPDATE settings
+    SET value = 'true', updated_by = 'system'
+    WHERE key = 'ai-api-setup-ui-enabled'
+      AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'phase-e-ai-setup-ui-applied')
+  `.execute(database);
+  await sql`
+    INSERT INTO settings (key, value, updated_by)
+    SELECT 'phase-e-ai-setup-ui-applied', 'true', 'system'
+    WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = 'phase-e-ai-setup-ui-applied')
+  `.execute(database);
+  console.log('[Kysely] Applied one-time Phase E AI & API Setup UI flag flip');
+
+  // Startup assertion: reject invalid feature-flag orderings (plan §17).
+  // Phase D turns on org-tenancy + credential resolver + vector tenancy, which
+  // is a valid combination; this guards invalid orderings (e.g. vector-tenancy
+  // without org-tenancy).
+  try {
+    const flagCombinations = await readFeatureFlagCombinations(database);
+    assertFeatureFlagCombinations(flagCombinations);
+  } catch (error) {
+    console.error('[Kysely] Feature flag combination assertion failed:', error);
+    throw error;
+  }
 
   console.log('[Kysely] PostgreSQL migrations completed');
 

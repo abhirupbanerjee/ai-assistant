@@ -154,12 +154,13 @@ Widgets showing recent system activity:
 
 | Section | Purpose |
 |---------|---------|
-| **API Keys** | Centralized API key management for all providers (LLM, web search, OCR, reranker) |
-| **LLM** | Model selection, temperature, max tokens, tool call limits |
+| **AI & API Setup** | Organization-scoped provider credentials, capability assignments, health, members, audit, and usage |
+| **API Keys** | Legacy read-only redirect to AI & API Setup while the redesigned UI is enabled |
+| **LLM** | Legacy read-only redirect for provider/model routing; use AI & API Setup |
 | **RAG** | Retrieval settings, chunk size, similarity threshold |
 | **RAG Tuning** | Interactive RAG parameter testing |
 | **RAG Testing** | Built-in retrieval test suite with result scoring |
-| **Reranker** | Enable/configure BGE, Cohere, or local reranking with priority fallback |
+| **Reranker** | Legacy read-only redirect for reranking providers; use AI & API Setup |
 | **Memory** | User memory extraction, semantic retrieval, and temporal filtering |
 | **Summarization** | Thread summarization settings |
 | **Limits** | Conversation history, upload limits |
@@ -168,10 +169,10 @@ Widgets showing recent system activity:
 | **Backup** | Database backup and restore |
 | **Branding** | Bot name, icon, accent color, PWA settings |
 | **Tokens** | Per-category max tokens, per-tool call limits |
-| **Routes** | Enable/disable LLM routes (2/3/5), primary route selection |
+| **Routes** | Legacy read-only redirect for provider routing; use AI & API Setup |
 | **File Uploads** | Max upload size, allowed file types |
-| **Document Processing** | OCR provider selection (Mistral OCR, Azure DI) |
-| **Speech** | STT/TTS provider selection, route defaults, recording limits, fallback configuration |
+| **Document Processing** | Legacy read-only redirect for OCR providers; use AI & API Setup |
+| **Speech** | Legacy read-only redirect for STT/TTS providers; use AI & API Setup |
 | **Cache** | Cache TTL and management |
 | **Display** | UI appearance, dark mode, font size |
 
@@ -1531,60 +1532,64 @@ The Analytics tab shows per-bot usage:
 
 Configure system-wide settings.
 
-### API Keys
+### AI & API Setup
 
-The **API Keys** section is the default landing page under Settings. It consolidates all API key configuration in one place, replacing the scattered key inputs that were previously in LLM, Web Search, Document Processing, and Reranker settings.
+Use **Admin → Settings → AI & API Setup** to configure AI providers and API-backed capabilities for an organization. Providers and capabilities are loaded from the server registry, so the page may show services beyond LLMs, including embeddings, reranking, web search, document intelligence, image generation, podcast audio, STT/TTS, and developer/analysis tools.
 
-#### Layout
+#### Organization Selection and Roles
 
-Keys are organized into four groups:
+- A workspace belongs to one organization and inherits that organization's provider credentials and capability configuration.
+- A **super admin** can select and administer any organization and can create `ENTITY` or `INDIVIDUAL` organizations.
+- An **organization admin (`org_admin`)** manages only their own organization.
+- An organization **member** consumes configuration but cannot administer provider credentials.
+- Provider keys are organization-owned. There is no per-user BYOK.
 
-**LLM Providers** — grouped by routing:
-- **Route 2 (Direct Providers):** OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot
-- **Route 3 (Local / Ollama):** Ollama
-- **Route 5 (Aggregator Gateways):** Azure AI Foundry, Fireworks AI, Ollama Cloud
+#### Credential Modes
 
-Each provider shows capability tags indicating what it supports:
+| Mode | Use |
+|---|---|
+| **Platform Managed** | Uses credentials configured by the platform/deployment. Platform-managed financial cost is visible only to super admins. |
+| **Organization BYOK** | Uses an encrypted credential supplied by the organization. If the selected organization credential is missing or invalid, the capability is unavailable—there is no platform-key fallback. |
 
-| Provider | Capabilities |
-|----------|-------------|
-| **OpenAI** | LLM, Embeddings, Images, TTS |
-| **Gemini** | LLM, Embeddings, Images, TTS |
-| **Mistral** | LLM, Embeddings |
-| **DeepSeek** | LLM |
-| **Ollama** | LLM (local — enter Base URL instead of API key) |
-| **Fireworks AI** | LLM, Embeddings, Reranker |
-| **Anthropic** | LLM (no embeddings — pair with OpenAI or Fireworks) |
+For BYOK, enter a credential once for a provider and reference it from multiple capabilities. The service encrypts the key before storage; after submission, the raw key cannot be displayed.
 
-**Web Search** — Tavily API key
+Credential actions are deliberately limited to:
 
-**Document Processing** (optional) — Mistral OCR and Azure Document Intelligence keys. Local parsers (pdf-parse, mammoth, exceljs, officeparser) handle PDF, DOCX, XLSX, and PPTX without API keys.
+- **Test Connection** — verify the provider and update verification state;
+- **Replace Key** — store replacement material and invalidate cached provider clients; and
+- **Disable Connection** — prevent further use without revealing or deleting historical audit/usage data.
 
-**Reranker** (optional) — Cohere API key. Fireworks AI reranker reuses the LLM Fireworks key. Local rerankers (BGE) work without API keys.
+There is no **Show Key** action.
 
-#### Status Badges
+#### Capability Configuration and Health
 
-Each key row shows where the key comes from:
+Capabilities are grouped into **Core AI**, **Knowledge & Search**, **Media**, and **Developer / Analysis Tools**. Select a provider, optional model/service, and enablement state for each capability. Importance is shown as `REQUIRED`, `RECOMMENDED`, or `OPTIONAL`.
 
-| Badge | Meaning |
-|-------|---------|
-| **● DB** (green) | Key saved via admin UI |
-| **● ENV** (blue) | Key detected from environment variable (`.env`) |
-| **● LLM** (purple) | Key inherited from an LLM provider (e.g., Mistral OCR using Mistral LLM key) |
-| **○ None** (grey) | Not configured anywhere |
+| Health | Meaning |
+|---|---|
+| `READY` | Configured with an available credential |
+| `DEGRADED` | Usable with warnings or missing recommended configuration |
+| `UNAVAILABLE` | Configured but the selected provider/credential cannot be used |
+| `NOT_CONFIGURED` | No active configuration |
 
-Priority: DB > ENV > LLM provider fallback > None
+Warnings do not block saving, allowing staged setup. Treat missing required capabilities as operationally significant before making the organization available to users.
 
-#### Warnings
+#### Members, Audit, and Usage
 
-- **Red banner** — No LLM provider configured (chat won't work)
-- **Amber banner** — Only Anthropic configured with no embedding provider (cloud embeddings need OpenAI, Gemini, Mistral, or Fireworks; local models work without keys)
+Authorized administrators can manage organization membership, review redacted credential events, and view organization-attributed token usage. Audit entries record create, replace, disable, enable, test, and rotate actions but never raw key material.
 
-#### Notes
+Cost visibility follows the credential owner:
 
-- Image generation, podcasts, and translation automatically use OpenAI or Gemini keys — they are not shown on this page.
-- Each provider has a **Test** button to verify the key works.
-- The original settings pages (LLM Providers, Reranker, Document Processing, Web Search) now show read-only key status with a link back to this page.
+- platform-managed cost: super admin only;
+- organization BYOK cost: `org_admin` for their own organization (and super admins across organizations).
+
+#### Legacy Settings Pages
+
+When the redesigned UI feature flag is enabled, **API Keys**, **LLM**, **Routes**, **Reranker**, **Document Processing**, and **Speech** display a read-only card linking to AI & API Setup. They are redirected, not deleted. Direct writes to retired legacy endpoints return HTTP `409` with code `LEGACY_WRITE_DISABLED`.
+
+**RAG remains writable** in its existing settings page because chunking, retrieval, thresholds, and token budgets are retrieval behavior rather than provider credential ownership.
+
+For architecture and migration/rollback details, see [AI & API Setup Redesign](../tech/AI-API-Setup-Redesign.md).
 
 ### Speech Settings
 

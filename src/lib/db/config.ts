@@ -503,6 +503,11 @@ export type SettingKey =
   // Auto Model Selection
   | 'auto-tool-model-map'
   | 'model-scoring-weights'
+  // AI & API Setup Redesign — tenancy / resolver feature flags (Phase A)
+  | 'org-tenancy-enabled'
+  | 'org-credential-resolver-enabled'
+  | 'vector-tenancy-enabled'
+  | 'ai-api-setup-ui-enabled'
   ;
 
 // ============ Speech Settings Types ============

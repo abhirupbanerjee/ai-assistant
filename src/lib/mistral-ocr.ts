@@ -1,32 +1,36 @@
 import { Mistral } from '@mistralai/mistralai';
-import { getApiKey } from '@/lib/provider-helpers';
 import { getOcrSettings } from '@/lib/db/compat/config';
-
-let mistralClient: Mistral | null = null;
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 /**
- * Reset the Mistral client (call when API key changes)
+ * Reset the Mistral client (call when API key changes).
+ * Mistral SDK clients are constructed per call; nothing module-scoped to reset.
+ * Retained for API compatibility with admin settings routes.
  */
-export function resetMistralOcrClient(): void {
-  mistralClient = null;
-}
+export function resetMistralOcrClient(): void {}
 
 /**
  * Get or create Mistral client for OCR
- * Priority: OCR settings → LLM provider config → env var
+ *
+ * Org-aware resolution (AI & API Setup Redesign): a BYOK organization uses
+ * only its own `mistral` credential and fails closed when it is missing —
+ * never silently falling back to the platform key. PLATFORM_MANAGED / legacy
+ * orgs preserve the pre-Phase-D priority (OCR settings → LLM provider key).
  */
 async function getMistralClient(): Promise<Mistral> {
-  if (!mistralClient) {
-    // Priority: OCR settings → LLM provider → env var
-    const ocrSettings = await getOcrSettings();
-    const apiKey = ocrSettings.mistralApiKey || await getApiKey('mistral');
+  const cred = await resolveProviderCredentialForRequest('mistral');
 
-    if (!apiKey) {
-      throw new Error('Mistral API key not configured. Set in Settings > Document Processing or LLM > Providers.');
-    }
-    mistralClient = new Mistral({ apiKey });
+  let apiKey = cred.apiKey;
+  if (cred.credentialId === 'platform' || cred.credentialId === 'legacy') {
+    // Legacy/platform parity only. BYOK orgs keep their own credential.
+    const ocrSettings = await getOcrSettings();
+    apiKey = ocrSettings.mistralApiKey || cred.apiKey;
   }
-  return mistralClient;
+
+  if (!apiKey) {
+    throw new Error('Mistral API key not configured. Set in Settings > Document Processing or LLM > Providers.');
+  }
+  return new Mistral({ apiKey });
 }
 
 export interface MistralPageText {

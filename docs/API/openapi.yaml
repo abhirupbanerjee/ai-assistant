@@ -66,17 +66,12 @@ tags:
     description: Agent bot invocation API (API key auth)
   - name: Admin - LLM
     description: LLM provider and model management (admin only)
+  - name: Admin - AI & API Setup
+    description: Consolidated organization-scoped AI providers, credentials, capabilities, membership, audit, and usage administration
   - name: Autonomous
     description: Autonomous plan control
 
 components:
-  securitySchemes:
-    sessionAuth:
-      type: apiKey
-      in: cookie
-      name: next-auth.session-token
-      description: NextAuth session cookie
-
   schemas:
     Thread:
       type: object
@@ -303,12 +298,19 @@ components:
             - ADMIN_REQUIRED
             - SUPERUSER_REQUIRED
             - NOT_FOUND
+            - FORBIDDEN
+            - INVALID_BODY
+            - INVALID_ID
+            - INVALID_DAYS
+            - VALIDATION
             - VALIDATION_ERROR
             - FILE_TOO_LARGE
             - UPLOAD_LIMIT
             - INVALID_FILE_TYPE
             - DUPLICATE
+            - INTERNAL
             - SERVICE_ERROR
+            - LEGACY_WRITE_DISABLED
         details:
           type: string
           description: Additional context
@@ -937,6 +939,397 @@ components:
           type: string
           format: date-time
 
+    AiSetupOrganization:
+      type: object
+      description: Organization visible through the consolidated AI & API Setup surface.
+      required:
+        - id
+        - name
+        - type
+        - isDefault
+        - credentialMode
+        - status
+        - isolationMode
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          example: 42
+        name:
+          type: string
+          maxLength: 120
+          example: Ministry of Finance
+        type:
+          type: string
+          enum: [DEFAULT, ENTITY, INDIVIDUAL]
+        isDefault:
+          type: boolean
+        credentialMode:
+          type: string
+          enum: [PLATFORM_MANAGED, ORGANIZATION_BYOK]
+        status:
+          type: string
+          example: active
+        isolationMode:
+          type: string
+          example: SOFT
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        activeCredentialCount:
+          type: integer
+          minimum: 0
+          description: Included on organizations in the consolidated overview.
+        membershipRole:
+          type: string
+          nullable: true
+          enum: [org_admin, member]
+          description: The viewer's role in this organization, if applicable.
+
+    AiSetupViewer:
+      type: object
+      required: [role, isSuperAdmin, userId, organizationId, membershipRole]
+      properties:
+        role:
+          type: string
+          enum: [super_admin, admin]
+        isSuperAdmin:
+          type: boolean
+        userId:
+          type: integer
+          nullable: true
+        organizationId:
+          type: integer
+          nullable: true
+        membershipRole:
+          type: string
+          nullable: true
+          enum: [org_admin, member]
+
+    AiSetupProvider:
+      type: object
+      required: [id, name, description, enabled, sortOrder]
+      properties:
+        id:
+          type: string
+          example: openai
+        name:
+          type: string
+          example: OpenAI
+        description:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+        sortOrder:
+          type: integer
+
+    AiSetupCapability:
+      type: object
+      required: [id, name, description, importance, sortOrder]
+      properties:
+        id:
+          type: string
+          example: embeddings
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        importance:
+          type: string
+          enum: [REQUIRED, RECOMMENDED, OPTIONAL]
+        sortOrder:
+          type: integer
+
+    AiSetupProviderCapability:
+      type: object
+      required: [providerId, capabilityId, isSupported, modelOrServiceIds]
+      properties:
+        providerId:
+          type: string
+        capabilityId:
+          type: string
+        isSupported:
+          type: boolean
+        modelOrServiceIds:
+          nullable: true
+          description: Registry-defined model/service identifiers; shape depends on the provider catalog entry.
+
+    AiSetupRegistry:
+      type: object
+      required: [providers, capabilities, providerCapabilities]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupProvider'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupCapability'
+        providerCapabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupProviderCapability'
+
+    AiSetupCapabilityConfig:
+      type: object
+      required: [capabilityId, providerId, credentialId, modelOrServiceId, enabled]
+      properties:
+        capabilityId:
+          type: string
+          example: llm
+        providerId:
+          type: string
+          description: An empty string in a capability update clears the capability configuration.
+          example: openai
+        credentialId:
+          type: string
+          nullable: true
+          example: openai-550e8400-e29b-41d4-a716-446655440000
+        modelOrServiceId:
+          type: string
+          nullable: true
+          example: gpt-4o
+        enabled:
+          type: boolean
+
+    AiSetupCapabilityHealth:
+      type: object
+      required: [capabilityId, importance, state, providerId, warnings]
+      properties:
+        capabilityId:
+          type: string
+        importance:
+          type: string
+          enum: [REQUIRED, RECOMMENDED, OPTIONAL]
+        state:
+          type: string
+          enum: [READY, DEGRADED, UNAVAILABLE, NOT_CONFIGURED]
+        providerId:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+
+    AiSetupHealthReport:
+      type: object
+      required: [capabilities, readiness, saveBlocking, warnings]
+      properties:
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupCapabilityHealth'
+        readiness:
+          type: string
+          enum: [READY, DEGRADED, UNAVAILABLE, NOT_CONFIGURED]
+        saveBlocking:
+          type: boolean
+          description: Currently always false; incomplete credentials do not block saving configuration.
+        warnings:
+          type: array
+          items:
+            type: string
+
+    AiSetupRedactedCredential:
+      type: object
+      description: Credential metadata with secret material redacted. Raw keys are never returned.
+      required:
+        - credentialId
+        - providerId
+        - status
+        - isDefault
+        - credentialVersion
+        - lastVerifiedAt
+        - redactedDetail
+        - createdAt
+        - updatedAt
+      properties:
+        credentialId:
+          type: string
+        providerId:
+          type: string
+        status:
+          type: string
+          example: active
+        isDefault:
+          type: boolean
+        credentialVersion:
+          type: integer
+          minimum: 1
+        lastVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        redactedDetail:
+          type: string
+          description: Bounded redaction placeholder; never contains the raw credential.
+          example: '••••••••'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AiSetupMember:
+      type: object
+      required: [userId, email, name, role, status]
+      properties:
+        userId:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [org_admin, member]
+        status:
+          type: string
+          example: active
+
+    AiSetupAuditEntry:
+      type: object
+      description: Redacted credential key-change audit entry.
+      required:
+        - id
+        - organizationId
+        - providerId
+        - credentialId
+        - actorUserId
+        - actorEmail
+        - action
+        - redactedDetail
+        - createdAt
+      properties:
+        id:
+          type: integer
+        organizationId:
+          type: integer
+          nullable: true
+        providerId:
+          type: string
+        credentialId:
+          type: string
+          nullable: true
+        actorUserId:
+          type: integer
+          nullable: true
+        actorEmail:
+          type: string
+          format: email
+          nullable: true
+        action:
+          type: string
+          example: replaced
+        redactedDetail:
+          type: string
+          nullable: true
+          description: Redacted audit detail only; raw keys are never logged or returned.
+        createdAt:
+          type: string
+          format: date-time
+
+    AiSetupUsageByCredential:
+      type: object
+      required: [credentialId, providerId, totalTokens, callCount, totalCost]
+      properties:
+        credentialId:
+          type: string
+          nullable: true
+        providerId:
+          type: string
+          nullable: true
+        totalTokens:
+          type: integer
+          minimum: 0
+        callCount:
+          type: integer
+          minimum: 0
+        totalCost:
+          type: number
+          format: double
+          minimum: 0
+          description: Zero when cost visibility is denied.
+
+    AiSetupUsageSummary:
+      type: object
+      required: [totalTokens, totalCalls, totalCost, byCredential, costUnavailable]
+      properties:
+        totalTokens:
+          type: integer
+          minimum: 0
+        totalCalls:
+          type: integer
+          minimum: 0
+        totalCost:
+          type: number
+          format: double
+          minimum: 0
+          description: Zero when cost visibility is denied.
+        byCredential:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupUsageByCredential'
+        costUnavailable:
+          type: boolean
+
+    AiSetupOverview:
+      type: object
+      required:
+        - flag
+        - viewer
+        - selectedOrgId
+        - organizations
+        - registry
+        - health
+        - credentials
+        - activeCredentialCount
+        - capabilityConfig
+      properties:
+        flag:
+          type: object
+          required: [aiApiSetupUiEnabled]
+          properties:
+            aiApiSetupUiEnabled:
+              type: boolean
+        viewer:
+          $ref: '#/components/schemas/AiSetupViewer'
+        selectedOrgId:
+          type: integer
+          nullable: true
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupOrganization'
+        registry:
+          $ref: '#/components/schemas/AiSetupRegistry'
+        health:
+          allOf:
+            - $ref: '#/components/schemas/AiSetupHealthReport'
+          nullable: true
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupRedactedCredential'
+        activeCredentialCount:
+          type: integer
+          minimum: 0
+        capabilityConfig:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiSetupCapabilityConfig'
+
     AutonomousPlanResponse:
       type: object
       properties:
@@ -957,12 +1350,24 @@ components:
           type: string
 
   securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: NextAuth session cookie
     apiKeyAuth:
       type: http
       scheme: bearer
       description: API key for agent bot invocation
 
   responses:
+    BadRequest:
+      description: Invalid request or validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
     Unauthorized:
       description: Authentication required
       content:
@@ -2376,11 +2781,15 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-    patch:
+    put:
       tags:
         - Admin - Settings
       summary: Update settings
-      description: Update settings by type (admin only)
+      description: |
+        Update settings by type (admin only). While the consolidated AI & API Setup
+        feature is enabled, writes for `llm`, `embedding`, `reranker`, `ocr`, and
+        `tavily` settings are legacy writes and return `409 LEGACY_WRITE_DISABLED`;
+        use `/admin/ai-setup` instead. Other settings types remain writable.
       operationId: updateSettings
       requestBody:
         required: true
@@ -2430,6 +2839,15 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: A consolidated AI/provider setting can no longer be written through this legacy route
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                error: This legacy settings page is read-only. Configure provider keys and AI/API capabilities from the consolidated AI & API Setup page.
+                code: LEGACY_WRITE_DISABLED
 
   /admin/system-prompt:
     get:
@@ -4984,6 +5402,816 @@ paths:
           description: Output not found
 
   # ========================================
+  # Consolidated AI & API Setup APIs
+  # ========================================
+
+  /admin/ai-setup:
+    get:
+      tags:
+        - Admin - AI & API Setup
+      summary: Get the consolidated AI and API setup overview
+      description: |
+        Returns the viewer and server-enforced organization scope, provider/capability
+        registry, selected organization, health, redacted credentials, active credential
+        count, and capability configuration. Raw credential values are never returned.
+
+        Requires a global `super_admin` or `admin` role. A `super_admin` may select any
+        visible organization with `orgId`; an `admin` is constrained to the organization
+        resolved from the session and membership records. A client-supplied organization
+        identifier is a display hint and never grants access.
+      operationId: getAiSetupOverview
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: orgId
+          in: query
+          required: false
+          description: Requested organization selection. Revalidated against the viewer's server-side scope.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Consolidated setup overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSetupOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations:
+    post:
+      tags:
+        - Admin - AI & API Setup
+      summary: Create an organization
+      description: |
+        Creates an `ENTITY` or `INDIVIDUAL` organization. `DEFAULT` is rejected.
+        The first member is automatically assigned `org_admin`; an `INDIVIDUAL`
+        organization has exactly one member. `adminEmail` optionally delegates the
+        initial `org_admin` role to an existing user.
+      operationId: createAiSetupOrganization
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type, credentialMode]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                type:
+                  type: string
+                  enum: [ENTITY, INDIVIDUAL]
+                  description: "`DEFAULT` cannot be created through this API."
+                credentialMode:
+                  type: string
+                  enum: [PLATFORM_MANAGED, ORGANIZATION_BYOK]
+                adminEmail:
+                  type: string
+                  format: email
+                  description: "Existing user to make the first and active `org_admin`; defaults to the creator."
+      responses:
+        '201':
+          description: Organization created and first member promoted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, memberships]
+                properties:
+                  id:
+                    type: integer
+                  memberships:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, role]
+                      properties:
+                        userId:
+                          type: integer
+                        role:
+                          type: string
+                          enum: [org_admin]
+        '400':
+          description: Invalid body, organization type, credential mode, name, or delegated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+    patch:
+      tags:
+        - Admin - AI & API Setup
+      summary: Update an organization
+      description: |
+        Updates the name and/or credential mode. Requires `super_admin`, or a global
+        `admin` whose server-resolved membership is `org_admin` for this organization.
+      operationId: updateAiSetupOrganization
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                credentialMode:
+                  type: string
+                  enum: [PLATFORM_MANAGED, ORGANIZATION_BYOK]
+      responses:
+        '200':
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSetupOrganization'
+        '400':
+          description: Invalid ID, body, name, credential mode, or empty update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/capabilities:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+    put:
+      tags:
+        - Admin - AI & API Setup
+      summary: Save organization capability configuration
+      description: |
+        Upserts capability-to-provider/model/credential mappings for an organization.
+        An item with an empty `providerId` clears that capability row. Provider IDs are
+        validated against the server registry. Requires `super_admin` or the organization's
+        server-resolved `org_admin`.
+      operationId: putAiSetupCapabilities
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capabilities]
+              properties:
+                capabilities:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/AiSetupCapabilityConfig'
+      responses:
+        '200':
+          description: Capability configuration saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, saved, cleared]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  saved:
+                    type: integer
+                    minimum: 0
+                  cleared:
+                    type: integer
+                    minimum: 0
+        '400':
+          description: Invalid ID/body, malformed capability, or unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/credentials:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+    get:
+      tags:
+        - Admin - AI & API Setup
+      summary: List redacted organization credentials
+      description: |
+        Lists credential metadata for a visible organization. Secret ciphertext is not
+        selected and raw credential values are never returned. Requires `super_admin`,
+        or a global `admin` with a membership in its own organization.
+      operationId: listAiSetupCredentials
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Redacted credential list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [credentials]
+                properties:
+                  credentials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AiSetupRedactedCredential'
+        '400':
+          description: Invalid organization ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Admin - AI & API Setup
+      summary: Create or replace an organization credential
+      description: |
+        Creates a credential when `credentialId` is omitted, or replaces an existing
+        credential for the same organization and provider when it is supplied. The
+        submitted `secret` is encrypted by the credential vault and is never returned.
+        Requires `super_admin` or the organization's server-resolved `org_admin`.
+      operationId: upsertAiSetupCredential
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerId, secret]
+              properties:
+                providerId:
+                  type: string
+                secret:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  minLength: 1
+                  description: Raw credential accepted only on write; never echoed, logged, or returned.
+                isDefault:
+                  type: boolean
+                  default: false
+                credentialId:
+                  type: string
+                  description: Existing credential ID to replace. Omit to create a server-generated ID.
+      responses:
+        '200':
+          description: Existing credential replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, action, credentialId, providerId]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  action:
+                    type: string
+                    enum: [replaced]
+                  credentialId:
+                    type: string
+                  providerId:
+                    type: string
+        '201':
+          description: Credential created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, action, credentialId, providerId]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  action:
+                    type: string
+                    enum: [created]
+                  credentialId:
+                    type: string
+                  providerId:
+                    type: string
+        '400':
+          description: Invalid ID/body, missing secret/provider, or unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/credentials/{credentialId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+      - name: credentialId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Admin - AI & API Setup
+      summary: Perform a credential action
+      description: |
+        Performs `test`, `replace`, `disable`, `enable`, or envelope-key `rotate`.
+        Testing requires view access; all mutations require `super_admin` or the
+        organization's server-resolved `org_admin`. Testing decrypts/resolves only on
+        the server and returns availability, never the raw key. `replace` requires `secret`.
+      operationId: actOnAiSetupCredential
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [test, replace, disable, enable, rotate]
+                secret:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  description: "Required only when `action` is `replace`; never returned."
+      responses:
+        '200':
+          description: Action result. Test responses include provider and availability message; mutation responses include the action.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, providerId, message]
+                    properties:
+                      ok:
+                        type: boolean
+                      providerId:
+                        type: string
+                      message:
+                        type: string
+                  - type: object
+                    required: [ok, action]
+                    properties:
+                      ok:
+                        type: boolean
+                        example: true
+                      action:
+                        type: string
+                        enum: [replace, disable, enable, rotate]
+        '400':
+          description: Invalid ID, unknown action, or missing replacement secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/members:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+    get:
+      tags:
+        - Admin - AI & API Setup
+      summary: List organization members
+      description: "Requires `super_admin` or a global `admin` with access to its own organization."
+      operationId: listAiSetupMembers
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Organization member list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AiSetupMember'
+        '400':
+          description: Invalid organization ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Admin - AI & API Setup
+      summary: Add a member or delegate organization administration
+      description: |
+        Adds/reactivates a user by numeric `userId` or existing-user `email`. Setting
+        `role` to `org_admin` delegates administration and demotes the prior active
+        administrator so exactly one remains. `INDIVIDUAL` organizations reject
+        additional members, and the last active administrator cannot be silently
+        demoted. Requires `super_admin` or the organization's server-resolved `org_admin`.
+      operationId: addAiSetupMember
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: integer
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [org_admin, member]
+                  default: member
+              description: "Supply `userId` or `email`. If both are supplied, `userId` is used."
+      responses:
+        '201':
+          description: Member added/reactivated and role assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, userId, role]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  userId:
+                    type: integer
+                  role:
+                    type: string
+                    enum: [org_admin, member]
+        '400':
+          description: Invalid input, individual-organization member constraint, or last-admin invariant violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/members/{userId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      tags:
+        - Admin - AI & API Setup
+      summary: Change an organization member role
+      description: |
+        Promoting a member delegates `org_admin` and demotes the previous active
+        administrator. Demoting the last active `org_admin` is blocked. Requires
+        `super_admin` or the organization's server-resolved `org_admin`.
+      operationId: updateAiSetupMember
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [org_admin, member]
+      responses:
+        '200':
+          description: Member role changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, userId, role]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  userId:
+                    type: integer
+                  role:
+                    type: string
+                    enum: [org_admin, member]
+        '400':
+          description: Invalid ID/role or attempt to demote the last active administrator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+        - Admin - AI & API Setup
+      summary: Remove an organization member
+      description: |
+        Removes a member. Removing the last active `org_admin` is blocked until a
+        successor is assigned. Requires `super_admin` or the organization's
+        server-resolved `org_admin`.
+      operationId: deleteAiSetupMember
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid ID or attempt to remove the last active administrator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/audit:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+    get:
+      tags:
+        - Admin - AI & API Setup
+      summary: Get an organization's credential audit log
+      description: |
+        Returns up to 500 newest credential audit entries for the organization.
+        Entries contain redacted detail only. Requires `super_admin`, or a global
+        `admin` scoped to its own organization.
+      operationId: getAiSetupOrganizationAudit
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Redacted organization credential audit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    maxItems: 500
+                    items:
+                      $ref: '#/components/schemas/AiSetupAuditEntry'
+        '400':
+          description: Invalid organization ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/audit:
+    get:
+      tags:
+        - Admin - AI & API Setup
+      summary: Get the global credential audit log
+      description: |
+        Returns up to 500 newest organization credential audit entries across the
+        platform. Every entry is redacted. This route requires global `super_admin`;
+        a regular `admin`, including an `org_admin`, receives `403 FORBIDDEN`.
+      operationId: getAiSetupGlobalAudit
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Redacted global credential audit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    maxItems: 500
+                    items:
+                      $ref: '#/components/schemas/AiSetupAuditEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Global super administrator role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                error: Super admin access required for the global audit
+                code: FORBIDDEN
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/ai-setup/organizations/{id}/usage:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Numeric organization ID. Server-side organization scope is always enforced.
+        schema:
+          type: integer
+    get:
+      tags:
+        - Admin - AI & API Setup
+      summary: Get organization-scoped token usage and cost
+      description: |
+        Returns usage attributed to the organization and credential for the selected
+        interval. `days` defaults to 30, rejects non-numeric input, and clamps numeric
+        values to 1–365. Visibility is server-enforced: `super_admin` can view all costs;
+        an `org_admin` can view cost only for its own `ORGANIZATION_BYOK` organization
+        with an active credential. Otherwise cost values are zeroed and `cost.reason`
+        explains the denial or missing credential.
+      operationId: getAiSetupOrganizationUsage
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: Number of trailing days. Numeric values are clamped to 1–365.
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: Organization usage and visibility-filtered cost
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [org, cost, usage]
+                properties:
+                  org:
+                    $ref: '#/components/schemas/AiSetupOrganization'
+                  cost:
+                    type: object
+                    required: [canView, reason]
+                    properties:
+                      canView:
+                        type: boolean
+                      reason:
+                        type: string
+                        enum: [platform, org, denied, byok_missing_credential]
+                  usage:
+                    $ref: '#/components/schemas/AiSetupUsageSummary'
+        '400':
+          description: "Invalid organization ID or non-numeric `days`"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ========================================
   # LLM Management APIs
   # ========================================
 
@@ -5014,6 +6242,10 @@ paths:
       tags:
         - Admin - LLM
       summary: Create LLM provider
+      description: |
+        Legacy provider write. While the consolidated AI & API Setup feature is
+        enabled, this route returns `409 LEGACY_WRITE_DISABLED`; create organization
+        credentials through `/admin/ai-setup/organizations/{id}/credentials` instead.
       operationId: createLLMProvider
       security:
         - sessionAuth: []
@@ -5039,7 +6271,16 @@ paths:
         '201':
           description: Provider created
         '409':
-          description: Provider already exists
+          description: Provider already exists, or this legacy write is disabled in favor of AI & API Setup
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                legacyWriteDisabled:
+                  value:
+                    error: This legacy settings page is read-only. Configure provider keys and AI/API capabilities from the consolidated AI & API Setup page.
+                    code: LEGACY_WRITE_DISABLED
 
   /admin/llm/providers/{id}:
     parameters:
@@ -5066,6 +6307,10 @@ paths:
       tags:
         - Admin - LLM
       summary: Update provider
+      description: |
+        Legacy provider write. While the consolidated AI & API Setup feature is
+        enabled, this route returns `409 LEGACY_WRITE_DISABLED`; replace organization
+        credentials through `/admin/ai-setup/organizations/{id}/credentials` instead.
       operationId: updateLLMProvider
       security:
         - sessionAuth: []
@@ -5088,12 +6333,24 @@ paths:
           description: Provider updated
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Legacy provider writes are disabled in favor of AI & API Setup
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                error: This legacy settings page is read-only. Configure provider keys and AI/API capabilities from the consolidated AI & API Setup page.
+                code: LEGACY_WRITE_DISABLED
 
     delete:
       tags:
         - Admin - LLM
       summary: Delete or clear provider
-      description: Core providers are cleared rather than deleted
+      description: |
+        Core providers are cleared rather than deleted. While the consolidated AI &
+        API Setup feature is enabled, this legacy write returns
+        `409 LEGACY_WRITE_DISABLED`; use the organization credential actions instead.
       operationId: deleteLLMProvider
       security:
         - sessionAuth: []
@@ -5102,6 +6359,15 @@ paths:
           description: Provider deleted or cleared
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Legacy provider writes are disabled in favor of AI & API Setup
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                error: This legacy settings page is read-only. Configure provider keys and AI/API capabilities from the consolidated AI & API Setup page.
+                code: LEGACY_WRITE_DISABLED
 
   /admin/llm/providers/{id}/test:
     post:
@@ -5508,6 +6774,3 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-      responses:
-        '200':
-          description: Test results

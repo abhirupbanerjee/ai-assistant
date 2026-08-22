@@ -9,25 +9,30 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
-import { getApiKey } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../../provider-credential';
 
-// ============ Client Singleton ============
-
-let geminiClient: GoogleGenAI | null = null;
+// ============ Client (ProviderClientFactory, keyed by credential) ============
 
 export function resetGeminiClient(): void {
-  geminiClient = null;
+  sharedProviderClientFactory.clear();
 }
 
 async function getGeminiClient(): Promise<GoogleGenAI> {
-  if (!geminiClient) {
-    const apiKey = await getApiKey('gemini');
-    if (!apiKey) {
-      throw new Error('Gemini API key not configured. Set GEMINI_API_KEY or configure in Admin > LLM > Providers.');
-    }
-    geminiClient = new GoogleGenAI({ apiKey });
+  const cred = await resolveProviderCredentialForRequest('gemini');
+  if (!cred.apiKey) {
+    throw new Error('Gemini API key not configured. Set GEMINI_API_KEY or configure in Admin > LLM > Providers.');
   }
-  return geminiClient;
+  const built = sharedProviderClientFactory.getClient({
+    providerId: 'gemini',
+    credentialId: cred.credentialId,
+    credentialVersion: cred.credentialVersion,
+    apiKey: cred.apiKey,
+    apiBase: null,
+  });
+  if (built.kind !== 'google-genai') {
+    throw new Error('ProviderClientFactory returned a non-GoogleGenAI client for gemini');
+  }
+  return built.client;
 }
 
 // ============ Model Detection ============

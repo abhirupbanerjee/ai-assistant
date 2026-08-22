@@ -12,6 +12,7 @@ import {
   setSpeechSettings,
 } from '@/lib/db/compat';
 import { type SttProvider, type TtsProvider } from '@/lib/db/config';
+import { blockLegacyWrite } from '@/lib/legacy-writes';
 
 const VALID_STT_PROVIDERS: SttProvider[] = ['openai', 'fireworks', 'mistral', 'gemini'];
 const VALID_TTS_PROVIDERS: TtsProvider[] = ['openai', 'gemini'];
@@ -56,6 +57,10 @@ export async function PUT(request: NextRequest) {
     if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
+
+    // Phase F: speech (STT/TTS) config is now owned by the consolidated AI & API Setup page.
+    const blocked = await blockLegacyWrite();
+    if (blocked) return blocked;
 
     const body = await request.json();
 
