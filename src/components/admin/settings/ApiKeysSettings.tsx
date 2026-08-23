@@ -136,6 +136,7 @@ function KeyInputRow({
   capabilities,
   hint,
   isUrl,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -145,6 +146,7 @@ function KeyInputRow({
   capabilities?: string[];
   hint?: string;
   isUrl?: boolean;
+  disabled?: boolean;
 }) {
   const [showKey, setShowKey] = useState(false);
 
@@ -160,7 +162,8 @@ function KeyInputRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || (isUrl ? 'https://...' : 'Enter API key...')}
-          className="w-full px-3 py-1.5 text-sm border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-8 font-mono"
+          disabled={disabled}
+          className="w-full px-3 py-1.5 text-sm border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-8 font-mono disabled:bg-gray-100 disabled:text-gray-400"
         />
         {!isUrl && (
           <button
@@ -237,7 +240,12 @@ function SectionHeader({
 // Main Component
 // ============================================================================
 
-export default function ApiKeysSettings() {
+interface ApiKeysSettingsProps {
+  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user';
+}
+
+export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsProps) {
+  const isSuperAdmin = userRole === 'super_admin';
   // Loading / saving state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -508,6 +516,7 @@ export default function ApiKeysSettings() {
   // ============================================================================
 
   const handleTestProvider = async (providerId: string) => {
+    const edited = editedLLMKeys[providerId];
     setTestingProvider(providerId);
     setTestResults((prev) => {
       const next = { ...prev };
@@ -516,8 +525,20 @@ export default function ApiKeysSettings() {
     });
 
     try {
+      // Send edited key in the POST body if one exists, so the test endpoint
+      // can validate the unsaved key directly against the provider API.
+      const testBody: { apiKey?: string; apiBase?: string } = {};
+      if (edited?.apiKey && !edited.apiKey.includes('••')) {
+        testBody.apiKey = edited.apiKey;
+      }
+      if (edited?.apiBase) {
+        testBody.apiBase = edited.apiBase;
+      }
+
       const res = await fetch(`/api/admin/llm/providers/${providerId}/test`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: Object.keys(testBody).length > 0 ? JSON.stringify(testBody) : undefined,
       });
       const data = await res.json();
       setTestResults((prev) => ({
@@ -572,12 +593,14 @@ export default function ApiKeysSettings() {
                 value={editedLLMKeys[provider.id]?.apiKey ?? (provider.apiKeyConfigured ? provider.apiKey : '')}
                 onChange={(val) => handleLLMKeyChange(provider.id, val, false)}
                 placeholder="Enter API key..."
+                disabled={!isSuperAdmin}
               />
               <KeyInput
                 value={editedLLMKeys[provider.id]?.apiBase ?? provider.apiBase ?? ''}
                 onChange={(val) => handleLLMKeyChange(provider.id, val, true)}
                 placeholder="https://<resource>.services.ai.azure.com"
                 isUrl
+                disabled={!isSuperAdmin}
               />
             </div>
           ) : (
@@ -586,6 +609,7 @@ export default function ApiKeysSettings() {
               onChange={(val) => handleLLMKeyChange(provider.id, val, isOllama)}
               placeholder={isOllama ? 'http://localhost:11434' : 'Enter API key...'}
               isUrl={isOllama}
+              disabled={!isSuperAdmin}
             />
           )}
         </div>
@@ -651,16 +675,37 @@ export default function ApiKeysSettings() {
           <h2 className="text-lg font-semibold text-gray-900">API Keys &amp; Credentials</h2>
           <p className="text-sm text-gray-500">Configure all API keys in one place</p>
         </div>
-        <Button
-          onClick={handleSave}
-          disabled={!hasChanges || saving}
-          variant="primary"
-          size="sm"
-        >
-          {saving ? <Spinner size="sm" /> : <Save size={16} />}
-          <span className="ml-1.5">Save</span>
-        </Button>
+        {isSuperAdmin && (
+          <Button
+            onClick={handleSave}
+            disabled={!hasChanges || saving}
+            variant="primary"
+            size="sm"
+          >
+            {saving ? <Spinner size="sm" /> : <Save size={16} />}
+            <span className="ml-1.5">Save</span>
+          </Button>
+        )}
       </div>
+
+      {/* UX Guidance */}
+      {isSuperAdmin ? (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+          <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-blue-800">
+            These keys are shared across all PLATFORM_MANAGED organizations.
+            For organization-specific BYOK keys, use AI & API Setup.
+          </p>
+        </div>
+      ) : (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+          <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">
+            Platform credentials are managed by super admins. For organization-specific keys,
+            use AI & API Setup.
+          </p>
+        </div>
+      )}
 
       {/* Status Messages */}
       {error && (
@@ -751,6 +796,7 @@ export default function ApiKeysSettings() {
           source={getTavilySource()}
           onChange={(val) => setEditedTavilyKey(val)}
           placeholder="Enter Tavily API key..."
+          disabled={!isSuperAdmin}
         />
       </div>
 
@@ -770,6 +816,7 @@ export default function ApiKeysSettings() {
             source={getOcrMistralSource()}
             onChange={(val) => setEditedOcr((prev) => ({ ...prev, mistralApiKey: val }))}
             placeholder="Enter Mistral API key..."
+            disabled={!isSuperAdmin}
           />
           <KeyInputRow
             label="Azure DI Key"
@@ -777,6 +824,7 @@ export default function ApiKeysSettings() {
             source={getOcrAzureSource()}
             onChange={(val) => setEditedOcr((prev) => ({ ...prev, azureDiKey: val }))}
             placeholder="Enter Azure Document Intelligence key..."
+            disabled={!isSuperAdmin}
           />
           <KeyInputRow
             label="Azure DI URL"
@@ -785,6 +833,7 @@ export default function ApiKeysSettings() {
             onChange={(val) => setEditedOcr((prev) => ({ ...prev, azureDiEndpoint: val }))}
             placeholder="https://your-resource.cognitiveservices.azure.com"
             isUrl
+            disabled={!isSuperAdmin}
           />
         </div>
       </div>
@@ -805,6 +854,7 @@ export default function ApiKeysSettings() {
             source={getCohereSource()}
             onChange={(val) => setEditedCohereKey(val)}
             placeholder="Enter Cohere API key..."
+            disabled={!isSuperAdmin}
           />
           <ReadOnlyKeyRow
             label="Fireworks AI"
@@ -825,11 +875,13 @@ function KeyInput({
   onChange,
   placeholder,
   isUrl,
+  disabled,
 }: {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
   isUrl?: boolean;
+  disabled?: boolean;
 }) {
   const [showKey, setShowKey] = useState(false);
 
@@ -840,7 +892,8 @@ function KeyInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-1.5 text-sm border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-8 font-mono"
+        disabled={disabled}
+        className="w-full px-3 py-1.5 text-sm border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-8 font-mono disabled:bg-gray-100 disabled:text-gray-400"
       />
       {!isUrl && (
         <button

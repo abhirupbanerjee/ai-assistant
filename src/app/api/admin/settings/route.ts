@@ -51,6 +51,7 @@ import { getDb } from '@/lib/db/kysely';
 import { readFeatureFlagCombinations } from '@/lib/feature-flag-combinations';
 import {
   blockLegacyWrite,
+  blockLegacyWriteForPlatform,
   isConsolidatedSettingsType,
   areLegacyWritesDisabled,
   isConsolidatedSettingsKey,
@@ -290,10 +291,11 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Phase F: refuse writes to settings keys now owned by the consolidated
-    // AI & API Setup page. Reads (GET) above remain functional for rollback.
+    // Platform-scoped guard: super_admin can write platform credential settings
+    // (llm, embedding, reranker, ocr, tavily) via the API Keys page.
+    // Non-super-admin users are redirected to AI & API Setup.
     if (isConsolidatedSettingsType(type)) {
-      const blocked = await blockLegacyWrite();
+      const blocked = await blockLegacyWriteForPlatform(user);
       if (blocked) return blocked;
     }
 

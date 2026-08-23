@@ -1214,7 +1214,7 @@ function AdminPageContent() {
               {settingsSection === 'ai-setup' && <AiApiSetup />}
 
               {/* API Keys Section */}
-              {settingsSection === 'api-keys' && <ApiKeysSettings />}
+              {settingsSection === 'api-keys' && <ApiKeysSettings userRole={userRole} />}
               {/* Routes Settings Section */}
               {settingsSection === 'routes' && <RoutesSettingsPanel />}
               {/* LLM Settings Section */}

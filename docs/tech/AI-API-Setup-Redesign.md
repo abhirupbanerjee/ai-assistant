@@ -153,9 +153,22 @@ Super admins can administer all organizations. An `org_admin` is limited to thei
 
 ### Legacy settings behavior
 
-When `ai-api-setup-ui-enabled` is enabled, fragmented legacy provider/settings sections render a read-only redirect to AI & API Setup. Legacy provider, route, speech, and applicable tool-credential write APIs reject writes with HTTP `409` and the code `LEGACY_WRITE_DISABLED`.
+When `ai-api-setup-ui-enabled` is enabled, fragmented legacy provider/settings sections render a read-only redirect to AI & API Setup. Legacy provider, route, speech, and applicable tool-credential write APIs reject writes with HTTP `409` and the code `LEGACY_WRITE_DISABLED` for non-super-admin users.
 
 The legacy pages and code are redirected, not deleted. Turning the UI feature flag off restores the rollback path. RAG tuning remains writable in its existing settings page because it controls retrieval behavior rather than provider credential ownership.
+
+### Dual credential management
+
+The system supports two credential management paths that coexist during migration:
+
+| Path | UI location | Who can write | Guard function |
+|---|---|---|---|
+| **Platform-managed** | Admin → Settings → API Keys (`/admin?tab=settings&section=api-keys`) | `super_admin` only | [`blockLegacyWriteForPlatform(user)`](../../src/lib/legacy-writes.ts:117) |
+| **Organization BYOK** | Admin → Settings → AI & API Setup (`/admin?tab=settings&section=ai-setup`) | `org_admin` for their org; `super_admin` for any org | AI & API Setup APIs (no legacy guard) |
+
+`blockLegacyWriteForPlatform()` bypasses the 409 block when the caller is `super_admin`, allowing platform-level credential writes (llm_providers table, tavily/ocr/reranker settings, web_search tool config, speech settings, route settings) to succeed via the API Keys page. Non-super-admin users still receive the 409 and must use the AI & API Setup page for BYOK credentials.
+
+The API Keys page disables all key input fields and hides the Save button for non-super-admin users. The Test button sends edited (unsaved) keys in the POST body so that super admins can verify a key before persisting it.
 
 ## Organization-Aware Runtime Resolution
 

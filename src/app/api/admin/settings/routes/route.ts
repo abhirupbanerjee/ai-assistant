@@ -14,7 +14,7 @@ import {
   setRoutesSettings,
   type RoutesSettings,
 } from '@/lib/db/compat';
-import { blockLegacyWrite } from '@/lib/legacy-writes';
+import { blockLegacyWriteForPlatform } from '@/lib/legacy-writes';
 
 /**
  * GET - Retrieve current routes settings
@@ -59,7 +59,8 @@ export async function PUT(request: NextRequest) {
     }
 
     // Phase F: route defaults are now owned by the consolidated AI & API Setup page.
-    const blocked = await blockLegacyWrite();
+    // Super admins can still write platform-level route config via the API Keys page.
+    const blocked = await blockLegacyWriteForPlatform(user);
     if (blocked) return blocked;
 
     const body = await request.json();

@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -568,7 +568,19 @@ export default function AiApiSetup() {
           One credential per provider. Capabilities reference providers without duplicate keys.
         </p>
 
-        {canManage && (
+        {/* Mode-aware guidance */}
+        {org?.credentialMode === 'PLATFORM_MANAGED' && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2 mb-4">
+            <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-800">
+              This organization uses platform-managed credentials. Provider keys are configured in
+              Settings &rarr; API Keys by a super admin. Switch the organization to BYOK mode to
+              manage organization-specific keys here.
+            </p>
+          </div>
+        )}
+
+        {canManage && org?.credentialMode === 'ORGANIZATION_BYOK' && (
           <div className="border rounded-md p-3 mb-4 flex flex-wrap items-end gap-2">
             <div>
               <div className="text-xs text-gray-500 mb-1">Provider</div>

@@ -1123,6 +1123,88 @@ export async function testProviderConnection(provider: string): Promise<{
 }
 
 /**
+ * Test a specific API key against a provider without reading from DB/ENV.
+ * The key is used only for this test request — it is never stored or logged.
+ *
+ * @param provider  Provider ID (e.g. 'openai', 'anthropic')
+ * @param apiKey    The API key to test
+ * @param apiBase   Optional API base URL override (for ollama, azure-foundry)
+ */
+export async function testProviderConnectionWithKey(
+  provider: string,
+  apiKey: string,
+  apiBase?: string,
+): Promise<{
+  success: boolean;
+  message: string;
+  modelCount?: number;
+}> {
+  try {
+    let models: DiscoveredModel[];
+
+    switch (provider) {
+      case 'openai':
+        models = await discoverOpenAIModels(apiKey);
+        break;
+      case 'gemini':
+        models = await discoverGeminiModels(apiKey);
+        break;
+      case 'mistral':
+        models = await discoverMistralModels(apiKey);
+        break;
+      case 'ollama':
+        if (!apiBase) {
+          return { success: false, message: 'API base URL is required for Ollama' };
+        }
+        models = await discoverOllamaModels(apiBase);
+        break;
+      case 'anthropic':
+        models = await discoverAnthropicModels(apiKey);
+        break;
+      case 'deepseek':
+        models = await discoverDeepSeekModels(apiKey);
+        break;
+      case 'fireworks':
+        models = await discoverFireworksModels(apiKey);
+        break;
+      case 'ollama-cloud': {
+        // ollama-cloud uses a different discovery path; fall back to persisted
+        const result = await discoverModels('ollama-cloud');
+        if (!result.success) return { success: false, message: result.error || 'Connection failed' };
+        models = result.models;
+        break;
+      }
+      case 'moonshot':
+        models = await discoverMoonshotModels(apiKey);
+        break;
+      case 'azure-foundry':
+        if (!apiBase) {
+          return { success: false, message: 'Azure Foundry endpoint URL is required' };
+        }
+        // Azure Foundry uses DefaultAzureCredential, not an API key.
+        // Fall back to persisted discovery for now.
+        {
+          const result = await discoverModels('azure-foundry');
+          if (!result.success) return { success: false, message: result.error || 'Connection failed' };
+          models = result.models;
+        }
+        break;
+      default:
+        return { success: false, message: `Unknown provider: ${provider}` };
+    }
+
+    return {
+      success: true,
+      message: `Connected successfully. Found ${models.length} models.`,
+      modelCount: models.length,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, message };
+  }
+}
+
+/**
  * Discover models from all configured providers
  */
 export async function discoverAllModels(): Promise<{

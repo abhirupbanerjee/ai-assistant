@@ -20,7 +20,7 @@ import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
 import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
 import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
 import type { ApiError } from '@/types';
-import { blockLegacyWrite } from '@/lib/legacy-writes';
+import { blockLegacyWriteForPlatform } from '@/lib/legacy-writes';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -78,9 +78,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Phase F: provider key updates (llm_providers) now flow through the
-    // consolidated AI & API Setup page. Reads (GET) remain functional.
-    const blocked = await blockLegacyWrite();
+    // Platform-scoped guard: super_admin can write platform credentials
+    // via the API Keys page. Non-super-admin users are redirected to AI & API Setup.
+    const blocked = await blockLegacyWriteForPlatform(user);
     if (blocked) return blocked;
 
     const { id } = await params;
@@ -130,9 +130,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Phase F: provider deletion/clearing (llm_providers) now flows through the
-    // consolidated AI & API Setup page. Reads (GET) remain functional.
-    const blocked = await blockLegacyWrite();
+    // Platform-scoped guard: super_admin can clear/delete platform credentials.
+    const blocked = await blockLegacyWriteForPlatform(user);
     if (blocked) return blocked;
 
     const { id } = await params;

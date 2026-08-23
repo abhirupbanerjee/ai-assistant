@@ -12,7 +12,7 @@ import {
   setSpeechSettings,
 } from '@/lib/db/compat';
 import { type SttProvider, type TtsProvider } from '@/lib/db/config';
-import { blockLegacyWrite } from '@/lib/legacy-writes';
+import { blockLegacyWriteForPlatform } from '@/lib/legacy-writes';
 
 const VALID_STT_PROVIDERS: SttProvider[] = ['openai', 'fireworks', 'mistral', 'gemini'];
 const VALID_TTS_PROVIDERS: TtsProvider[] = ['openai', 'gemini'];
@@ -59,7 +59,8 @@ export async function PUT(request: NextRequest) {
     }
 
     // Phase F: speech (STT/TTS) config is now owned by the consolidated AI & API Setup page.
-    const blocked = await blockLegacyWrite();
+    // Super admins can still write platform-level speech config via the API Keys page.
+    const blocked = await blockLegacyWriteForPlatform(user);
     if (blocked) return blocked;
 
     const body = await request.json();

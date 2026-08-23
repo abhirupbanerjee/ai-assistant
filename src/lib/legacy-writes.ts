@@ -100,3 +100,27 @@ export async function blockLegacyWrite(): Promise<NextResponse | null> {
   }
   return null;
 }
+
+/**
+ * Platform-scoped guard: allows super_admin users to write platform-level
+ * credentials (llm_providers table, settings table for tavily/ocr/reranker,
+ * tool_configs for web_search) even when the consolidated AI & API Setup UI
+ * flag is ON. Non-super-admin users still get the 409 block.
+ *
+ * This implements the dual credential management architecture:
+ * - PLATFORM_MANAGED orgs → super_admin manages keys via API Keys page (this guard)
+ * - ORGANIZATION_BYOK orgs → org admins manage keys via AI & API Setup page
+ *
+ * @param user — the current user from getCurrentUser(), or null
+ * @returns null when the write is allowed, a 409 NextResponse when blocked
+ */
+export async function blockLegacyWriteForPlatform(
+  user: { isSuperAdmin?: boolean } | null
+): Promise<NextResponse | null> {
+  // Super admins can always write platform credentials
+  if (user?.isSuperAdmin) {
+    return null;
+  }
+  // Fall back to the standard block for non-super-admin users
+  return blockLegacyWrite();
+}
