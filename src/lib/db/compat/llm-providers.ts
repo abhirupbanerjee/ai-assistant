@@ -207,13 +207,15 @@ export async function isProviderConfigured(id: string): Promise<boolean> {
 export async function getProviderApiKey(id: string): Promise<string | null> {
   const provider = await getProvider(id);
   if (provider?.apiKey) {
-    return safeDecrypt(provider.apiKey);
+    const decrypted = safeDecrypt(provider.apiKey);
+    return decrypted;
   }
 
   // Fall back to environment variable
   const envConfig = PROVIDER_ENV_KEYS[id];
   if (envConfig?.apiKey) {
-    return process.env[envConfig.apiKey] || null;
+    const envVal = process.env[envConfig.apiKey] || null;
+    return envVal;
   }
   return null;
 }
