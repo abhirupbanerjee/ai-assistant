@@ -30,7 +30,6 @@ import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessin
 import SpeechSettingsTab from '@/components/admin/settings/SpeechSettings';
 import DisplaySettingsPanel from '@/components/admin/settings/DisplaySettingsPanel';
 import AiApiSetup from '@/components/admin/settings/AiApiSetup';
-import LegacySettingsRedirect from '@/components/admin/settings/LegacySettingsRedirect';
 import DashboardPage from '@/components/admin/dashboard/DashboardPage';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
@@ -371,10 +370,6 @@ function AdminPageContent() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // Phase F: when the consolidated AI & API Setup UI flag is on, the legacy
-  // fragmented settings sections render a read-only redirect card instead.
-  const [aiSetupUiEnabled, setAiSetupUiEnabled] = useState(false);
-
   // Stats state
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -491,7 +486,6 @@ function AdminPageContent() {
         setTranscriptionModel(data.models.transcription);
       }
       setAvailableModels((data.availableModels || []).filter(Boolean));
-      setAiSetupUiEnabled(Boolean(data.featureFlags?.aiApiSetupUiEnabled));
       setLlmModified(false);
       setRerankerModified(false);
       setMemoryModified(false);
@@ -1220,17 +1214,11 @@ function AdminPageContent() {
               {settingsSection === 'ai-setup' && <AiApiSetup />}
 
               {/* API Keys Section */}
-              {settingsSection === 'api-keys' && (aiSetupUiEnabled
-                ? <LegacySettingsRedirect title="API Keys & Credentials" description="Provider API keys, web search, OCR, and reranker keys are now managed from the consolidated page." />
-                : <ApiKeysSettings />)}
+              {settingsSection === 'api-keys' && <ApiKeysSettings />}
               {/* Routes Settings Section */}
-              {settingsSection === 'routes' && (aiSetupUiEnabled
-                ? <LegacySettingsRedirect title="Routes" description="Provider routing defaults are now managed from the consolidated page." />
-                : <RoutesSettingsPanel />)}
+              {settingsSection === 'routes' && <RoutesSettingsPanel />}
               {/* LLM Settings Section */}
-              {settingsSection === 'llm' && (aiSetupUiEnabled
-                ? <LegacySettingsRedirect title="LLM Settings" description="Provider keys and model routing are now managed from the consolidated page." />
-                : <UnifiedLLMSettings />)}
+              {settingsSection === 'llm' && <UnifiedLLMSettings />}
 
               {/* Autonomous Mode Section (L2 sibling of LLM, positioned right after it) */}
               {settingsSection === 'autonomous-mode' && (
@@ -1246,22 +1234,16 @@ function AdminPageContent() {
               {settingsSection === 'rag' && <UnifiedRAGSettings />}
 
               {/* Reranker Section */}
-              {settingsSection === 'reranker' && (aiSetupUiEnabled
-                ? <LegacySettingsRedirect title="Reranker" description="Reranking provider and keys are now managed from the consolidated page." />
-                : <RerankerSettingsTab />)}
+              {settingsSection === 'reranker' && <RerankerSettingsTab />}
 
               {/* File Uploads Section */}
               {settingsSection === 'uploads' && <FileUploadSettings />}
 
               {/* Document Processing (OCR) Section */}
-              {settingsSection === 'ocr' && (aiSetupUiEnabled
-                ? <LegacySettingsRedirect title="Document Processing" description="OCR provider and keys are now managed from the consolidated page." />
-                : <DocumentProcessingTab />)}
+              {settingsSection === 'ocr' && <DocumentProcessingTab />}
 
               {/* Speech (STT + TTS) Section */}
-              {settingsSection === 'speech' && (aiSetupUiEnabled
-                ? <LegacySettingsRedirect title="Speech" description="STT and TTS providers are now managed from the consolidated page." />
-                : <SpeechSettingsTab />)}
+              {settingsSection === 'speech' && <SpeechSettingsTab />}
 
               {/* Cache Section */}
               {settingsSection === 'cache' && (

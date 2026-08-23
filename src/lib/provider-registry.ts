@@ -20,6 +20,7 @@
  */
 
 import type { Kysely } from 'kysely';
+import { sql } from 'kysely';
 import type { DB } from './db/db-types';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
@@ -325,7 +326,14 @@ export function buildProviderCapabilityRows(registry: FilteredRegistry) {
     provider_id: pc.providerId,
     capability_id: pc.capabilityId,
     is_supported: pc.isSupported,
-    model_or_service_ids: pc.modelOrServiceIds,
+    // model_or_service_ids is a JSONB column. Kysely/pg does not auto-serialize
+    // JS arrays to JSON for `unknown`-typed columns — it would emit PostgreSQL
+    // array text format {"a","b"} which is invalid JSONB. We must explicitly
+    // JSON.stringify and cast to jsonb.
+    model_or_service_ids:
+      pc.modelOrServiceIds === null
+        ? null
+        : sql`${JSON.stringify(pc.modelOrServiceIds)}::jsonb`,
   }));
 }
 

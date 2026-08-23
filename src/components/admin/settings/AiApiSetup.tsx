@@ -15,6 +15,13 @@ import { AlertTriangle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
+// Fetched from /api/models — enabled LLM models grouped by provider
+interface EnabledModel {
+  id: string;
+  displayName: string;
+  providerId: string;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -138,6 +145,9 @@ export default function AiApiSetup() {
   const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Enabled LLM models from /api/models (for LLM capability dropdown)
+  const [enabledModels, setEnabledModels] = useState<EnabledModel[]>([]);
+
   // Capability config local state: capabilityId -> { providerId, model, enabled }
   const [capConfig, setCapConfig] = useState<Record<string, { providerId: string; model: string; enabled: boolean }>>({});
   const [saving, setSaving] = useState(false);
@@ -195,6 +205,14 @@ export default function AiApiSetup() {
     load();
   }, [load]);
 
+  // Fetch enabled LLM models for the LLM capability dropdown
+  useEffect(() => {
+    fetch('/api/models')
+      .then((res) => (res.ok ? res.json() : { models: [] }))
+      .then((data) => setEnabledModels(data.models || []))
+      .catch(() => setEnabledModels([]));
+  }, []);
+
   const org = overview?.organizations.find((o) => o.id === selectedOrgId);
   const canManage = !!overview && !!selectedOrgId && (
     overview.viewer.isSuperAdmin ||
@@ -210,6 +228,52 @@ export default function AiApiSetup() {
       return overview.registry.providers.filter((p) => ids.includes(p.id));
     },
     [overview]
+  );
+
+  /**
+   * Returns the list of selectable model/service IDs for a given
+   * capability + provider combination.
+   *
+   * For the `llm` capability we use the `enabled_models` table (fetched
+   * from /api/models) filtered by provider — these are the models the
+   * admin has explicitly enabled in the LLM management page.
+   *
+   * For all other capabilities (embeddings, reranking, speech-to-text,
+   * text-to-speech, etc.) we use the `modelOrServiceIds` field from the
+   * server-side registry (`provider_capabilities` table), which contains
+   * the known service IDs for that provider/capability pair.
+   *
+   * If neither source yields options, an empty array is returned and the
+   * dropdown will show only "— auto —".
+   */
+  const modelsForCapability = useCallback(
+    (capabilityId: string, providerId: string): string[] => {
+      if (!providerId) return [];
+
+      if (capabilityId === 'llm') {
+        // LLM models come from the enabled_models table via /api/models.
+        // Model IDs in enabled_models are typically prefixed with the
+        // provider id (e.g. "fireworks/minimax-m3", "deepseek-chat") but
+        // some legacy ones lack a prefix. We match on the providerId field
+        // returned by the API, falling back to prefix matching.
+        return enabledModels
+          .filter((m) => {
+            if (m.providerId === providerId) return true;
+            // Some models use provider-prefixed ids without a separate providerId
+            return m.id.startsWith(`${providerId}/`) || m.id.startsWith(`${providerId}-`);
+          })
+          .map((m) => m.id);
+      }
+
+      // Non-LLM capabilities: use registry modelOrServiceIds
+      if (!overview) return [];
+      const pc = overview.registry.providerCapabilities.find(
+        (pc) => pc.capabilityId === capabilityId && pc.providerId === providerId && pc.isSupported
+      );
+      if (!pc || !pc.modelOrServiceIds) return [];
+      return Array.isArray(pc.modelOrServiceIds) ? pc.modelOrServiceIds as string[] : [];
+    },
+    [overview, enabledModels]
   );
 
   const saveConfig = async () => {
@@ -462,13 +526,17 @@ export default function AiApiSetup() {
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
-                    <input
+                    <select
                       value={cfg.model}
                       disabled={!canManage}
                       onChange={(e) => setCapConfig((prev) => ({ ...prev, [cap.id]: { ...cfg, model: e.target.value } }))}
-                      placeholder="Model / service id"
                       className="border rounded-md px-2 py-1 text-sm w-56"
-                    />
+                    >
+                      <option value="">— auto —</option>
+                      {modelsForCapability(cap.id, cfg.providerId).map((modelId) => (
+                        <option key={modelId} value={modelId}>{modelId}</option>
+                      ))}
+                    </select>
                     <label className="flex items-center gap-1 text-sm">
                       <input
                         type="checkbox"
