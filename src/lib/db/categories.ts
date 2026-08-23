@@ -16,6 +16,7 @@ export interface DbCategory {
   description: string | null;
   created_by: string;
   created_at: string;
+  organization_id?: number | null;
 }
 
 export interface CategoryWithStats extends DbCategory {
@@ -28,11 +29,13 @@ export interface CreateCategoryInput {
   name: string;
   description?: string;
   createdBy: string;
+  organizationId?: number | null;
 }
 
 export interface UpdateCategoryInput {
   name?: string;
   description?: string;
+  organizationId?: number | null;
 }
 
 // ============ Helper Functions ============

@@ -142,10 +142,23 @@ export function safeEncrypt(value: string | null | undefined): string | null {
 }
 
 /**
- * Safely decrypt a value, returning null if decryption fails
+ * True when a stored value is in the encrypted `iv:authTag:ciphertext` format.
+ * Callers that previously used `safeDecrypt(x) || x` should use this helper to
+ * distinguish "encrypted but failed to decrypt" (must fail closed) from
+ * "unencrypted dev plaintext" (may be used as-is).
+ */
+export function isEncryptedValue(value: string | null | undefined): boolean {
+  return !!value && value.trim() !== '' && value.split(':').length === 3;
+}
+
+/**
+ * Safely decrypt a value, returning null if decryption fails.
  *
  * @param value - The encrypted value (can be null/undefined)
- * @returns Decrypted string or null
+ * @returns Decrypted string or null. Unencrypted dev-plaintext values are
+ *          returned as-is; encrypted values that cannot be decrypted (wrong or
+ *          missing DATA_SOURCE_ENCRYPTION_KEY) return null — never the raw
+ *          ciphertext, which would otherwise be used as a credential.
  */
 export function safeDecrypt(value: string | null | undefined): string | null {
   if (!value || value.trim() === '') {
@@ -167,9 +180,15 @@ export function safeDecrypt(value: string | null | undefined): string | null {
   try {
     return decrypt(value);
   } catch (error) {
-    console.error('[Encryption] Failed to decrypt value:', error);
-    // Might be stored unencrypted
-    return value;
+    // Fail closed: an encrypted value that cannot be decrypted (wrong/missing
+    // DATA_SOURCE_ENCRYPTION_KEY) must never be returned as if it were the
+    // plaintext secret — doing so sends the ciphertext as the credential and
+    // surfaces as a misleading "401 Invalid Authentication" upstream.
+    console.error(
+      '[Encryption] Failed to decrypt value; the stored value was encrypted with a different DATA_SOURCE_ENCRYPTION_KEY. Re-save the credential.',
+      error
+    );
+    return null;
   }
 }
 

@@ -114,16 +114,6 @@ interface Member {
   status: string;
 }
 
-interface AuditEntry {
-  id: number;
-  providerId: string;
-  credentialId: string | null;
-  actorEmail: string | null;
-  action: string;
-  redactedDetail: string | null;
-  createdAt: string;
-}
-
 const HEALTH_BADGE: Record<HealthState, string> = {
   READY: 'bg-green-100 text-green-800',
   DEGRADED: 'bg-yellow-100 text-yellow-800',
@@ -158,17 +148,9 @@ export default function AiApiSetup() {
   const [credDefault, setCredDefault] = useState(false);
   const [credBusy, setCredBusy] = useState(false);
 
-  // Org creation form state
-  const [orgName, setOrgName] = useState('');
-  const [orgType, setOrgType] = useState<'ENTITY' | 'INDIVIDUAL'>('ENTITY');
-  const [orgMode, setOrgMode] = useState<'PLATFORM_MANAGED' | 'ORGANIZATION_BYOK'>('PLATFORM_MANAGED');
-  const [orgBusy, setOrgBusy] = useState(false);
-
-  // Members + audit + usage
+  // Members + usage
   const [members, setMembers] = useState<Member[]>([]);
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [usage, setUsage] = useState<{ totalTokens: number; totalCost: number; costCanView: boolean } | null>(null);
-  const [showAudit, setShowAudit] = useState(false);
 
   const load = useCallback(async (orgId?: number | null) => {
     setLoading(true);
@@ -345,37 +327,10 @@ export default function AiApiSetup() {
     }
   };
 
-  const createOrg = async () => {
-    setOrgBusy(true);
-    setMessage(null);
-    try {
-      const res = await fetch('/api/admin/ai-setup/organizations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: orgName, type: orgType, credentialMode: orgMode }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || 'Failed to create organization');
-      setOrgName('');
-      setMessage('Organization created');
-      await load();
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to create organization');
-    } finally {
-      setOrgBusy(false);
-    }
-  };
-
   const loadMembers = async () => {
     if (!selectedOrgId) return;
     const res = await fetch(`/api/admin/ai-setup/organizations/${selectedOrgId}/members`);
     if (res.ok) setMembers((await res.json()).members);
-  };
-
-  const loadAudit = async () => {
-    if (!selectedOrgId) return;
-    const res = await fetch(`/api/admin/ai-setup/organizations/${selectedOrgId}/audit`);
-    if (res.ok) setAudit((await res.json()).entries);
   };
 
   const loadUsage = async () => {
@@ -509,6 +464,10 @@ export default function AiApiSetup() {
               {caps.map((cap) => {
                 const cfg = capConfig[cap.id] ?? { providerId: '', model: '', enabled: true };
                 const providers = providersForCapability(cap.id);
+                const capHealth = overview.health?.capabilities.find((h) => h.capabilityId === cap.id);
+                const keyMissing =
+                  cap.importance === 'REQUIRED' &&
+                  (capHealth?.state === 'NOT_CONFIGURED' || capHealth?.state === 'UNAVAILABLE');
                 return (
                   <div key={cap.id} className="border rounded-md p-3 flex flex-wrap items-center gap-3">
                     <div className="w-48">
@@ -537,6 +496,18 @@ export default function AiApiSetup() {
                         <option key={modelId} value={modelId}>{modelId}</option>
                       ))}
                     </select>
+                    {keyMissing ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                        Key required
+                        {org?.credentialMode === 'ORGANIZATION_BYOK'
+                          ? ' — add in Provider Connections'
+                          : ' — configure platform key'}
+                      </span>
+                    ) : capHealth?.state ? (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${HEALTH_BADGE[capHealth.state]}`}>
+                        {capHealth.state}
+                      </span>
+                    ) : null}
                     <label className="flex items-center gap-1 text-sm">
                       <input
                         type="checkbox"
@@ -671,38 +642,15 @@ export default function AiApiSetup() {
         </div>
       </section>
 
-      {/* Org creation (super_admin / admin) */}
-      <section className="bg-white rounded-lg border shadow-sm p-6">
-        <h2 className="font-semibold text-gray-900 mb-3">Create Organization</h2>
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Name</div>
-            <input value={orgName} onChange={(e) => setOrgName(e.target.value)} className="border rounded-md px-2 py-1 text-sm w-56" />
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Type</div>
-            <select value={orgType} onChange={(e) => setOrgType(e.target.value as 'ENTITY' | 'INDIVIDUAL')} className="border rounded-md px-2 py-1 text-sm">
-              <option value="ENTITY">ENTITY</option>
-              <option value="INDIVIDUAL">INDIVIDUAL</option>
-            </select>
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Credential mode</div>
-            <select value={orgMode} onChange={(e) => setOrgMode(e.target.value as 'PLATFORM_MANAGED' | 'ORGANIZATION_BYOK')} className="border rounded-md px-2 py-1 text-sm">
-              <option value="PLATFORM_MANAGED">PLATFORM_MANAGED</option>
-              <option value="ORGANIZATION_BYOK">ORGANIZATION_BYOK</option>
-            </select>
-          </div>
-          <Button onClick={createOrg} disabled={orgBusy || !orgName.trim()}>
-            {orgBusy ? 'Creating…' : 'Create'}
-          </Button>
-        </div>
-      </section>
-
       {/* Members */}
       {org && (
         <section className="bg-white rounded-lg border shadow-sm p-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Members</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-900">Members</h2>
+            <p className="text-xs text-gray-500">
+              Manage organization-scoped users in Users → Organization.
+            </p>
+          </div>
           {members.length === 0 ? (
             <p className="text-sm text-gray-500">No members.</p>
           ) : (
@@ -733,41 +681,6 @@ export default function AiApiSetup() {
         </section>
       )}
 
-      {/* Audit */}
-      <section className="bg-white rounded-lg border shadow-sm p-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-gray-900">Credential Audit</h2>
-          <Button onClick={async () => { setShowAudit(!showAudit); if (!showAudit) await loadAudit(); }}>
-            {showAudit ? 'Hide' : 'Show'}
-          </Button>
-        </div>
-        {showAudit && (
-          audit.length === 0 ? (
-            <p className="text-sm text-gray-500">No audit entries.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500">
-                  <th className="py-1">Provider</th>
-                  <th>Action</th>
-                  <th>Actor</th>
-                  <th>When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.map((a) => (
-                  <tr key={a.id} className="border-t">
-                    <td className="py-1">{a.providerId}</td>
-                    <td>{a.action}</td>
-                    <td>{a.actorEmail ?? '—'}</td>
-                    <td>{new Date(a.createdAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        )}
-      </section>
     </div>
   );
 }

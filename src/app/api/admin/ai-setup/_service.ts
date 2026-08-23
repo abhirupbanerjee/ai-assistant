@@ -69,20 +69,30 @@ export async function resolveActor(db: Kysely<DB>, user: User): Promise<AiSetupA
 }
 
 /**
- * Authenticate + authorize the consolidated setup surface. Only `super_admin`
- * and `admin` (global roles) may open it; `org_admin` scoping then limits which
- * organization each admin can manage.
+ * Authenticate + authorize the consolidated setup surface.
+ *
+ * `super_admin` (platform override) and `admin` (global role) may open it. An
+ * `org_admin` membership also grants access so a BYOK organization admin can
+ * set up their own keys — even when their global `users.role` is `user`.
+ * `org_admin` scoping then limits which organization each actor can manage.
  */
 export async function requireAiSetupActor(): Promise<AiSetupActor | NextResponse> {
   const user = await getCurrentUser();
   if (!user) {
     return jsonError('Unauthorized', 'AUTH_REQUIRED', 401);
   }
-  if (user.role !== 'super_admin' && user.role !== 'admin') {
+  const db = await getDb();
+  const actor = await resolveActor(db, user);
+
+  const isAllowed =
+    actor.isSuperAdmin ||
+    actor.role === 'admin' ||
+    actor.membershipRole === 'org_admin';
+
+  if (!isAllowed) {
     return jsonError('Admin access required', 'ADMIN_REQUIRED', 403);
   }
-  const db = await getDb();
-  return resolveActor(db, user);
+  return actor;
 }
 
 /** Is `value` a NextResponse (i.e. an early error return)? */

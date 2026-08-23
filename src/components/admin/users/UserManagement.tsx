@@ -25,6 +25,13 @@ interface Category {
   slug: string;
 }
 
+interface Organization {
+  id: number;
+  name: string;
+  credentialMode: string;
+  isDefault: boolean;
+}
+
 type CategoryRole = 'none' | 'user' | 'superuser';
 
 function deriveCategoryArrays(roleMap: Record<number, CategoryRole>) {
@@ -46,11 +53,13 @@ export default function UserManagement() {
 
   // Categories for subscription management
   const [categories, setCategories] = useState<Category[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
 
   // Add user modal state
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
+  const [newUserOrganizationId, setNewUserOrganizationId] = useState<number | null>(null);
   const [newUserRole, setNewUserRole] = useState<'admin' | 'superuser' | 'user'>('user');
   const [newUserSubscriptions, setNewUserSubscriptions] = useState<number[]>([]);
   const [newUserAssignedCategories, setNewUserAssignedCategories] = useState<number[]>([]);
@@ -107,10 +116,24 @@ export default function UserManagement() {
     }
   }, []);
 
+  // Load organizations for the org-scoped user creation dropdown
+  const loadOrganizations = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/ai-setup/organizations');
+      if (response.ok) {
+        const data = await response.json();
+        setOrganizations(data.organizations || []);
+      }
+    } catch (err) {
+      console.error('Failed to load organizations:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadUsers();
     loadCategories();
-  }, [loadUsers, loadCategories]);
+    loadOrganizations();
+  }, [loadUsers, loadCategories, loadOrganizations]);
 
   const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleDateString('en-US', {
@@ -136,6 +159,7 @@ export default function UserManagement() {
           email: newUserEmail.trim(),
           name: newUserName.trim() || undefined,
           role: newUserRole,
+          organizationId: newUserOrganizationId ?? undefined,
           subscriptions: newUserRole === 'user'
             ? newUserSubscriptions
             : newUserRole === 'superuser'
@@ -156,6 +180,7 @@ export default function UserManagement() {
       setShowAddUser(false);
       setNewUserEmail('');
       setNewUserName('');
+      setNewUserOrganizationId(null);
       setNewUserRole('user');
       setNewUserSubscriptions([]);
       setNewUserAssignedCategories([]);
@@ -638,6 +663,33 @@ export default function UserManagement() {
                 placeholder="John Doe"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+              <select
+                value={newUserOrganizationId ?? ''}
+                onChange={(e) => setNewUserOrganizationId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Platform Default</option>
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}{o.isDefault ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
+              {(() => {
+                const org = organizations.find((o) => o.id === newUserOrganizationId);
+                return (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {org
+                      ? org.credentialMode === 'ORGANIZATION_BYOK'
+                        ? 'Key option: BYOK (organization-owned keys)'
+                        : 'Key option: Platform managed'
+                      : 'Uses the platform default organization'}
+                  </p>
+                );
+              })()}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>

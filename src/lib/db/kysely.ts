@@ -1890,6 +1890,25 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_organization ON token_usage_log(organization_id)`.execute(database);
   console.log('[Kysely] Ensured token_usage_log.organization_id column + FK exist (Phase A)');
 
+  // Category → organization tagging (admin categories menu). Nullable with FK to
+  // organizations; existing categories are backfilled to the DEFAULT org so the
+  // legacy category list remains visible after the org-tenancy migration.
+  await sql`ALTER TABLE categories ADD COLUMN IF NOT EXISTS organization_id INTEGER`.execute(database);
+  await sql`ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_organization_id_fkey`.execute(database);
+  await sql`ALTER TABLE categories ADD CONSTRAINT categories_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL`.execute(database);
+  await sql`UPDATE categories SET organization_id = (SELECT id FROM organizations WHERE is_default = TRUE LIMIT 1) WHERE organization_id IS NULL`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_categories_organization ON categories(organization_id)`.execute(database);
+  console.log('[Kysely] Ensured categories.organization_id column + FK exist (org tagging)');
+
+  // Active organization selection (multi-org representation). Nullable FK lets a
+  // user (including super_admin) switch which organization they are representing
+  // in chats; the runtime resolver validates the selection against membership.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS active_organization_id INTEGER`.execute(database);
+  await sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_active_organization_id_fkey`.execute(database);
+  await sql`ALTER TABLE users ADD CONSTRAINT users_active_organization_id_fkey FOREIGN KEY (active_organization_id) REFERENCES organizations(id) ON DELETE SET NULL`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_users_active_organization ON users(active_organization_id)`.execute(database);
+  console.log('[Kysely] Ensured users.active_organization_id column + FK exist (active org)');
+
   // Phase E (AI & API Setup Redesign, plan §9/§12.3): `credential_id` links a
   // usage row to the vault-stored credential that served the request. It is
   // nullable text (the vault credential_id is a string, not the row PK) and is

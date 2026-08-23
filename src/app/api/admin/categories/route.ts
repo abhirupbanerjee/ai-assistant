@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
 
     const body = await request.json();
-    const { name, description } = body;
+    const { name, description, organizationId } = body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json(
@@ -64,6 +64,10 @@ export async function POST(request: Request) {
       name: name.trim(),
       description: description?.trim() || undefined,
       createdBy: admin.email,
+      organizationId:
+        typeof organizationId === 'number' && Number.isFinite(organizationId)
+          ? organizationId
+          : undefined,
     });
 
     return NextResponse.json({ category }, { status: 201 });

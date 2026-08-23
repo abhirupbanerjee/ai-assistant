@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Settings, LogOut, User, ChevronDown } from 'lucide-react';
+import OrganizationSwitcher from '@/components/org/OrganizationSwitcher';
 
 export default function Header() {
   const { data: session } = useSession();
@@ -23,7 +24,9 @@ export default function Header() {
         AI Assistant
       </Link>
 
-      <div className="relative">
+      <div className="flex items-center gap-3">
+        {session && <OrganizationSwitcher />}
+        <div className="relative">
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100"
@@ -75,6 +78,7 @@ export default function Header() {
             </div>
           </>
         )}
+        </div>
       </div>
     </header>
   );

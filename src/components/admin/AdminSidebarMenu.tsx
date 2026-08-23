@@ -5,6 +5,7 @@ import {
   Menu,
   X,
   LayoutDashboard,
+  Building2,
   FolderOpen,
   FileText,
   Users,
@@ -30,7 +31,7 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'mcp' | 'skills' | 'workspaces' | 'agents' | 'settings';
+type TabType = 'organizations' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'mcp' | 'skills' | 'workspaces' | 'agents' | 'settings';
 
 // Section types for expandable menus
 type DocumentsSection = 'documents' | 'acronyms';
@@ -39,7 +40,7 @@ type PromptsSection = 'system-prompt' | 'category-prompts';
 // Tools is now a flat L1 item (management only). ToolsSection retained for backward-compat
 // but no longer used as a sidebar submenu.
 type ToolsSection = 'management';
-type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'ai-setup' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'audit-logs' | 'ai-setup' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -62,6 +63,7 @@ interface MenuConfigItem {
 
 const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, expandable: false },
+  { id: 'organizations', label: 'Organizations', icon: Building2, expandable: false },
   { id: 'categories', label: 'Categories', icon: FolderOpen, expandable: false },
   { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
   { id: 'users', label: 'Users', icon: Users, expandable: false },
@@ -83,6 +85,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'branding', label: 'Branding' },
       { id: 'tokens', label: 'Tokens' },
       { id: 'usage', label: 'Usage' },
+      { id: 'audit-logs', label: 'Audit Logs' },
       { id: 'ai-setup', label: 'AI & API Setup' },
       { id: 'api-keys', label: 'API Keys' },
       { id: 'routes', label: 'Routes' },

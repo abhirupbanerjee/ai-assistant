@@ -28,11 +28,37 @@ import { generateCategorySlug as generateSlug } from '../utils';
 
 // ============ Category CRUD ============
 
+const CATEGORY_SELECT = [
+  'id',
+  'name',
+  'slug',
+  'description',
+  'created_by',
+  'created_at',
+  'organization_id',
+] as const;
+
+/**
+ * Resolve the DEFAULT organization id (used when a category is created without
+ * an explicit organization). Returns null when no default org exists yet.
+ */
+export async function getDefaultOrganizationId(): Promise<number | null> {
+  const db = await getDb();
+  const row = await db
+    .selectFrom('organizations')
+    .select('id')
+    .where('is_default', '=', true)
+    .orderBy('id')
+    .limit(1)
+    .executeTakeFirst();
+  return row?.id ?? null;
+}
+
 export async function getAllCategories(): Promise<DbCategory[]> {
   const db = await getDb();
   return db
     .selectFrom('categories')
-    .select(['id', 'name', 'slug', 'description', 'created_by', 'created_at'])
+    .select(CATEGORY_SELECT)
     .orderBy('name')
     .execute() as Promise<DbCategory[]>;
 }
@@ -55,11 +81,12 @@ export async function getAllCategoriesWithStats(): Promise<CategoryWithStats[]> 
       'c.description',
       'c.created_by',
       'c.created_at',
+      'c.organization_id',
       db.fn.count<number>(sql`DISTINCT dc.document_id`).as('documentCount'),
       db.fn.count<number>(sql`DISTINCT suc.user_id`).as('superUserCount'),
       db.fn.count<number>(sql`DISTINCT us.user_id`).as('subscriberCount'),
     ])
-    .groupBy(['c.id', 'c.name', 'c.slug', 'c.description', 'c.created_by', 'c.created_at'])
+    .groupBy(['c.id', 'c.name', 'c.slug', 'c.description', 'c.created_by', 'c.created_at', 'c.organization_id'])
     .orderBy('c.name')
     .execute();
 
@@ -70,7 +97,7 @@ export async function getCategoryById(id: number): Promise<DbCategory | undefine
   const db = await getDb();
   return db
     .selectFrom('categories')
-    .select(['id', 'name', 'slug', 'description', 'created_by', 'created_at'])
+    .select(CATEGORY_SELECT)
     .where('id', '=', id)
     .executeTakeFirst() as Promise<DbCategory | undefined>;
 }
@@ -79,7 +106,7 @@ export async function getCategoryBySlug(slug: string): Promise<DbCategory | unde
   const db = await getDb();
   return db
     .selectFrom('categories')
-    .select(['id', 'name', 'slug', 'description', 'created_by', 'created_at'])
+    .select(CATEGORY_SELECT)
     .where('slug', '=', slug)
     .executeTakeFirst() as Promise<DbCategory | undefined>;
 }
@@ -88,7 +115,7 @@ export async function getCategoryByName(name: string): Promise<DbCategory | unde
   const db = await getDb();
   return db
     .selectFrom('categories')
-    .select(['id', 'name', 'slug', 'description', 'created_by', 'created_at'])
+    .select(CATEGORY_SELECT)
     .where('name', '=', name)
     .executeTakeFirst() as Promise<DbCategory | undefined>;
 }
@@ -107,6 +134,9 @@ export async function createCategory(input: CreateCategoryInput): Promise<DbCate
     throw new Error(`Category with slug "${slug}" already exists`);
   }
 
+  // Default to the DEFAULT organization when the caller does not specify one.
+  const organizationId = input.organizationId ?? (await getDefaultOrganizationId());
+
   const db = await getDb();
   const result = await db
     .insertInto('categories')
@@ -115,8 +145,9 @@ export async function createCategory(input: CreateCategoryInput): Promise<DbCate
       slug,
       description: input.description || null,
       created_by: input.createdBy,
+      organization_id: organizationId,
     })
-    .returning(['id', 'name', 'slug', 'description', 'created_by', 'created_at'])
+    .returning([...CATEGORY_SELECT])
     .executeTakeFirstOrThrow();
 
   return result as DbCategory;
@@ -151,6 +182,10 @@ export async function updateCategory(
 
   if (input.description !== undefined) {
     updates.description = input.description;
+  }
+
+  if (input.organizationId !== undefined) {
+    updates.organization_id = input.organizationId;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -194,7 +229,7 @@ export async function getCategoriesForSuperUser(userId: number): Promise<DbCateg
         .on('us.user_id', '=', userId)
         .on('us.is_active', '=', 1)
     )
-    .select(['c.id', 'c.name', 'c.slug', 'c.description', 'c.created_by', 'c.created_at'])
+    .select(['c.id', 'c.name', 'c.slug', 'c.description', 'c.created_by', 'c.created_at', 'c.organization_id'])
     .where((eb) =>
       eb.or([eb('suc.user_id', 'is not', null), eb('us.user_id', 'is not', null)])
     )
@@ -210,7 +245,7 @@ export async function getCategoriesForUser(userId: number): Promise<DbCategory[]
   return db
     .selectFrom('categories as c')
     .innerJoin('user_subscriptions as us', 'c.id', 'us.category_id')
-    .select(['c.id', 'c.name', 'c.slug', 'c.description', 'c.created_by', 'c.created_at'])
+    .select(['c.id', 'c.name', 'c.slug', 'c.description', 'c.created_by', 'c.created_at', 'c.organization_id'])
     .where('us.user_id', '=', userId)
     .where('us.is_active', '=', 1)
     .orderBy('c.name')
@@ -231,6 +266,7 @@ export async function getAllSubscriptionsForUser(
       'c.description',
       'c.created_by',
       'c.created_at',
+      'c.organization_id',
       'us.is_active',
     ])
     .where('us.user_id', '=', userId)
@@ -244,6 +280,7 @@ export async function getAllSubscriptionsForUser(
     description: r.description,
     created_by: r.created_by,
     created_at: r.created_at as string,
+    organization_id: r.organization_id as number | null,
     isActive: Boolean(r.is_active),
   }));
 }

@@ -33,6 +33,8 @@ import AiApiSetup from '@/components/admin/settings/AiApiSetup';
 import DashboardPage from '@/components/admin/dashboard/DashboardPage';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
+import OrganizationsManagement from '@/components/admin/organizations/OrganizationsManagement';
+import AuditLogs from '@/components/admin/settings/AuditLogs';
 import DocumentsManagement from '@/components/admin/documents/DocumentsManagement';
 import SystemPromptSettings from '@/components/admin/prompts/SystemPromptSettings';
 import CategoryPromptsSettings from '@/components/admin/prompts/CategoryPromptsSettings';
@@ -117,11 +119,11 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'mcp' | 'skills' | 'workspaces' | 'agents' | 'settings';
+type TabType = 'organizations' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'mcp' | 'skills' | 'workspaces' | 'agents' | 'settings';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'ai-setup' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'autonomous-mode' | 'agent-registry' | 'branding' | 'tokens' | 'usage' | 'audit-logs' | 'ai-setup' | 'api-keys' | 'routes' | 'llm' | 'slash-commands' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 type TokensSection = 'memory' | 'summarization' | 'limits';
 
@@ -256,8 +258,8 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['autonomous-mode', 'agent-registry', 'branding', 'tokens', 'usage', 'ai-setup', 'api-keys', 'routes', 'llm', 'slash-commands', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
-const VALID_TABS: TabType[] = ['dashboard', 'categories', 'documents', 'users', 'prompts', 'tools', 'mcp', 'skills', 'workspaces', 'agents', 'settings'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['autonomous-mode', 'agent-registry', 'branding', 'tokens', 'usage', 'audit-logs', 'ai-setup', 'api-keys', 'routes', 'llm', 'slash-commands', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
+const VALID_TABS: TabType[] = ['organizations', 'dashboard', 'categories', 'documents', 'users', 'prompts', 'tools', 'mcp', 'skills', 'workspaces', 'agents', 'settings'];
 
 function AdminPageContent() {
   const router = useRouter();
@@ -1052,6 +1054,9 @@ function AdminPageContent() {
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && <DashboardPage />}
 
+        {/* Organizations Tab */}
+        {activeTab === 'organizations' && <OrganizationsManagement />}
+
         {/* Documents Tab */}
         {activeTab === 'documents' && (
           <DocumentsManagement documentsSection={documentsSection} />
@@ -1209,6 +1214,9 @@ function AdminPageContent() {
 
               {/* Usage Section - Usage Dashboard */}
               {settingsSection === 'usage' && <TokenUsageDashboard userRole={userRole} />}
+
+              {/* Audit Logs Section */}
+              {settingsSection === 'audit-logs' && <AuditLogs />}
 
               {/* AI & API Setup (consolidated) Section */}
               {settingsSection === 'ai-setup' && <AiApiSetup />}

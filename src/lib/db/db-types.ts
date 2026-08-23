@@ -20,6 +20,8 @@ export interface UsersTable {
   added_by: string | null;
   password_hash: string | null;
   credentials_enabled: Generated<number>;
+  /** The organization this user is currently representing in chats (multi-org switcher). */
+  active_organization_id: number | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }
@@ -38,6 +40,8 @@ export interface CategoriesTable {
   created_by: string;
   created_at: Generated<string>;
   memory_enabled: Generated<boolean>;
+  /** Tenant org for category isolation. Nullable during migration; backfilled to the DEFAULT org. */
+  organization_id: number | null;
 }
 
 export type Category = Selectable<CategoriesTable>;

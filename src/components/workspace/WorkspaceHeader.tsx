@@ -10,6 +10,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Menu, LogIn, LogOut, User, ChevronDown } from 'lucide-react';
+import OrganizationSwitcher from '@/components/org/OrganizationSwitcher';
 
 interface WorkspaceHeaderProps {
   title: string;
@@ -76,6 +77,7 @@ export function WorkspaceHeader({
 
       {/* User section */}
       <div className="flex items-center gap-2">
+        {user && <OrganizationSwitcher variant="on-dark" />}
         {user ? (
           // Logged in - show user menu
           <div className="relative" ref={menuRef}>

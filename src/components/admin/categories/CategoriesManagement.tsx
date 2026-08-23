@@ -16,6 +16,13 @@ interface Category {
   documentCount: number;
   superUserCount: number;
   subscriberCount: number;
+  organizationId?: number | null;
+}
+
+interface Organization {
+  id: number;
+  name: string;
+  isDefault: boolean;
 }
 
 export default function CategoriesManagement() {
@@ -23,11 +30,13 @@ export default function CategoriesManagement() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
 
   // Add category modal state
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [newCategoryOrgId, setNewCategoryOrgId] = useState<number | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
 
   // Delete category modal state
@@ -38,6 +47,7 @@ export default function CategoriesManagement() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editCategoryName, setEditCategoryName] = useState('');
   const [editCategoryDescription, setEditCategoryDescription] = useState('');
+  const [editCategoryOrgId, setEditCategoryOrgId] = useState<number | null>(null);
   const [updatingCategory, setUpdatingCategory] = useState(false);
 
   // Search state
@@ -61,9 +71,23 @@ export default function CategoriesManagement() {
     }
   }, []);
 
+  // Load organizations for the tagging dropdown
+  const loadOrganizations = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/ai-setup/organizations');
+      if (response.ok) {
+        const data = await response.json();
+        setOrganizations(data.organizations || []);
+      }
+    } catch (err) {
+      console.error('Failed to load organizations:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadCategories();
-  }, [loadCategories]);
+    loadOrganizations();
+  }, [loadCategories, loadOrganizations]);
 
   // Add category handler
   const handleAddCategory = async (e: React.FormEvent) => {
@@ -80,6 +104,7 @@ export default function CategoriesManagement() {
         body: JSON.stringify({
           name: newCategoryName.trim(),
           description: newCategoryDescription.trim() || undefined,
+          organizationId: newCategoryOrgId ?? undefined,
         }),
       });
 
@@ -92,6 +117,7 @@ export default function CategoriesManagement() {
       setShowAddCategory(false);
       setNewCategoryName('');
       setNewCategoryDescription('');
+      setNewCategoryOrgId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create category');
     } finally {
@@ -128,6 +154,7 @@ export default function CategoriesManagement() {
     setEditingCategory(category);
     setEditCategoryName(category.name);
     setEditCategoryDescription(category.description || '');
+    setEditCategoryOrgId(category.organizationId ?? null);
   };
 
   // Update category handler
@@ -145,6 +172,7 @@ export default function CategoriesManagement() {
         body: JSON.stringify({
           name: editCategoryName.trim(),
           description: editCategoryDescription.trim() || null,
+          organizationId: editCategoryOrgId,
         }),
       });
 
@@ -388,6 +416,7 @@ export default function CategoriesManagement() {
                   </th>
                   <th className="px-6 py-3 font-medium">Category</th>
                   <th className="px-6 py-3 font-medium">Slug</th>
+                  <th className="px-6 py-3 font-medium">Organization</th>
                   <th className="px-6 py-3 font-medium">Documents</th>
                   <th className="px-6 py-3 font-medium">Super Users</th>
                   <th className="px-6 py-3 font-medium">Subscribers</th>
@@ -419,6 +448,9 @@ export default function CategoriesManagement() {
                     </td>
                     <td className="px-6 py-4 text-gray-600 font-mono text-sm">
                       {cat.slug}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600 text-sm">
+                      {organizations.find((o) => o.id === cat.organizationId)?.name ?? '—'}
                     </td>
                     <td className="px-6 py-4 text-gray-600">{cat.documentCount}</td>
                     <td className="px-6 py-4 text-gray-600">{cat.superUserCount}</td>
@@ -477,6 +509,21 @@ export default function CategoriesManagement() {
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+              <select
+                value={newCategoryOrgId ?? ''}
+                onChange={(e) => setNewCategoryOrgId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Platform Default</option>
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}{o.isDefault ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-6">
@@ -551,6 +598,21 @@ export default function CategoriesManagement() {
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+              <select
+                value={editCategoryOrgId ?? ''}
+                onChange={(e) => setEditCategoryOrgId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Platform Default</option>
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}{o.isDefault ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-6">

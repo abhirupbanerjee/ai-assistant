@@ -1,4 +1,5 @@
 /**
+ * GET  /api/admin/ai-setup/organizations — list organizations visible to the actor.
  * POST /api/admin/ai-setup/organizations — create an ENTITY or INDIVIDUAL org.
  *
  * Enforces the plan §4 invariants: creating an org auto-promotes the first
@@ -13,12 +14,27 @@ import { getUserByEmail } from '@/lib/db/compat/users';
 import {
   requireAiSetupActor,
   isResponse,
+  listOrganizationsForActor,
   jsonError,
 } from '../_service';
 import {
   validateNewOrganization,
   planOrgCreationMemberships,
 } from '@/lib/org-admin';
+
+export async function GET(): Promise<NextResponse> {
+  try {
+    const actorOrResp = await requireAiSetupActor();
+    if (isResponse(actorOrResp)) return actorOrResp;
+
+    const db = await getDb();
+    const organizations = await listOrganizationsForActor(db, actorOrResp);
+    return NextResponse.json({ organizations });
+  } catch (error) {
+    console.error('[ai-setup] list organizations failed:', error);
+    return jsonError('Failed to list organizations', 'INTERNAL', 500);
+  }
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {

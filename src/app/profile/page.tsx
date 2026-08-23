@@ -9,6 +9,7 @@ import Spinner from '@/components/ui/Spinner';
 import ConnectedAccountsSection from '@/components/profile/ConnectedAccountsSection';
 import PersonalMemorySection from '@/components/profile/PersonalMemorySection';
 import CategoryMemorySection from '@/components/profile/CategoryMemorySection';
+import OrganizationSwitcher from '@/components/org/OrganizationSwitcher';
 
 type ProfileTab = 'memory' | 'categories' | 'backup' | 'accounts';
 
@@ -104,6 +105,7 @@ export default function ProfilePage() {
                 <p className="text-sm text-gray-500">{session?.user?.email}</p>
               </div>
             </div>
+            <OrganizationSwitcher />
           </div>
         </div>
       </header>

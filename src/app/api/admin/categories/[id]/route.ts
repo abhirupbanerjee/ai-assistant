@@ -88,9 +88,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { name, description } = body;
+    const { name, description, organizationId } = body;
 
-    const updates: { name?: string; description?: string } = {};
+    const updates: { name?: string; description?: string; organizationId?: number | null } = {};
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim().length === 0) {
@@ -104,6 +104,13 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     if (description !== undefined) {
       updates.description = description?.trim() || '';
+    }
+
+    if (organizationId !== undefined) {
+      updates.organizationId =
+        typeof organizationId === 'number' && Number.isFinite(organizationId)
+          ? organizationId
+          : null;
     }
 
     const category = await updateCategory(categoryId, updates);

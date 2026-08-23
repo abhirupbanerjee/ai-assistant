@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { getAllowedUsers, addAllowedUser, removeAllowedUser, updateUserRole, getUserId, isRootAdmin } from '@/lib/users';
+import { getDb } from '@/lib/db/kysely';
 import {
   addSubscription,
   assignCategoryToSuperUser,
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
     const admin = await requireAdmin();
     const body = await request.json();
 
-    const { email, role, name, subscriptions, assignedCategories } = body;
+    const { email, role, name, subscriptions, assignedCategories, organizationId } = body;
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
@@ -126,6 +127,31 @@ export async function POST(request: NextRequest) {
           await assignCategoryToSuperUser(userId, catId, admin.email);
         }
       }
+    }
+
+    // Organization scoping: when an organization is provided, add the user as a
+    // member. The first active member of an organization is automatically tagged
+    // as `org_admin` (plan §4 / Decision 2); subsequent members are `member`.
+    if (userId && typeof organizationId === 'number' && Number.isFinite(organizationId)) {
+      const db = await getDb();
+      const existing = await db
+        .selectFrom('organization_memberships')
+        .select('user_id')
+        .where('organization_id', '=', organizationId)
+        .where('status', '=', 'active')
+        .executeTakeFirst();
+
+      const membershipRole = existing ? 'member' : 'org_admin';
+      await db
+        .insertInto('organization_memberships')
+        .values({
+          organization_id: organizationId,
+          user_id: userId,
+          role: membershipRole,
+          status: 'active',
+        })
+        .onConflict((oc) => oc.columns(['organization_id', 'user_id']).doNothing())
+        .execute();
     }
 
     return NextResponse.json({

@@ -4,7 +4,7 @@
  * Handles calling external APIs with authentication, caching, and error handling.
  */
 
-import { safeDecrypt } from '../encryption';
+import { safeDecrypt, isEncryptedValue } from '../encryption';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getToolConfig } from '../db/compat/tool-config';
 import { fetchWithSsrfGuard, getSsrfAllowedHosts, validateUrlIsPublic } from '../ssrf-guard';
@@ -360,20 +360,22 @@ function buildHeaders(config: DataAPIConfig): Record<string, string> {
     switch (config.authentication.type) {
       case 'bearer':
         if (creds.token) {
-          const token = safeDecrypt(creds.token) || creds.token;
-          headers['Authorization'] = `Bearer ${token}`;
+          const token = isEncryptedValue(creds.token) ? safeDecrypt(creds.token) : creds.token;
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
         }
         break;
 
       case 'api_key':
         if (creds.apiKey) {
-          const key = safeDecrypt(creds.apiKey) || creds.apiKey;
+          const key = isEncryptedValue(creds.apiKey) ? safeDecrypt(creds.apiKey) : creds.apiKey;
           const headerName = creds.apiKeyHeader || 'X-API-Key';
 
           if (creds.apiKeyLocation === 'query') {
             // API key in query will be added in buildRequestUrl
             // This is handled specially
-          } else {
+          } else if (key) {
             headers[headerName] = key;
           }
         }
@@ -381,7 +383,9 @@ function buildHeaders(config: DataAPIConfig): Record<string, string> {
 
       case 'basic':
         if (creds.username) {
-          const password = creds.password ? (safeDecrypt(creds.password) || creds.password) : '';
+          const password = creds.password
+            ? (isEncryptedValue(creds.password) ? safeDecrypt(creds.password) : creds.password) || ''
+            : '';
           const encoded = Buffer.from(`${creds.username}:${password}`).toString('base64');
           headers['Authorization'] = `Basic ${encoded}`;
         }
