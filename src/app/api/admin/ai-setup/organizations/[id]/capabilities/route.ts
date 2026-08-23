@@ -14,6 +14,10 @@ import {
   loadOrgWithAccess,
   jsonError,
 } from '../../../_service';
+import {
+  buildSupportedProviderCapabilitySet,
+  isProviderCapabilitySupported,
+} from '@/lib/provider-registry';
 
 interface CapabilityInput {
   capabilityId: string;
@@ -61,12 +65,26 @@ export async function PUT(
 
     const capabilities: CapabilityInput[] = body.capabilities;
 
-    // Validate provider ids against the registry (server-side source of truth).
-    const providerIds = await db
-      .selectFrom('providers')
-      .select('id')
-      .execute()
-      .then((rows) => new Set(rows.map((r) => r.id)));
+    // Validate capability ids and provider/capability pairs against the
+    // registry (server-side source of truth). A provider merely existing is not
+    // enough: it must be enabled and explicitly support the capability.
+    const [capabilityRows, mappingRows] = await Promise.all([
+      db.selectFrom('capabilities').select('id').execute(),
+      db
+        .selectFrom('provider_capabilities as pc')
+        .innerJoin('providers as p', 'p.id', 'pc.provider_id')
+        .select(['pc.provider_id', 'pc.capability_id', 'pc.is_supported'])
+        .where('p.enabled', '=', true)
+        .execute(),
+    ]);
+    const capabilityIds = new Set(capabilityRows.map((row) => row.id));
+    const supportedPairs = buildSupportedProviderCapabilitySet(
+      mappingRows.map((row) => ({
+        providerId: row.provider_id,
+        capabilityId: row.capability_id,
+        isSupported: row.is_supported,
+      }))
+    );
 
     const valid: CapabilityInput[] = [];
     const clear: string[] = []; // capability ids whose provider was unset → delete row
@@ -74,12 +92,19 @@ export async function PUT(
       if (!cap || typeof cap.capabilityId !== 'string' || typeof cap.providerId !== 'string') {
         return jsonError('Each capability requires capabilityId and providerId', 'VALIDATION', 400);
       }
+      if (!capabilityIds.has(cap.capabilityId)) {
+        return jsonError(`Unknown capability: ${cap.capabilityId}`, 'VALIDATION', 400);
+      }
       if (cap.providerId.trim() === '') {
         clear.push(cap.capabilityId);
         continue;
       }
-      if (!providerIds.has(cap.providerId)) {
-        return jsonError(`Unknown provider: ${cap.providerId}`, 'VALIDATION', 400);
+      if (!isProviderCapabilitySupported(supportedPairs, cap.providerId, cap.capabilityId)) {
+        return jsonError(
+          `Provider ${cap.providerId} does not support capability ${cap.capabilityId}`,
+          'VALIDATION',
+          400
+        );
       }
       valid.push({
         capabilityId: cap.capabilityId,

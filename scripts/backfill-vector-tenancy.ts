@@ -66,7 +66,9 @@ async function main(): Promise<void> {
   await db.destroy();
 }
 
-main().catch((error) => {
-  console.error('[Backfill] Vector tenancy backfill failed:', error);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error('[Backfill] Vector tenancy backfill failed:', error);
+    process.exit(1);
+  });

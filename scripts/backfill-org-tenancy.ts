@@ -80,9 +80,8 @@ async function main(): Promise<void> {
     buildTokenUsageAssignments,
     buildPlatformCredentialRows,
     buildCapabilityConfigRows,
-    buildProviderReferenceRows,
-    buildCapabilityReferenceRows,
   } = await import('../src/lib/organization-backfill');
+  const { seedProviderRegistry } = await import('../src/lib/provider-registry');
 
   const db = await getDb();
   const report: BackfillReport = {
@@ -97,18 +96,14 @@ async function main(): Promise<void> {
     workspacesNullsRemaining: 0,
   };
 
-  // 0. Seed provider/capability reference rows (satisfies FKs used below).
-  await db
-    .insertInto('providers')
-    .values(buildProviderReferenceRows())
-    .onConflict((oc) => oc.column('id').doNothing())
-    .execute();
-  await db
-    .insertInto('capabilities')
-    .values(buildCapabilityReferenceRows())
-    .onConflict((oc) => oc.column('id').doNothing())
-    .execute();
-  console.log('[Backfill] Ensured provider + capability reference rows exist');
+  // 0. Seed the complete provider/capability registry, including the mapping
+  // rows consumed by the AI & API Setup dropdowns. This is idempotent and also
+  // repairs Phase B deployments that only received FK reference rows.
+  const registry = await seedProviderRegistry(db);
+  console.log(
+    `[Backfill] Ensured provider registry exists (${registry.providers.length} providers, ` +
+      `${registry.capabilities.length} capabilities, ${registry.providerCapabilities.length} mappings)`
+  );
 
   // 1. Create the DEFAULT org exactly once.
   const existingDefault = await db

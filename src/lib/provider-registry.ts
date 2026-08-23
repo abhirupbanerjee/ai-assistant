@@ -68,6 +68,34 @@ export interface RegistryProviderCapability {
   modelOrServiceIds: string[] | null;
 }
 
+/** Stable key used when validating a provider/capability selection. */
+export function providerCapabilityKey(providerId: string, capabilityId: string): string {
+  return `${providerId}\u0000${capabilityId}`;
+}
+
+/**
+ * Build the allow-list used by API write paths. Keeping this conversion pure
+ * makes the registry authorization rule easy to test without a live database.
+ */
+export function buildSupportedProviderCapabilitySet(
+  mappings: Array<{ providerId: string; capabilityId: string; isSupported: boolean }>
+): Set<string> {
+  return new Set(
+    mappings
+      .filter((mapping) => mapping.isSupported)
+      .map((mapping) => providerCapabilityKey(mapping.providerId, mapping.capabilityId))
+  );
+}
+
+/** Return true only when the registry explicitly supports the pair. */
+export function isProviderCapabilitySupported(
+  supportedPairs: ReadonlySet<string>,
+  providerId: string,
+  capabilityId: string
+): boolean {
+  return supportedPairs.has(providerCapabilityKey(providerId, capabilityId));
+}
+
 // ============================================================================
 // Provider registry
 // ============================================================================
@@ -304,15 +332,22 @@ export function buildProviderCapabilityRows(registry: FilteredRegistry) {
 /**
  * Seed the server-side registry into PostgreSQL. Idempotent: every insert is
  * ON CONFLICT DO NOTHING, so repeated calls (startup + backfill script) never
- * duplicate rows. OPTIONAL developer-tool rows are included only when the
- * corresponding integration exists in the repository.
+ * duplicate rows.
+ *
+ * The default is the complete compiled registry. Runtime production images use
+ * Next.js standalone packaging and do not contain the source paths inspected by
+ * `detectDeveloperToolIntegrations()`, so filesystem detection must not decide
+ * which rows exist during application startup. Callers that intentionally build
+ * a reduced distribution can still pass `presence` (or `cwd`) explicitly.
  */
 export async function seedProviderRegistry(
   db: Kysely<DB>,
   options: { presence?: IntegrationPresence; cwd?: string } = {}
 ): Promise<FilteredRegistry> {
-  const presence = options.presence ?? detectDeveloperToolIntegrations(options.cwd);
-  const registry = filterRegistryByIntegrations(presence);
+  const hasExplicitIntegrationFilter = options.presence !== undefined || options.cwd !== undefined;
+  const registry = hasExplicitIntegrationFilter
+    ? filterRegistryByIntegrations(options.presence ?? detectDeveloperToolIntegrations(options.cwd))
+    : buildFullRegistry();
 
   if (registry.providers.length > 0) {
     await db

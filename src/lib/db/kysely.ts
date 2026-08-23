@@ -1786,6 +1786,17 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_provider_capabilities_capability ON provider_capabilities(capability_id)`.execute(database);
   console.log('[Kysely] Ensured provider_capabilities table exists (Phase A)');
 
+  // Seed the complete compiled registry on every startup. The operation is
+  // idempotent and repairs deployments where Phase B inserted provider and
+  // capability references but no provider_capabilities mappings.
+  const { seedProviderRegistry } = await import('../provider-registry');
+  const seededRegistry = await seedProviderRegistry(database);
+  console.log(
+    `[Kysely] Seeded provider registry (${seededRegistry.providers.length} providers, ` +
+      `${seededRegistry.capabilities.length} capabilities, ` +
+      `${seededRegistry.providerCapabilities.length} mappings)`
+  );
+
   // Platform-level credentials (env-sourced, read-only from the browser).
   await sql`
     CREATE TABLE IF NOT EXISTS platform_provider_credentials (
