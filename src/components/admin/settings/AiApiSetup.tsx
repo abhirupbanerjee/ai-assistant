@@ -34,6 +34,7 @@ interface RegistryProvider {
   description: string | null;
   enabled: boolean;
   sortOrder: number;
+  connectionMode: 'provider-key' | 'tool-config' | 'keyless';
 }
 
 interface RegistryCapability {
@@ -49,6 +50,7 @@ interface RegistryProviderCapability {
   capabilityId: string;
   isSupported: boolean;
   modelOrServiceIds: unknown;
+  selectionMode: 'none' | 'model' | 'service';
 }
 
 interface Overview {
@@ -106,14 +108,6 @@ interface Overview {
   }>;
 }
 
-interface Member {
-  userId: number;
-  email: string;
-  name: string | null;
-  role: string;
-  status: string;
-}
-
 const HEALTH_BADGE: Record<HealthState, string> = {
   READY: 'bg-green-100 text-green-800',
   DEGRADED: 'bg-yellow-100 text-yellow-800',
@@ -145,12 +139,8 @@ export default function AiApiSetup() {
   // Credential entry form state
   const [credProvider, setCredProvider] = useState('');
   const [credSecret, setCredSecret] = useState('');
-  const [credDefault, setCredDefault] = useState(false);
   const [credBusy, setCredBusy] = useState(false);
 
-  // Members + usage
-  const [members, setMembers] = useState<Member[]>([]);
-  const [usage, setUsage] = useState<{ totalTokens: number; totalCost: number; costCanView: boolean } | null>(null);
 
   const load = useCallback(async (orgId?: number | null) => {
     setLoading(true);
@@ -169,8 +159,14 @@ export default function AiApiSetup() {
       const initial: Record<string, { providerId: string; model: string; enabled: boolean }> = {};
       for (const cap of data.registry.capabilities) {
         const existing = data.capabilityConfig.find((c) => c.capabilityId === cap.id);
+        const supportedProviders = data.registry.providerCapabilities
+          .filter((pc) =>
+            pc.capabilityId === cap.id && pc.isSupported &&
+            data.registry.providers.some((provider) => provider.id === pc.providerId && provider.enabled)
+          )
+          .map((pc) => pc.providerId);
         initial[cap.id] = {
-          providerId: existing?.providerId ?? '',
+          providerId: existing?.providerId ?? (supportedProviders.length === 1 ? supportedProviders[0] : ''),
           model: existing?.modelOrServiceId ?? '',
           enabled: existing?.enabled ?? true,
         };
@@ -207,7 +203,7 @@ export default function AiApiSetup() {
       const ids = overview.registry.providerCapabilities
         .filter((pc) => pc.capabilityId === capabilityId && pc.isSupported)
         .map((pc) => pc.providerId);
-      return overview.registry.providers.filter((p) => ids.includes(p.id));
+      return overview.registry.providers.filter((p) => p.enabled && ids.includes(p.id));
     },
     [overview]
   );
@@ -293,7 +289,7 @@ export default function AiApiSetup() {
       const res = await fetch(`/api/admin/ai-setup/organizations/${selectedOrgId}/credentials`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId: credProvider, secret: credSecret, isDefault: credDefault }),
+        body: JSON.stringify({ providerId: credProvider, secret: credSecret }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error || 'Failed to save credential');
@@ -307,7 +303,7 @@ export default function AiApiSetup() {
     }
   };
 
-  const credentialAction = async (credentialId: string, action: 'test' | 'disable' | 'enable' | 'rotate', secret?: string) => {
+  const credentialAction = async (credentialId: string, action: 'test' | 'replace' | 'disable' | 'enable' | 'rotate', secret?: string) => {
     if (!selectedOrgId) return;
     try {
       const res = await fetch(
@@ -327,28 +323,6 @@ export default function AiApiSetup() {
     }
   };
 
-  const loadMembers = async () => {
-    if (!selectedOrgId) return;
-    const res = await fetch(`/api/admin/ai-setup/organizations/${selectedOrgId}/members`);
-    if (res.ok) setMembers((await res.json()).members);
-  };
-
-  const loadUsage = async () => {
-    if (!selectedOrgId) return;
-    const res = await fetch(`/api/admin/ai-setup/organizations/${selectedOrgId}/usage`);
-    if (res.ok) {
-      const data = await res.json();
-      setUsage({ totalTokens: data.usage.totalTokens, totalCost: data.usage.totalCost, costCanView: data.cost.canView });
-    }
-  };
-
-  useEffect(() => {
-    if (selectedOrgId != null) {
-      loadMembers();
-      loadUsage();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOrgId, overview?.selectedOrgId]);
 
   if (loading && !overview) {
     return (
@@ -426,11 +400,11 @@ export default function AiApiSetup() {
               <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${HEALTH_BADGE[overview.health.readiness]}`}>
                 {overview.health.readiness}
               </span>
-              {overview.health.warnings.map((w, i) => (
-                <span key={i} className="text-sm text-yellow-700 flex items-center gap-1">
-                  <AlertTriangle size={14} /> {w}
+              {overview.health.warnings.length > 0 && (
+                <span className="text-sm text-yellow-700 flex items-center gap-1">
+                  <AlertTriangle size={14} /> {overview.health.warnings.length} runtime notice{overview.health.warnings.length === 1 ? '' : 's'}
                 </span>
-              ))}
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {overview.health.capabilities.map((c) => (
@@ -444,6 +418,11 @@ export default function AiApiSetup() {
                   <div className="text-xs text-gray-500 mt-1">
                     {c.providerId ? `Provider: ${c.providerId}` : 'Not configured'} · {c.importance}
                   </div>
+                  {c.warnings.map((warning) => (
+                    <div key={warning} className="mt-2 text-xs text-yellow-700">
+                      {warning}
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -464,6 +443,11 @@ export default function AiApiSetup() {
               {caps.map((cap) => {
                 const cfg = capConfig[cap.id] ?? { providerId: '', model: '', enabled: true };
                 const providers = providersForCapability(cap.id);
+                const mapping = overview.registry.providerCapabilities.find(
+                  (pc) => pc.capabilityId === cap.id && pc.providerId === cfg.providerId && pc.isSupported
+                );
+                const modelOptions = modelsForCapability(cap.id, cfg.providerId);
+                const showModelSelection = mapping?.selectionMode !== 'none' && modelOptions.length > 0;
                 const capHealth = overview.health?.capabilities.find((h) => h.capabilityId === cap.id);
                 const keyMissing =
                   cap.importance === 'REQUIRED' &&
@@ -474,28 +458,37 @@ export default function AiApiSetup() {
                       <div className="font-medium text-sm">{cap.name}</div>
                       <div className="text-xs text-gray-500">{cap.importance}</div>
                     </div>
-                    <select
-                      value={cfg.providerId}
-                      disabled={!canManage}
-                      onChange={(e) => setCapConfig((prev) => ({ ...prev, [cap.id]: { ...cfg, providerId: e.target.value } }))}
-                      className="border rounded-md px-2 py-1 text-sm"
-                    >
-                      <option value="">— none —</option>
-                      {providers.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={cfg.model}
-                      disabled={!canManage}
-                      onChange={(e) => setCapConfig((prev) => ({ ...prev, [cap.id]: { ...cfg, model: e.target.value } }))}
-                      className="border rounded-md px-2 py-1 text-sm w-56"
-                    >
-                      <option value="">— auto —</option>
-                      {modelsForCapability(cap.id, cfg.providerId).map((modelId) => (
-                        <option key={modelId} value={modelId}>{modelId}</option>
-                      ))}
-                    </select>
+                    {providers.length > 1 ? (
+                      <select
+                        value={cfg.providerId}
+                        disabled={!canManage}
+                        onChange={(e) => setCapConfig((prev) => ({
+                          ...prev,
+                          [cap.id]: { ...cfg, providerId: e.target.value, model: '' },
+                        }))}
+                        className="border rounded-md px-2 py-1 text-sm"
+                      >
+                        <option value="">— none —</option>
+                        {providers.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    ) : providers[0] ? (
+                      <span className="text-sm text-gray-700">{providers[0].name}</span>
+                    ) : null}
+                    {showModelSelection && (
+                      <select
+                        value={cfg.model}
+                        disabled={!canManage}
+                        onChange={(e) => setCapConfig((prev) => ({ ...prev, [cap.id]: { ...cfg, model: e.target.value } }))}
+                        className="border rounded-md px-2 py-1 text-sm w-64"
+                      >
+                        <option value="">— automatic default —</option>
+                        {modelOptions.map((modelId) => (
+                          <option key={modelId} value={modelId}>{modelId}</option>
+                        ))}
+                      </select>
+                    )}
                     {keyMissing ? (
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                         Key required
@@ -557,7 +550,10 @@ export default function AiApiSetup() {
               <div className="text-xs text-gray-500 mb-1">Provider</div>
               <select value={credProvider} onChange={(e) => setCredProvider(e.target.value)} className="border rounded-md px-2 py-1 text-sm">
                 <option value="">Select provider…</option>
-                {overview.registry.providers.map((p) => (
+                {overview.registry.providers
+                  .filter((p) => p.connectionMode === 'provider-key')
+                  .filter((p) => Object.values(capConfig).some((c) => c.enabled && c.providerId === p.id))
+                  .filter((p) => !overview.credentials.some((c) => c.providerId === p.id && c.status === 'active')).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
@@ -572,38 +568,40 @@ export default function AiApiSetup() {
                 className="border rounded-md px-2 py-1 text-sm w-64"
               />
             </div>
-            <label className="flex items-center gap-1 text-sm">
-              <input type="checkbox" checked={credDefault} onChange={(e) => setCredDefault(e.target.checked)} />
-              Default
-            </label>
             <Button onClick={saveCredential} disabled={credBusy || !credProvider || !credSecret}>
               {credBusy ? 'Saving…' : 'Add Key'}
             </Button>
           </div>
         )}
 
-        <div className="space-y-2">
-          {overview.registry.providers.map((p) => {
-            const creds = overview.credentials.filter((c) => c.providerId === p.id);
-            return (
-              <div key={p.id} className="border rounded-md p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium text-sm">{p.name}</span>
-                    <span className="text-xs text-gray-500 ml-2">{p.id}</span>
-                  </div>
-                  {creds.length === 0 ? (
-                    <span className="text-xs text-gray-400">No organization key</span>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {creds.map((c) => (
-                        <div key={c.credentialId} className="flex items-center gap-2 text-xs">
-                          <span className={`px-2 py-0.5 rounded-full ${c.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
-                            {c.status}
-                          </span>
-                          {c.isDefault && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">default</span>}
-                          <span className="text-gray-400">{c.credentialId.slice(0, 12)}…</span>
-                          <button className="text-blue-600 underline" onClick={() => credentialAction(c.credentialId, 'test')}>
+        {org?.credentialMode === 'ORGANIZATION_BYOK' && (
+          <div className="space-y-2">
+            {overview.registry.providers
+              .filter((p) => p.connectionMode === 'provider-key')
+              .filter((p) =>
+                Object.values(capConfig).some((c) => c.enabled && c.providerId === p.id) ||
+                overview.credentials.some((c) => c.providerId === p.id && c.status === 'active')
+              )
+              .map((p) => {
+                const active = overview.credentials.find(
+                  (c) => c.providerId === p.id && c.status === 'active'
+                );
+                return (
+                  <details key={p.id} className="border rounded-md px-3 py-2">
+                    <summary className="flex cursor-pointer items-center justify-between">
+                      <span>
+                        <span className="font-medium text-sm">{p.name}</span>
+                        <span className="text-xs text-gray-500 ml-2">{p.id}</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {active ? 'connected' : 'key required'}
+                      </span>
+                    </summary>
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                      {active ? (
+                        <>
+                          <span className="text-gray-500">{active.credentialId.slice(0, 12)}…</span>
+                          <button className="text-blue-600 underline" onClick={() => credentialAction(active.credentialId, 'test')}>
                             Test Connection
                           </button>
                           {canManage && (
@@ -612,74 +610,41 @@ export default function AiApiSetup() {
                                 className="text-blue-600 underline"
                                 onClick={async () => {
                                   const secret = window.prompt('Enter the replacement key');
-                                  if (!secret) return;
-                                  await fetch(`/api/admin/ai-setup/organizations/${selectedOrgId}/credentials`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ providerId: p.id, credentialId: c.credentialId, secret }),
-                                  });
-                                  await load(selectedOrgId);
+                                  if (secret) await credentialAction(active.credentialId, 'replace', secret);
                                 }}
                               >
                                 Replace Key
                               </button>
                               <button
                                 className="text-red-600 underline"
-                                onClick={() => credentialAction(c.credentialId, c.status === 'active' ? 'disable' : 'enable')}
+                                onClick={() => credentialAction(active.credentialId, 'disable')}
                               >
-                                {c.status === 'active' ? 'Disable Connection' : 'Enable'}
+                                Disable Connection
                               </button>
                             </>
                           )}
-                        </div>
-                      ))}
+                        </>
+                      ) : (
+                        <span className="text-gray-500">Add an organization key above to activate this provider.</span>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                  </details>
+                );
+              })}
+            {overview.credentials.some((c) => c.status !== 'active') && (
+              <details className="border rounded-md px-3 py-2">
+                <summary className="cursor-pointer text-sm text-gray-600">Credential history</summary>
+                <ul className="mt-2 space-y-1 text-xs text-gray-500">
+                  {overview.credentials.filter((c) => c.status !== 'active').map((c) => (
+                    <li key={c.credentialId}>{c.providerId} · {c.credentialId.slice(0, 12)}… · {c.status}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
       </section>
 
-      {/* Members */}
-      {org && (
-        <section className="bg-white rounded-lg border shadow-sm p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-900">Members</h2>
-            <p className="text-xs text-gray-500">
-              Manage organization-scoped users in Users → Organization.
-            </p>
-          </div>
-          {members.length === 0 ? (
-            <p className="text-sm text-gray-500">No members.</p>
-          ) : (
-            <ul className="space-y-2">
-              {members.map((m) => (
-                <li key={m.userId} className="flex items-center justify-between border rounded-md p-2 text-sm">
-                  <span>{m.email} {m.name ? `(${m.name})` : ''}</span>
-                  <span className={`px-2 py-0.5 rounded-full ${m.role === 'org_admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {m.role}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* Cost / usage */}
-      {usage && (
-        <section className="bg-white rounded-lg border shadow-sm p-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Cost & Usage</h2>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <span className="px-2 py-1 rounded bg-gray-100">Tokens: {usage.totalTokens.toLocaleString()}</span>
-            <span className="px-2 py-1 rounded bg-gray-100">
-              Cost: {usage.costCanView ? `$${usage.totalCost.toFixed(4)}` : 'UNAVAILABLE'}
-            </span>
-          </div>
-        </section>
-      )}
 
     </div>
   );

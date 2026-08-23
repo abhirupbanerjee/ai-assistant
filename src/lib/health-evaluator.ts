@@ -42,8 +42,12 @@ export interface CapabilitySnapshot {
   configured: boolean;
   /** The configured provider id (may be null when not configured). */
   providerId: string | null;
-  /** A valid credential has been resolved for the configured provider. */
-  credentialAvailable: boolean;
+  /** The effective runtime (credential, local service, CLI, or keyless tool) can run. */
+  runtimeAvailable?: boolean;
+  /** @deprecated Compatibility alias for older callers and fixtures. */
+  credentialAvailable?: boolean;
+  /** Adapter-specific details, including non-fatal warnings for READY tools. */
+  warnings?: string[];
 }
 
 export interface CapabilityHealth {
@@ -85,7 +89,9 @@ export function evaluateCapabilityHealth(
   snapshot: CapabilitySnapshot,
   context: HealthContext | null = null
 ): CapabilityHealth {
-  const { capabilityId, importance, providerId, configured, credentialAvailable } = snapshot;
+  const { capabilityId, importance, providerId, configured } = snapshot;
+  const runtimeAvailable = snapshot.runtimeAvailable ?? snapshot.credentialAvailable ?? false;
+  const adapterWarnings = snapshot.warnings ?? [];
   const name = capabilityDisplayName(capabilityId);
 
   if (!configured) {
@@ -97,18 +103,20 @@ export function evaluateCapabilityHealth(
     return { capabilityId, importance, state, providerId, warnings };
   }
 
-  if (!credentialAvailable) {
+  if (!runtimeAvailable) {
     return {
       capabilityId,
       importance,
       state: 'UNAVAILABLE',
       providerId,
-      warnings: [`${name} credential is missing or invalid`],
+      warnings: adapterWarnings.length > 0
+        ? adapterWarnings
+        : [`${name} is not available at runtime`],
     };
   }
 
   // Configured and credential available → READY, with special-case warnings.
-  const warnings: string[] = [];
+  const warnings: string[] = [...adapterWarnings];
   if (
     context &&
     capabilityId === 'llm' &&
@@ -133,7 +141,8 @@ function buildContext(snapshots: CapabilitySnapshot[]): HealthContext {
   return {
     llmProviderId: llm?.providerId ?? null,
     embeddingsProviderId: embeddings?.providerId ?? null,
-    embeddingsCredentialAvailable: embeddings?.credentialAvailable ?? false,
+    embeddingsCredentialAvailable:
+      embeddings?.runtimeAvailable ?? embeddings?.credentialAvailable ?? false,
   };
 }
 

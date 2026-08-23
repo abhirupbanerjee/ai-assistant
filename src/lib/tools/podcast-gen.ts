@@ -17,6 +17,7 @@ import type { ToolDefinition, ValidationResult } from '../tools';
 import { numInRange } from '../tools';
 import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/compat';
 import { getRequestContext } from '@/lib/request-context';
+import { getDb } from '@/lib/db/kysely';
 import { getDisclaimerConfigIfEnabled } from '../disclaimer';
 import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../provider-credential';
 import { getTemperatureForModel } from '@/lib/llm-thinking';
@@ -103,6 +104,39 @@ export async function getPodcastGenConfig(): Promise<PodcastGenConfig> {
   }
 
   return PODCAST_GEN_DEFAULTS;
+}
+
+/** Apply the current organization's registry selection without duplicating tool defaults. */
+export async function getEffectivePodcastGenConfig(
+  organizationIdOverride?: number | null
+): Promise<PodcastGenConfig> {
+  const base = await getPodcastGenConfig();
+  const organizationId = organizationIdOverride === undefined
+    ? getRequestContext().organizationId : organizationIdOverride;
+  if (organizationId == null) return base;
+
+  const db = await getDb();
+  const selected = await db.selectFrom('organization_capability_config')
+    .select(['provider_id', 'model_or_service_id', 'enabled'])
+    .where('organization_id', '=', organizationId)
+    .where('capability_id', '=', 'podcast-audio')
+    .executeTakeFirst();
+  if (!selected) return base;
+  if (!selected.enabled) return { ...base, activeProvider: 'none' };
+  if (selected.provider_id !== 'openai' && selected.provider_id !== 'gemini') return base;
+
+  const providerId = selected.provider_id;
+  return {
+    ...base,
+    activeProvider: providerId,
+    providers: {
+      ...base.providers,
+      [providerId]: {
+        ...base.providers[providerId],
+        ...(selected.model_or_service_id ? { model: selected.model_or_service_id } : {}),
+      },
+    },
+  };
 }
 
 /**
@@ -665,7 +699,7 @@ export async function generatePodcastBuffer(
   args: PodcastGenToolArgs,
   configOverride?: Record<string, unknown>
 ): Promise<PodcastBufferResult> {
-  const baseConfig = await getPodcastGenConfig();
+  const baseConfig = await getEffectivePodcastGenConfig();
 
   // Merge skill-level config override with global config
   let config: PodcastGenConfig = baseConfig;
@@ -903,7 +937,7 @@ export async function generatePodcast(
   }
 
   try {
-    const baseConfig = await getPodcastGenConfig();
+    const baseConfig = await getEffectivePodcastGenConfig();
     let config: PodcastGenConfig = baseConfig;
     if (configOverride) {
       const overrideProviders = configOverride.providers as Record<string, Record<string, unknown>> | undefined;

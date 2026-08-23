@@ -990,7 +990,7 @@ async function runRedirectAudit(url: string, config: { maxHops: number; timeoutM
 // UNIFIED CONFIG
 // ========================================================================
 
-interface WebsiteAnalysisConfig {
+export interface WebsiteAnalysisConfig {
   // PageSpeed
   apiKey: string;
   defaultStrategy: 'mobile' | 'desktop';
@@ -1090,7 +1090,9 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
 // CONFIG HELPERS
 // ========================================================================
 
-async function getWebsiteAnalysisConfig(categoryId?: number): Promise<{ enabled: boolean; config: WebsiteAnalysisConfig }> {
+export async function getWebsiteAnalysisConfig(
+  categoryId?: number
+): Promise<{ enabled: boolean; config: WebsiteAnalysisConfig }> {
   if (categoryId) {
     const effective = await getEffectiveToolConfig('website_analysis', categoryId);
     return { enabled: effective.enabled, config: (effective.config as unknown as WebsiteAnalysisConfig) || defaultConfig };

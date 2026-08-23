@@ -22,8 +22,8 @@ import {
   canViewOrganization,
   isSuperAdminRole,
 } from '@/lib/org-admin';
-import type { CapabilityId } from '@/lib/provider-registry';
-import { resolveCapability } from '@/lib/capability-resolver';
+import { resolveProviderConnectionMode, type CapabilityId } from '@/lib/provider-registry';
+import { resolveCapabilityRuntimeStatus } from '@/lib/capability-status';
 import { evaluateHealthReport, type HealthReport } from '@/lib/health-evaluator';
 import { redactSecret } from '@/lib/credential-vault';
 
@@ -243,9 +243,9 @@ export async function activeOrgCredentialCount(
 // ============================================================================
 
 export interface RegistryPayload {
-  providers: Array<{ id: string; name: string; description: string | null; enabled: boolean; sortOrder: number }>;
+  providers: Array<{ id: string; name: string; description: string | null; enabled: boolean; sortOrder: number; connectionMode: 'provider-key' | 'tool-config' | 'keyless' }>;
   capabilities: Array<{ id: string; name: string; description: string | null; importance: string; sortOrder: number }>;
-  providerCapabilities: Array<{ providerId: string; capabilityId: string; isSupported: boolean; modelOrServiceIds: unknown }>;
+  providerCapabilities: Array<{ providerId: string; capabilityId: string; isSupported: boolean; modelOrServiceIds: unknown; selectionMode: 'none' | 'model' | 'service' }>;
 }
 
 /** Read the server-side registry rows (single source of truth for the UI). */
@@ -263,7 +263,7 @@ export async function loadRegistry(db: Kysely<DB>): Promise<RegistryPayload> {
       .execute(),
     db
       .selectFrom('provider_capabilities')
-      .select(['provider_id', 'capability_id', 'is_supported', 'model_or_service_ids'])
+      .select(['provider_id', 'capability_id', 'is_supported', 'model_or_service_ids', 'selection_mode'])
       .execute(),
   ]);
 
@@ -274,6 +274,7 @@ export async function loadRegistry(db: Kysely<DB>): Promise<RegistryPayload> {
       description: p.description,
       enabled: p.enabled,
       sortOrder: p.sort_order,
+      connectionMode: resolveProviderConnectionMode(p.id),
     })),
     capabilities: capabilities.map((c) => ({
       id: c.id,
@@ -287,6 +288,7 @@ export async function loadRegistry(db: Kysely<DB>): Promise<RegistryPayload> {
       capabilityId: pc.capability_id,
       isSupported: pc.is_supported,
       modelOrServiceIds: pc.model_or_service_ids,
+      selectionMode: pc.selection_mode,
     })),
   };
 }
@@ -308,13 +310,14 @@ export async function buildHealthReport(
 
   const snapshots = [];
   for (const cap of capabilities) {
-    const resolved = await resolveCapability(db, orgId, cap.id as CapabilityId);
+    const resolved = await resolveCapabilityRuntimeStatus(db, orgId, cap.id as CapabilityId);
     snapshots.push({
-      capabilityId: resolved.capabilityId,
-      importance: resolved.importance,
-      configured: resolved.health !== 'NOT_CONFIGURED',
+      capabilityId: cap.id,
+      importance: cap.importance,
+      configured: resolved.status.configured,
       providerId: resolved.providerId,
-      credentialAvailable: resolved.available,
+      runtimeAvailable: resolved.status.runtimeAvailable,
+      warnings: resolved.status.warnings,
     });
   }
 

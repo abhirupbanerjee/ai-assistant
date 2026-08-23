@@ -12,6 +12,8 @@
 
 import { getRerankerSettings, type RerankerProvider } from './db/compat/config';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
+import { getDb } from './db/kysely';
+import { getRequestContext } from './request-context';
 import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from './provider-credential';
 import type { RetrievedChunk } from '@/types';
 
@@ -450,12 +452,44 @@ async function rerankWithBGE(
  * @param options.boostFactor - Boost multiplier (default: 1.3)
  * @returns Reranked chunks sorted by relevance
  */
+async function getEffectiveRerankerSettings() {
+  const settings = await getRerankerSettings();
+  const organizationId = getRequestContext().organizationId;
+  if (organizationId == null) return settings;
+
+  const db = await getDb();
+  const selected = await db.selectFrom('organization_capability_config')
+    .select(['provider_id', 'model_or_service_id', 'enabled'])
+    .where('organization_id', '=', organizationId)
+    .where('capability_id', '=', 'reranking')
+    .executeTakeFirst();
+  if (!selected) return settings;
+
+  let selectedProvider: RerankerProvider | null = null;
+  if (selected.provider_id === 'cohere') selectedProvider = 'cohere';
+  if (selected.provider_id === 'fireworks') selectedProvider = 'fireworks';
+  if (selected.provider_id === 'bge') {
+    selectedProvider = selected.model_or_service_id === 'bge-base'
+      ? 'bge-base'
+      : selected.model_or_service_id === 'local' ? 'local' : 'bge-large';
+  }
+  if (!selectedProvider) return settings;
+
+  return {
+    ...settings,
+    enabled: settings.enabled && selected.enabled,
+    providers: settings.providers.map((provider) => ({
+      ...provider,
+      enabled: provider.provider === selectedProvider,
+    })),
+  };
+}
 export async function rerankChunks(
   query: string,
   chunks: RetrievedChunk[],
   options?: RerankOptions
 ): Promise<RetrievedChunk[]> {
-  const settings = await getRerankerSettings();
+  const settings = await getEffectiveRerankerSettings();
   // Determine minScore: use override if provided, else check deprecated bypassThreshold, else use configured threshold
   let minScore: number;
   if (options?.minScoreOverride !== undefined) {
@@ -495,7 +529,8 @@ export async function rerankChunks(
   }
 
   // Check cache first
-  const cacheKey = `reranker:${hashQuery(`${query}:${chunks.map(c => c.id).join(',')}`)}`;
+  const providerScope = settings.providers.filter((provider) => provider.enabled).map((provider) => provider.provider).join(',');
+  const cacheKey = `reranker:${hashQuery(`${providerScope}:${query}:${chunks.map(c => c.id).join(',')}`)}`;
 
   try {
     const cached = await getCachedQuery(cacheKey);

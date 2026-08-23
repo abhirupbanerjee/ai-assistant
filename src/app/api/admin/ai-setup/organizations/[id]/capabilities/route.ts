@@ -17,6 +17,9 @@ import {
 import {
   buildSupportedProviderCapabilitySet,
   isProviderCapabilitySupported,
+  providerCapabilityKey,
+  validateCapabilitySelection,
+  type ProviderCapabilitySelectionRule,
 } from '@/lib/provider-registry';
 
 interface CapabilityInput {
@@ -68,13 +71,23 @@ export async function PUT(
     // Validate capability ids and provider/capability pairs against the
     // registry (server-side source of truth). A provider merely existing is not
     // enough: it must be enabled and explicitly support the capability.
-    const [capabilityRows, mappingRows] = await Promise.all([
+    const [capabilityRows, mappingRows, enabledModelRows, credentialRows] = await Promise.all([
       db.selectFrom('capabilities').select('id').execute(),
       db
         .selectFrom('provider_capabilities as pc')
         .innerJoin('providers as p', 'p.id', 'pc.provider_id')
-        .select(['pc.provider_id', 'pc.capability_id', 'pc.is_supported'])
+        .select(['pc.provider_id', 'pc.capability_id', 'pc.is_supported', 'pc.model_or_service_ids', 'pc.selection_mode'])
         .where('p.enabled', '=', true)
+        .execute(),
+      db
+        .selectFrom('enabled_models')
+        .select(['id', 'provider_id'])
+        .where('enabled', '=', 1)
+        .execute(),
+      db
+        .selectFrom('organization_provider_credentials')
+        .select(['provider_id', 'credential_id', 'status'])
+        .where('organization_id', '=', orgId)
         .execute(),
     ]);
     const capabilityIds = new Set(capabilityRows.map((row) => row.id));
@@ -85,6 +98,25 @@ export async function PUT(
         isSupported: row.is_supported,
       }))
     );
+    const selectionRules = new Map<string, ProviderCapabilitySelectionRule>();
+    for (const row of mappingRows) {
+      selectionRules.set(providerCapabilityKey(row.provider_id, row.capability_id), {
+        selectionMode: row.selection_mode,
+        modelOrServiceIds: row.model_or_service_ids,
+      });
+    }
+    const enabledModelsByProvider = new Map<string, Set<string>>();
+    for (const row of enabledModelRows) {
+      const ids = enabledModelsByProvider.get(row.provider_id) ?? new Set<string>();
+      ids.add(row.id);
+      enabledModelsByProvider.set(row.provider_id, ids);
+    }
+    const activeCredentialKeys = new Set(
+      credentialRows
+        .filter((row) => row.status === 'active')
+        .map((row) => `${row.provider_id}\u0000${row.credential_id}`)
+    );
+
 
     const valid: CapabilityInput[] = [];
     const clear: string[] = []; // capability ids whose provider was unset → delete row
@@ -106,11 +138,36 @@ export async function PUT(
           400
         );
       }
+      const rule = selectionRules.get(providerCapabilityKey(cap.providerId, cap.capabilityId));
+      if (!rule) {
+        return jsonError('Provider capability metadata is missing', 'VALIDATION', 400);
+      }
+      const selection = validateCapabilitySelection(
+        rule,
+        cap.modelOrServiceId,
+        enabledModelsByProvider.get(cap.providerId) ?? new Set()
+      );
+      if (!selection.valid) {
+        const detail = selection.reason === 'SELECTION_NOT_ALLOWED'
+          ? `Capability ${cap.capabilityId} does not accept a model or service selection`
+          : `Model or service ${cap.modelOrServiceId} is not supported by ${cap.providerId} for ${cap.capabilityId}`;
+        return jsonError(detail, 'VALIDATION', 400);
+      }
+      const credentialId = typeof cap.credentialId === 'string' && cap.credentialId.trim()
+        ? cap.credentialId.trim()
+        : null;
+      if (credentialId && !activeCredentialKeys.has(`${cap.providerId}\u0000${credentialId}`)) {
+        return jsonError(
+          `Credential ${credentialId} is not an active ${cap.providerId} credential for this organization`,
+          'VALIDATION',
+          400
+        );
+      }
       valid.push({
         capabilityId: cap.capabilityId,
         providerId: cap.providerId,
-        modelOrServiceId: cap.modelOrServiceId ?? null,
-        credentialId: cap.credentialId ?? null,
+        modelOrServiceId: cap.modelOrServiceId?.trim() || null,
+        credentialId,
         enabled: cap.enabled !== false,
       });
     }

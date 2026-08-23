@@ -16,6 +16,7 @@ import {
   wrapDek,
 } from './credential-vault';
 import { encrypt, isEncryptionConfigured } from './encryption';
+import { resolveOrganizationCredentialById } from './provider-credential';
 
 // A valid 64-hex-character (32-byte) master key used for all non-fail-closed
 // tests. `getVaultKek()` reads process.env at call time, so setting it here is
@@ -227,4 +228,48 @@ test('redaction fully masks short secrets (no prefix/suffix disclosure)', () => 
   assert.equal(redacted, '••••••••');
   assert.equal(redacted.includes(secret), false);
   assert.equal(redactSecret('123456789012345').includes('123'), false);
+});
+
+test('exact credential resolution validates the requested id, not a sibling provider key', async () => {
+  const makeRow = (credentialId: string, secret: string) => {
+    const encrypted = encryptCredentialSecret(secret, {
+      organizationId: 1, providerId: 'openai', credentialId,
+    });
+    return {
+      provider_id: 'openai',
+      credential_id: credentialId,
+      credential_version: 1,
+      status: 'active',
+      secret_ciphertext: encrypted.secretCiphertext,
+      dek_wrapped: encrypted.dekWrapped,
+      aad: encrypted.aad,
+      kek_version: encrypted.kekVersion,
+    };
+  };
+  const rows = [
+    makeRow('cred-first', 'sk-first-credential'),
+    makeRow('cred-requested', 'sk-requested-credential'),
+  ];
+  const filters = new Map<string, unknown>();
+  const builder = {
+    select() { return builder; },
+    where(column: string, _operator: string, value: unknown) {
+      filters.set(column, value);
+      return builder;
+    },
+    async executeTakeFirst() {
+      return rows.find((row) =>
+        row.provider_id === filters.get('provider_id') &&
+        row.credential_id === filters.get('credential_id')
+      );
+    },
+  };
+  const db = { selectFrom() { return builder; } };
+
+  const resolved = await resolveOrganizationCredentialById(
+    db as never, 1, 'openai', 'cred-requested'
+  );
+  assert.equal(resolved.credentialId, 'cred-requested');
+  assert.equal(resolved.apiKey, 'sk-requested-credential');
+  assert.equal(filters.get('credential_id'), 'cred-requested');
 });

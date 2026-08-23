@@ -21,7 +21,7 @@ import {
   enableOrganizationCredential,
   rotateOrganizationCredentialDek,
 } from '@/lib/credential-vault';
-import { resolveProviderCredential } from '@/lib/provider-credential';
+import { resolveOrganizationCredentialById } from '@/lib/provider-credential';
 
 type CredentialAction = 'test' | 'replace' | 'disable' | 'enable' | 'rotate';
 
@@ -49,24 +49,44 @@ export async function POST(
       }
       throw error;
     }
+    if (!orgWithAccess.canView) {
+      return jsonError('You do not have access to this organization', 'FORBIDDEN', 403);
+    }
+    if (orgWithAccess.org.credentialMode !== 'ORGANIZATION_BYOK') {
+      return jsonError(
+        'Organization credential actions are only available in ORGANIZATION_BYOK mode',
+        'CREDENTIAL_MODE',
+        409
+      );
+    }
 
     const body = await request.json().catch(() => null);
     const action: CredentialAction = body?.action;
 
     if (action === 'test') {
-      if (!orgWithAccess.canView) {
-        return jsonError('You do not have access to this organization', 'FORBIDDEN', 403);
-      }
       const cred = await db
         .selectFrom('organization_provider_credentials')
-        .select(['provider_id', 'status'])
+        .select('provider_id')
         .where('organization_id', '=', orgId)
         .where('credential_id', '=', credentialId)
         .executeTakeFirst();
       if (!cred) return jsonError('Credential not found', 'NOT_FOUND', 404);
 
-      const resolved = await resolveProviderCredential(db, orgId, cred.provider_id);
-      const ok = resolved.available && cred.status === 'active';
+      const resolved = await resolveOrganizationCredentialById(
+        db,
+        orgId,
+        cred.provider_id,
+        credentialId
+      );
+      const ok = resolved.available;
+      if (ok) {
+        await db.updateTable('organization_provider_credentials')
+          .set({ last_verified_at: new Date().toISOString() })
+          .where('organization_id', '=', orgId)
+          .where('provider_id', '=', cred.provider_id)
+          .where('credential_id', '=', credentialId)
+          .execute();
+      }
 
       // Record the test in the audit log (redacted — never the raw key).
       await db
@@ -99,7 +119,23 @@ export async function POST(
       .where('credential_id', '=', credentialId)
       .executeTakeFirst();
     if (!cred) return jsonError('Credential not found', 'NOT_FOUND', 404);
+    if (action === 'replace' || action === 'enable') {
+      const activeCredential = await db.selectFrom('organization_provider_credentials')
+        .select('credential_id')
+        .where('organization_id', '=', orgId)
+        .where('provider_id', '=', cred.provider_id)
+        .where('status', '=', 'active')
+        .where('credential_id', '!=', credentialId)
+        .executeTakeFirst();
+      if (activeCredential) {
+        return jsonError(
+          `Another active ${cred.provider_id} credential exists; replace or disable it first`,
+          'ACTIVE_CREDENTIAL_EXISTS',
+          409
+        );
+      }
 
+    }
     let updated = false;
     switch (action) {
       case 'replace': {
@@ -148,6 +184,12 @@ export async function POST(
     return NextResponse.json({ ok: true, action });
   } catch (error) {
     console.error('[ai-setup] credential action failed:', error);
+    if (
+      typeof error === 'object' && error !== null && 'code' in error &&
+      (error as { code?: string }).code === '23505'
+    ) {
+      return jsonError('An active credential already exists for this provider', 'ACTIVE_CREDENTIAL_EXISTS', 409);
+    }
     return jsonError('Failed to perform credential action', 'INTERNAL', 500);
   }
 }

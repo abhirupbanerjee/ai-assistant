@@ -30,6 +30,8 @@ import { resolve } from 'path';
 // ============================================================================
 
 export type CapabilityImportance = 'REQUIRED' | 'RECOMMENDED' | 'OPTIONAL';
+export type CapabilitySelectionMode = 'none' | 'model' | 'service';
+export type ProviderConnectionMode = 'provider-key' | 'tool-config' | 'keyless';
 
 /** Canonical capability identifiers (plan §5 catalog). */
 export type CapabilityId =
@@ -51,6 +53,8 @@ export interface RegistryProvider {
   name: string;
   description: string | null;
   sortOrder: number;
+  /** Where runtime connection material is managed. */
+  connectionMode?: ProviderConnectionMode;
 }
 
 export interface RegistryCapability {
@@ -67,6 +71,47 @@ export interface RegistryProviderCapability {
   isSupported: boolean;
   /** Optional list of known model/service ids for this provider capability. */
   modelOrServiceIds: string[] | null;
+  /** Controls whether the setup UI renders a model/service selector. */
+  selectionMode?: CapabilitySelectionMode;
+}
+
+export interface ProviderCapabilitySelectionRule {
+  selectionMode: CapabilitySelectionMode;
+  modelOrServiceIds: unknown;
+}
+
+export interface CapabilitySelectionValidation {
+  valid: boolean;
+  reason?: 'SELECTION_NOT_ALLOWED' | 'UNSUPPORTED_SELECTION';
+}
+
+/** Normalize JSONB selection metadata without trusting its runtime shape. */
+export function normalizeModelOrServiceIds(value: unknown): string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+    ? value
+    : [];
+}
+
+/**
+ * Validate a submitted model/service id against registry metadata. `null`
+ * always means automatic/default. Dynamic LLM ids are supplied by the route.
+ */
+export function validateCapabilitySelection(
+  rule: ProviderCapabilitySelectionRule,
+  submittedId: string | null | undefined,
+  dynamicIds: ReadonlySet<string> = new Set()
+): CapabilitySelectionValidation {
+  const selection = submittedId?.trim() || null;
+  if (selection === null) return { valid: true };
+  if (rule.selectionMode === 'none') {
+    return { valid: false, reason: 'SELECTION_NOT_ALLOWED' };
+  }
+
+  const staticIds = normalizeModelOrServiceIds(rule.modelOrServiceIds);
+  const allowed = staticIds.length > 0 ? new Set(staticIds) : dynamicIds;
+  return allowed.has(selection)
+    ? { valid: true }
+    : { valid: false, reason: 'UNSUPPORTED_SELECTION' };
 }
 
 /** Stable key used when validating a provider/capability selection. */
@@ -111,20 +156,20 @@ export const REGISTRY_PROVIDERS: RegistryProvider[] = [
   { id: 'openai', name: 'OpenAI', description: 'GPT, Whisper, TTS, embeddings', sortOrder: 10 },
   { id: 'gemini', name: 'Google Gemini', description: 'Gemini LLM, embeddings, image generation, TTS', sortOrder: 20 },
   { id: 'mistral', name: 'Mistral AI', description: 'Mistral LLM, embeddings, OCR', sortOrder: 30 },
-  { id: 'ollama', name: 'Ollama (Local)', description: 'Local LLM, embeddings, reranker', sortOrder: 40 },
+  { id: 'ollama', name: 'Ollama (Local)', description: 'Local LLM and embeddings', sortOrder: 40, connectionMode: 'tool-config' },
   { id: 'anthropic', name: 'Anthropic (Claude)', description: 'Claude LLM (no embeddings)', sortOrder: 50 },
   { id: 'deepseek', name: 'DeepSeek', description: 'DeepSeek LLM', sortOrder: 60 },
   { id: 'fireworks', name: 'Fireworks AI', description: 'LLM, embeddings, reranker', sortOrder: 70 },
   { id: 'ollama-cloud', name: 'Ollama Cloud', description: 'Hosted Ollama LLM', sortOrder: 80 },
   { id: 'moonshot', name: 'Moonshot AI', description: 'Kimi LLM', sortOrder: 90 },
-  { id: 'azure-foundry', name: 'Azure AI Foundry', description: 'Aggregator gateway (Entra ID auth)', sortOrder: 100 },
+  { id: 'azure-foundry', name: 'Azure AI Foundry', description: 'Aggregator gateway (Entra ID auth)', sortOrder: 100, connectionMode: 'tool-config' },
   { id: 'tavily', name: 'Tavily (Web Search)', description: 'Web search service', sortOrder: 110 },
   { id: 'cohere', name: 'Cohere (Reranking)', description: 'Cohere rerank API', sortOrder: 120 },
-  { id: 'bge', name: 'BGE (Local Reranking)', description: 'Local cross-encoder, no key required', sortOrder: 130 },
+  { id: 'bge', name: 'BGE (Local Reranking)', description: 'Local cross-encoder, no key required', sortOrder: 130, connectionMode: 'keyless' },
   { id: 'azure-di', name: 'Azure Document Intelligence', description: 'OCR / document analysis', sortOrder: 140 },
-  { id: 'sonarcloud', name: 'SonarCloud', description: 'Static code quality analysis', sortOrder: 210 },
-  { id: 'k6', name: 'Grafana k6', description: 'Cloud load testing', sortOrder: 220 },
-  { id: 'lighthouse', name: 'Google Lighthouse / PageSpeed', description: 'Website performance analysis', sortOrder: 230 },
+  { id: 'sonarcloud', name: 'SonarCloud', description: 'Static code quality analysis', sortOrder: 210, connectionMode: 'tool-config' },
+  { id: 'k6', name: 'Grafana k6', description: 'Cloud load testing', sortOrder: 220, connectionMode: 'tool-config' },
+  { id: 'lighthouse', name: 'Google Lighthouse / PageSpeed', description: 'Website performance analysis', sortOrder: 230, connectionMode: 'tool-config' },
 ];
 
 // ============================================================================
@@ -166,32 +211,31 @@ export const REGISTRY_PROVIDER_CAPABILITIES: RegistryProviderCapability[] = [
   { providerId: 'openai', capabilityId: 'embeddings', isSupported: true, modelOrServiceIds: ['text-embedding-3-small', 'text-embedding-3-large'] },
   { providerId: 'openai', capabilityId: 'speech-to-text', isSupported: true, modelOrServiceIds: ['whisper-1'] },
   { providerId: 'openai', capabilityId: 'text-to-speech', isSupported: true, modelOrServiceIds: ['tts-1', 'tts-1-hd'] },
-  { providerId: 'openai', capabilityId: 'podcast-audio', isSupported: true, modelOrServiceIds: null },
+  { providerId: 'openai', capabilityId: 'podcast-audio', isSupported: true, modelOrServiceIds: ['gpt-4o-mini-tts'] },
   { providerId: 'gemini', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'gemini', capabilityId: 'embeddings', isSupported: true, modelOrServiceIds: null },
   { providerId: 'gemini', capabilityId: 'speech-to-text', isSupported: true, modelOrServiceIds: null },
   { providerId: 'gemini', capabilityId: 'text-to-speech', isSupported: true, modelOrServiceIds: null },
   { providerId: 'gemini', capabilityId: 'image-generation', isSupported: true, modelOrServiceIds: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'] },
-  { providerId: 'gemini', capabilityId: 'podcast-audio', isSupported: true, modelOrServiceIds: null },
+  { providerId: 'gemini', capabilityId: 'podcast-audio', isSupported: true, modelOrServiceIds: ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'] },
   { providerId: 'mistral', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'mistral', capabilityId: 'embeddings', isSupported: true, modelOrServiceIds: null },
-  { providerId: 'mistral', capabilityId: 'document-intelligence', isSupported: true, modelOrServiceIds: ['mistral-ocr'] },
+  { providerId: 'mistral', capabilityId: 'document-intelligence', isSupported: true, modelOrServiceIds: ['mistral-ocr'], selectionMode: 'service' },
   { providerId: 'ollama', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'ollama', capabilityId: 'embeddings', isSupported: true, modelOrServiceIds: null },
-  { providerId: 'ollama', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: null },
   { providerId: 'anthropic', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'deepseek', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'fireworks', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'fireworks', capabilityId: 'embeddings', isSupported: true, modelOrServiceIds: null },
-  { providerId: 'fireworks', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: null },
+  { providerId: 'fireworks', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: ['accounts/fireworks/models/qwen3-reranker-8b'] },
   { providerId: 'ollama-cloud', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'moonshot', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'azure-foundry', capabilityId: 'llm', isSupported: true, modelOrServiceIds: null },
   { providerId: 'azure-foundry', capabilityId: 'embeddings', isSupported: true, modelOrServiceIds: null },
   { providerId: 'tavily', capabilityId: 'web-search', isSupported: true, modelOrServiceIds: null },
-  { providerId: 'cohere', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: ['rerank-english-v3.0', 'rerank-multilingual-v3.0'] },
-  { providerId: 'bge', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: ['bge-reranker-large', 'bge-reranker-base'] },
-  { providerId: 'azure-di', capabilityId: 'document-intelligence', isSupported: true, modelOrServiceIds: ['prebuilt-read'] },
+  { providerId: 'cohere', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: ['rerank-english-v3.0'] },
+  { providerId: 'bge', capabilityId: 'reranking', isSupported: true, modelOrServiceIds: ['bge-large', 'bge-base', 'local'], selectionMode: 'service' },
+  { providerId: 'azure-di', capabilityId: 'document-intelligence', isSupported: true, modelOrServiceIds: ['prebuilt-read'], selectionMode: 'service' },
   { providerId: 'sonarcloud', capabilityId: 'code-analysis', isSupported: true, modelOrServiceIds: null },
   { providerId: 'k6', capabilityId: 'load-testing', isSupported: true, modelOrServiceIds: null },
   { providerId: 'lighthouse', capabilityId: 'website-analysis', isSupported: true, modelOrServiceIds: null },
@@ -326,6 +370,7 @@ export function buildProviderCapabilityRows(registry: FilteredRegistry) {
     provider_id: pc.providerId,
     capability_id: pc.capabilityId,
     is_supported: pc.isSupported,
+    selection_mode: resolveCapabilitySelectionMode(pc),
     // model_or_service_ids is a JSONB column. Kysely/pg does not auto-serialize
     // JS arrays to JSON for `unknown`-typed columns — it would emit PostgreSQL
     // array text format {"a","b"} which is invalid JSONB. We must explicitly
@@ -338,9 +383,9 @@ export function buildProviderCapabilityRows(registry: FilteredRegistry) {
 }
 
 /**
- * Seed the server-side registry into PostgreSQL. Idempotent: every insert is
- * ON CONFLICT DO NOTHING, so repeated calls (startup + backfill script) never
- * duplicate rows.
+ * Seed the server-side registry into PostgreSQL. Idempotent upserts reconcile
+ * authoritative display/support metadata while preserving operator-controlled
+ * provider enablement.
  *
  * The default is the complete compiled registry. Runtime production images use
  * Next.js standalone packaging and do not contain the source paths inspected by
@@ -361,23 +406,54 @@ export async function seedProviderRegistry(
     await db
       .insertInto('providers')
       .values(buildProviderRows(registry))
-      .onConflict((oc) => oc.column('id').doNothing())
+      .onConflict((oc) => oc.column('id').doUpdateSet({
+        name: sql`excluded.name`,
+        description: sql`excluded.description`,
+        sort_order: sql`excluded.sort_order`,
+        updated_at: sql`NOW()`,
+      }))
       .execute();
   }
   if (registry.capabilities.length > 0) {
     await db
       .insertInto('capabilities')
       .values(buildCapabilityRows(registry))
-      .onConflict((oc) => oc.column('id').doNothing())
+      .onConflict((oc) => oc.column('id').doUpdateSet({
+        name: sql`excluded.name`,
+        description: sql`excluded.description`,
+        importance: sql`excluded.importance`,
+        sort_order: sql`excluded.sort_order`,
+        updated_at: sql`NOW()`,
+      }))
       .execute();
   }
   if (registry.providerCapabilities.length > 0) {
     await db
       .insertInto('provider_capabilities')
       .values(buildProviderCapabilityRows(registry))
-      .onConflict((oc) => oc.columns(['provider_id', 'capability_id']).doNothing())
+      .onConflict((oc) => oc.columns(['provider_id', 'capability_id']).doUpdateSet({
+        is_supported: sql`excluded.is_supported`,
+        model_or_service_ids: sql`excluded.model_or_service_ids`,
+        selection_mode: sql`excluded.selection_mode`,
+        updated_at: sql`NOW()`,
+      }))
       .execute();
   }
 
   return registry;
+}
+
+/** Resolve connection management semantics from the compiled provider catalog. */
+export function resolveProviderConnectionMode(providerId: string): ProviderConnectionMode {
+  return REGISTRY_PROVIDERS.find((provider) => provider.id === providerId)?.connectionMode
+    ?? 'provider-key';
+}
+
+/** Derive presentation semantics when a mapping does not need an override. */
+export function resolveCapabilitySelectionMode(
+  mapping: Pick<RegistryProviderCapability, 'capabilityId' | 'modelOrServiceIds' | 'selectionMode'>
+): CapabilitySelectionMode {
+  if (mapping.selectionMode) return mapping.selectionMode;
+  if (mapping.capabilityId === 'llm') return 'model';
+  return mapping.modelOrServiceIds && mapping.modelOrServiceIds.length > 0 ? 'model' : 'none';
 }

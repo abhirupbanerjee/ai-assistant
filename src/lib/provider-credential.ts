@@ -237,6 +237,70 @@ async function resolveByokCredential(
   };
 }
 
+/**
+ * Resolve exactly one organization credential by its stable id. Unlike the
+ * provider-level resolver, this never substitutes a default or sibling key.
+ * It is used by credential testing and other identity-specific actions.
+ */
+export async function resolveOrganizationCredentialById(
+  db: Kysely<DB>,
+  orgId: number,
+  providerId: string,
+  credentialId: string
+): Promise<ResolvedProviderCredential> {
+  const row = await db
+    .selectFrom('organization_provider_credentials')
+    .select([
+      'provider_id',
+      'credential_id',
+      'credential_version',
+      'status',
+      'secret_ciphertext',
+      'dek_wrapped',
+      'aad',
+      'kek_version',
+    ])
+    .where('organization_id', '=', orgId)
+    .where('provider_id', '=', providerId)
+    .where('credential_id', '=', credentialId)
+    .executeTakeFirst();
+
+  if (!row || row.status !== 'active') {
+    return {
+      providerId,
+      credentialId,
+      credentialVersion: row?.credential_version ?? 0,
+      apiKey: null,
+      apiBase: null,
+      available: false,
+    };
+  }
+
+  let apiKey: string | null = null;
+  try {
+    apiKey = decryptCredentialSecret({
+      organizationId: orgId,
+      providerId: row.provider_id,
+      credentialId: row.credential_id,
+      secretCiphertext: row.secret_ciphertext,
+      dekWrapped: row.dek_wrapped,
+      aad: row.aad,
+      kekVersion: row.kek_version,
+    });
+  } catch (error) {
+    console.error('[provider-credential] Failed to decrypt requested org credential:', error);
+  }
+
+  return {
+    providerId,
+    credentialId,
+    credentialVersion: row.credential_version,
+    apiKey,
+    apiBase: null,
+    available: !!apiKey,
+  };
+}
+
 // ============================================================================
 // Public API
 // ============================================================================

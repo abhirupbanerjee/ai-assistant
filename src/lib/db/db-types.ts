@@ -1213,6 +1213,7 @@ export interface ProviderCapabilitiesTable {
   capability_id: string;
   is_supported: Generated<boolean>;
   model_or_service_ids: unknown | null;
+  selection_mode: Generated<'none' | 'model' | 'service'>;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

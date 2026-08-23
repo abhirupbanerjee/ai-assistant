@@ -50,6 +50,9 @@ export async function GET(
     if (!orgWithAccess.canView) {
       return jsonError('You do not have access to this organization', 'FORBIDDEN', 403);
     }
+    if (orgWithAccess.org.credentialMode !== 'ORGANIZATION_BYOK') {
+      return NextResponse.json({ credentials: [] });
+    }
 
     const credentials = await listOrgCredentialsRedacted(db, orgId);
     return NextResponse.json({ credentials });
@@ -85,6 +88,13 @@ export async function POST(
     if (!orgWithAccess.canManage) {
       return jsonError('You may only modify your own organization', 'FORBIDDEN', 403);
     }
+    if (orgWithAccess.org.credentialMode !== 'ORGANIZATION_BYOK') {
+      return jsonError(
+        'Organization credentials are only available in ORGANIZATION_BYOK mode',
+        'CREDENTIAL_MODE',
+        409
+      );
+    }
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
@@ -109,25 +119,29 @@ export async function POST(
       return jsonError(`Unknown provider: ${providerId}`, 'VALIDATION', 400);
     }
 
-    const isDefault = body.isDefault === true;
-
-    // If creating a new default, unset any other default for this org+provider
-    // so `selectCredentialForProvider()` never sees two defaults.
-    if (isDefault) {
-      await db
-        .updateTable('organization_provider_credentials')
-        .set({ is_default: false })
-        .where('organization_id', '=', orgId)
-        .where('provider_id', '=', providerId)
-        .execute();
+    const requestedCredentialId = typeof body.credentialId === 'string' && body.credentialId.trim()
+      ? body.credentialId.trim()
+      : null;
+    const activeCredential = await db.selectFrom('organization_provider_credentials')
+      .select('credential_id')
+      .where('organization_id', '=', orgId)
+      .where('provider_id', '=', providerId)
+      .where('status', '=', 'active')
+      .executeTakeFirst();
+    if (activeCredential && activeCredential.credential_id !== requestedCredentialId) {
+      return jsonError(
+        `An active ${providerId} credential already exists; replace or disable it first`,
+        'ACTIVE_CREDENTIAL_EXISTS',
+        409
+      );
     }
 
     let credentialId: string;
     let action: 'created' | 'replaced';
 
-    if (typeof body.credentialId === 'string' && body.credentialId.trim().length > 0) {
+    if (requestedCredentialId) {
       // Replace path — the credential must already exist for this org.
-      credentialId = body.credentialId;
+      credentialId = requestedCredentialId;
       const existing = await db
         .selectFrom('organization_provider_credentials')
         .select('id')
@@ -154,7 +168,7 @@ export async function POST(
         credentialId,
         secret,
         actorUserId: actor.userId,
-        isDefault,
+        isDefault: true,
       });
       action = 'created';
     }
@@ -165,6 +179,12 @@ export async function POST(
     );
   } catch (error) {
     console.error('[ai-setup] upsert credential failed:', error);
+    if (
+      typeof error === 'object' && error !== null && 'code' in error &&
+      (error as { code?: string }).code === '23505'
+    ) {
+      return jsonError('An active credential already exists for this provider', 'ACTIVE_CREDENTIAL_EXISTS', 409);
+    }
     return jsonError('Failed to save credential', 'INTERNAL', 500);
   }
 }

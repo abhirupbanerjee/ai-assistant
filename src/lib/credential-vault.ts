@@ -513,6 +513,7 @@ export async function replaceOrganizationCredential(
       kek_version: encrypted.kekVersion,
       aad: encrypted.aad,
       status: 'active',
+      is_default: true,
       credential_version: sql<number>`credential_version + 1`,
     })
     .where('organization_id', '=', input.organizationId)
@@ -553,6 +554,7 @@ export async function disableOrganizationCredential(
     .updateTable('organization_provider_credentials')
     .set({
       status: 'disabled',
+      is_default: false,
       credential_version: sql<number>`credential_version + 1`,
     })
     .where('organization_id', '=', input.organizationId)
@@ -585,6 +587,7 @@ export async function enableOrganizationCredential(
     .updateTable('organization_provider_credentials')
     .set({
       status: 'active',
+      is_default: true,
       credential_version: sql<number>`credential_version + 1`,
     })
     .where('organization_id', '=', input.organizationId)

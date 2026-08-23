@@ -3,7 +3,10 @@ import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { validateUrlIsPublic } from '../ssrf-guard';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 import { numInRange } from '../tools';
-import { resolveProviderCredentialForRequest } from '../provider-credential';
+import {
+  resolveProviderCredentialForRequest,
+  type ResolvedProviderCredential,
+} from '../provider-credential';
 
 // ============ Org-aware API key resolution ============
 
@@ -15,8 +18,10 @@ import { resolveProviderCredentialForRequest } from '../provider-credential';
  * PLATFORM_MANAGED / legacy orgs resolve from web-search settings → env, the
  * exact pre-Phase-D priority.
  */
-async function resolveTavilyApiKey(): Promise<string | null> {
-  const cred = await resolveProviderCredentialForRequest('tavily');
+export async function resolveTavilyApiKey(
+  credential?: ResolvedProviderCredential
+): Promise<string | null> {
+  const cred = credential ?? await resolveProviderCredentialForRequest('tavily');
   if (cred.credentialId === 'platform' || cred.credentialId === 'legacy') {
     const { config: settings } = await getWebSearchConfig();
     return settings.apiKey || process.env.TAVILY_API_KEY || null;

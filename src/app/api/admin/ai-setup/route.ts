@@ -63,15 +63,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let activeCredentialCount = 0;
 
     if (selectedOrgId != null) {
+      const selectedOrganization = organizations.find((organization) => organization.id === selectedOrgId);
+      const exposesByokCredentials = selectedOrganization?.credentialMode === 'ORGANIZATION_BYOK';
       const [healthReport, creds, cfgRows, credCount] = await Promise.all([
         buildHealthReport(db, selectedOrgId),
-        listOrgCredentialsRedacted(db, selectedOrgId),
+        exposesByokCredentials ? listOrgCredentialsRedacted(db, selectedOrgId) : Promise.resolve([]),
         db
           .selectFrom('organization_capability_config')
           .select(['capability_id', 'provider_id', 'credential_id', 'model_or_service_id', 'enabled'])
           .where('organization_id', '=', selectedOrgId)
           .execute(),
-        activeOrgCredentialCount(db, selectedOrgId),
+        exposesByokCredentials ? activeOrgCredentialCount(db, selectedOrgId) : Promise.resolve(0),
       ]);
       health = healthReport;
       credentials = creds;

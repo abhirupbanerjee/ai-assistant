@@ -1778,11 +1778,18 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       capability_id TEXT NOT NULL REFERENCES capabilities(id) ON DELETE CASCADE,
       is_supported BOOLEAN NOT NULL DEFAULT TRUE,
       model_or_service_ids JSONB,
+      selection_mode TEXT NOT NULL DEFAULT 'none' CHECK (selection_mode IN ('none', 'model', 'service')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (provider_id, capability_id)
     )
   `.execute(database);
+  await sql`
+    ALTER TABLE provider_capabilities
+    ADD COLUMN IF NOT EXISTS selection_mode TEXT NOT NULL DEFAULT 'none'
+    CHECK (selection_mode IN ('none', 'model', 'service'))
+  `.execute(database);
+
   await sql`CREATE INDEX IF NOT EXISTS idx_provider_capabilities_capability ON provider_capabilities(capability_id)`.execute(database);
   console.log('[Kysely] Ensured provider_capabilities table exists (Phase A)');
 
@@ -1871,6 +1878,17 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_credential_audit_log_org ON credential_audit_log(organization_id, created_at DESC)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_credential_audit_log_provider ON credential_audit_log(provider_id, created_at DESC)`.execute(database);
   console.log('[Kysely] Ensured credential_audit_log table exists (Phase A)');
+
+  // Reconcile legacy duplicate active keys before enforcing the runtime invariant.
+  // The newest explicit default wins; superseded rows remain as disabled history.
+  await sql`WITH ranked AS (SELECT id, organization_id, provider_id, credential_id, ROW_NUMBER() OVER (PARTITION BY organization_id, provider_id ORDER BY is_default DESC, updated_at DESC, id DESC) AS rn FROM organization_provider_credentials WHERE status = 'active') INSERT INTO credential_audit_log (organization_id, provider_id, credential_id, actor_user_id, action, redacted_detail) SELECT organization_id, provider_id, credential_id, NULL, 'disabled', 'Automatically disabled during single-active credential reconciliation' FROM ranked WHERE rn > 1`.execute(database);
+  await sql`WITH ranked AS (SELECT id, ROW_NUMBER() OVER (PARTITION BY organization_id, provider_id ORDER BY is_default DESC, updated_at DESC, id DESC) AS rn FROM organization_provider_credentials WHERE status = 'active') UPDATE organization_provider_credentials AS credential SET status = 'disabled', is_default = FALSE FROM ranked WHERE credential.id = ranked.id AND ranked.rn > 1`.execute(database);
+  await sql`UPDATE organization_provider_credentials SET is_default = FALSE WHERE status = 'disabled' AND is_default = TRUE`.execute(database);
+  await sql`UPDATE organization_provider_credentials SET is_default = TRUE WHERE status = 'active' AND is_default = FALSE`.execute(database);
+  await sql`UPDATE organization_capability_config AS config SET credential_id = active.credential_id FROM organization_provider_credentials AS active WHERE config.organization_id = active.organization_id AND config.provider_id = active.provider_id AND active.status = 'active' AND config.credential_id IS NOT NULL AND config.credential_id <> active.credential_id`.execute(database);
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_org_provider_creds_single_active ON organization_provider_credentials(organization_id, provider_id) WHERE status = 'active'`.execute(database);
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_org_provider_creds_single_default ON organization_provider_credentials(organization_id, provider_id) WHERE is_default = TRUE`.execute(database);
+  console.log('[Kysely] Reconciled and enforced one active organization credential per provider');
 
   // Nullable organization_id on workspaces (Decision 1). NOT NULL is deferred
   // to Phase B after backfill. FK lands in the PostgreSQL schema only; the
