@@ -15,6 +15,7 @@ interface AllowedUser {
   addedBy: string;
   subscriptions?: { categoryId: number; categoryName: string; isActive: boolean }[];
   assignedCategories?: { categoryId: number; categoryName: string }[];
+  organizations?: { organizationId: number; organizationName: string; role: string }[];
   hasCredentials?: boolean;
   isRootAdmin?: boolean;
 }
@@ -30,6 +31,7 @@ interface Organization {
   name: string;
   credentialMode: string;
   isDefault: boolean;
+  hasOrgAdmin?: boolean;
 }
 
 type CategoryRole = 'none' | 'user' | 'superuser';
@@ -421,6 +423,9 @@ export default function UserManagement() {
     setCredentialsSuccess(null);
   };
 
+  const selectedOrg = organizations.find((o) => o.id === newUserOrganizationId);
+  const selectedOrgHasAdmin = selectedOrg?.hasOrgAdmin === true;
+
   return (
     <>
       <div className="bg-white rounded-lg border shadow-sm">
@@ -465,6 +470,7 @@ export default function UserManagement() {
                 <tr>
                   <th className="px-6 py-3 font-medium">User</th>
                   <th className="px-6 py-3 font-medium">Role</th>
+                  <th className="px-6 py-3 font-medium">Organization</th>
                   <th className="px-6 py-3 font-medium">Categories</th>
                   <th className="px-6 py-3 font-medium">Added</th>
                   <th className="px-6 py-3 font-medium text-right">Actions</th>
@@ -516,6 +522,25 @@ export default function UserManagement() {
                             <Lock size={9} />
                             root
                           </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {user.organizations && user.organizations.length > 0 ? (
+                          user.organizations.map((org) => (
+                            <span
+                              key={org.organizationId}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
+                                org.role === 'org_admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                              }`}
+                              title={org.role === 'org_admin' ? 'Organization admin' : 'Member'}
+                            >
+                              {org.organizationName}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-gray-400 text-xs italic">Platform default</span>
                         )}
                       </div>
                     </td>
@@ -668,7 +693,14 @@ export default function UserManagement() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
               <select
                 value={newUserOrganizationId ?? ''}
-                onChange={(e) => setNewUserOrganizationId(e.target.value ? Number(e.target.value) : null)}
+                onChange={(e) => {
+                  const orgId = e.target.value ? Number(e.target.value) : null;
+                  setNewUserOrganizationId(orgId);
+                  const org = organizations.find((o) => o.id === orgId);
+                  if (org?.hasOrgAdmin && newUserRole === 'admin') {
+                    setNewUserRole('user');
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Platform Default</option>
@@ -700,8 +732,13 @@ export default function UserManagement() {
               >
                 <option value="user">User</option>
                 <option value="superuser">Super User</option>
-                <option value="admin">Admin</option>
+                {!selectedOrgHasAdmin && <option value="admin">Admin</option>}
               </select>
+              {selectedOrgHasAdmin && (
+                <p className="text-xs text-gray-500 mt-1">
+                  This organization already has an admin, so new members can be added as user or super user.
+                </p>
+              )}
             </div>
             {newUserRole === 'user' && categories.length > 0 && (
               <div>

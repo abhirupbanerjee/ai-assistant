@@ -77,7 +77,13 @@ export default function CategoriesManagement() {
       const response = await fetch('/api/admin/ai-setup/organizations');
       if (response.ok) {
         const data = await response.json();
-        setOrganizations(data.organizations || []);
+        const orgs: Organization[] = data.organizations || [];
+        setOrganizations(orgs);
+        // Default new categories to the DEFAULT organization instead of an
+        // empty "Platform Default" pseudo-option (which duplicated the real
+        // DEFAULT org and produced 3 options for 2 organizations).
+        const defaultOrgId = orgs.find((o) => o.isDefault)?.id ?? orgs[0]?.id ?? null;
+        setNewCategoryOrgId((prev) => prev ?? defaultOrgId);
       }
     } catch (err) {
       console.error('Failed to load organizations:', err);
@@ -154,7 +160,11 @@ export default function CategoriesManagement() {
     setEditingCategory(category);
     setEditCategoryName(category.name);
     setEditCategoryDescription(category.description || '');
-    setEditCategoryOrgId(category.organizationId ?? null);
+    setEditCategoryOrgId(
+      category.organizationId ??
+        organizations.find((o) => o.isDefault)?.id ??
+        null
+    );
   };
 
   // Update category handler
@@ -517,7 +527,6 @@ export default function CategoriesManagement() {
                 onChange={(e) => setNewCategoryOrgId(e.target.value ? Number(e.target.value) : null)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Platform Default</option>
                 {organizations.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name}{o.isDefault ? ' (default)' : ''}
@@ -606,7 +615,6 @@ export default function CategoriesManagement() {
                 onChange={(e) => setEditCategoryOrgId(e.target.value ? Number(e.target.value) : null)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Platform Default</option>
                 {organizations.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name}{o.isDefault ? ' (default)' : ''}

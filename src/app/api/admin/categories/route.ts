@@ -20,7 +20,14 @@ export async function GET() {
 
     const categories = await getAllCategoriesWithStats();
 
-    return NextResponse.json({ categories });
+    // The compat layer returns snake_case DB rows; the admin UI expects a
+    // camelCase `organizationId` field for the organization tagging column.
+    const mapped = categories.map((c) => ({
+      ...c,
+      organizationId: c.organization_id ?? null,
+    }));
+
+    return NextResponse.json({ categories: mapped });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

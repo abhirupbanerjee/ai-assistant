@@ -21,6 +21,7 @@ import {
 export type { UserRole } from './db/compat/users';
 
 export interface AllowedUser {
+  id: number;
   email: string;
   name?: string;
   role: UserRole;
@@ -44,6 +45,7 @@ export function isRootAdmin(email: string): boolean {
  */
 function toAllowedUser(dbUser: DbUser): AllowedUser {
   return {
+    id: dbUser.id,
     email: dbUser.email,
     name: dbUser.name || undefined,
     role: dbUser.role,

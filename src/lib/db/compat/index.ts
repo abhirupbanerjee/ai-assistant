@@ -106,6 +106,9 @@ export {
   type UpdateUserInput,
   type UserWithSubscriptions,
   type UserWithAssignments,
+  type UserSubscriptionRow,
+  type UserAssignmentRow,
+  type UserOrganizationMembershipRow,
   // User CRUD
   getAllUsers,
   getUserById,
@@ -130,6 +133,9 @@ export {
   superUserHasCategory,
   // User Subscriptions
   getUserWithSubscriptions,
+  getSubscriptionsByUsers,
+  getAssignmentsByUsers,
+  getOrganizationMembershipsForUsers,
   addSubscription,
   removeSubscription,
   toggleSubscriptionActive,
@@ -423,6 +429,8 @@ export {
   deleteDocument,
   // Category Operations
   getDocumentCategories,
+  getDocumentCategoriesForDocs,
+  type DocumentCategoryRow,
   addDocumentToCategory,
   removeDocumentFromCategory,
   setDocumentCategories,

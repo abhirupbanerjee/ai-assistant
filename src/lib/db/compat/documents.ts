@@ -240,6 +240,29 @@ export async function getDocumentCategories(docId: number): Promise<number[]> {
   return results.map((r) => r.category_id as number);
 }
 
+export interface DocumentCategoryRow {
+  documentId: number;
+  categoryId: number;
+}
+
+/**
+ * Batch lookup of category ids for many documents (avoids N+1 queries when
+ * deleting an organization's categories).
+ */
+export async function getDocumentCategoriesForDocs(docIds: number[]): Promise<DocumentCategoryRow[]> {
+  if (docIds.length === 0) return [];
+  const db = await getDb();
+  const results = await db
+    .selectFrom('document_categories')
+    .select(['document_id as documentId', 'category_id as categoryId'])
+    .where('document_id', 'in', docIds)
+    .execute();
+  return results.map((r) => ({
+    documentId: r.documentId,
+    categoryId: r.categoryId as number,
+  }));
+}
+
 export async function addDocumentToCategory(docId: number, categoryId: number): Promise<boolean> {
   try {
     const db = await getDb();

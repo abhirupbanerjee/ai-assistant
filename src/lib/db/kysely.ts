@@ -1726,6 +1726,11 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS organizations_single_default_idx ON organizations (is_default) WHERE is_default = TRUE`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_organizations_type ON organizations(type)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_organizations_status ON organizations(status)`.execute(database);
+  // Additive lifecycle state: allow archiving an organization instead of
+  // deleting it. The inline CHECK was created without 'archived', so drop and
+  // re-create the constraint to include it.
+  await sql`ALTER TABLE organizations DROP CONSTRAINT IF EXISTS organizations_status_check`.execute(database);
+  await sql`ALTER TABLE organizations ADD CONSTRAINT organizations_status_check CHECK (status IN ('active', 'disabled', 'suspended', 'archived'))`.execute(database);
   console.log('[Kysely] Ensured organizations table exists (Phase A)');
 
   // Organization memberships — user → organization (role: org_admin|member).

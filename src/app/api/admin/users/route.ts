@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getAllowedUsers, addAllowedUser, removeAllowedUser, updateUserRole, getUserId, isRootAdmin } from '@/lib/users';
+import { getAllowedUsers, addAllowedUser, removeAllowedUser, updateUserRole, isRootAdmin } from '@/lib/users';
 import { getDb } from '@/lib/db/kysely';
 import {
   addSubscription,
   assignCategoryToSuperUser,
-  getUserWithSubscriptions,
-  getSuperUserWithAssignments,
+  getSubscriptionsByUsers,
+  getAssignmentsByUsers,
+  getOrganizationMembershipsForUsers,
   getCategoryById,
 } from '@/lib/db/compat';
 import type { UserRole } from '@/lib/users';
@@ -19,47 +20,55 @@ export async function GET() {
     await requireAdmin();
     const users = await getAllowedUsers();
 
-    // Enhance users with subscriptions/assignments
-    const enhancedUsers = await Promise.all(
-      users.map(async (u) => {
-        const userId = await getUserId(u.email);
-        let subscriptions: { categoryId: number; categoryName: string; isActive: boolean }[] = [];
-        let assignedCategories: { categoryId: number; categoryName: string }[] = [];
+    // Batch load subscriptions + assignments in two queries (previously O(n)
+    // per-user lookups that made this endpoint slow enough to time out).
+    const userIds = users.map((u) => u.id);
+    const [subsRows, assignRows, membershipRows] = await Promise.all([
+      getSubscriptionsByUsers(userIds),
+      getAssignmentsByUsers(userIds),
+      getOrganizationMembershipsForUsers(userIds),
+    ]);
 
-        if (userId) {
-          if (u.role === 'superuser') {
-            // Get category assignments (for management access)
-            const withAssignments = await getSuperUserWithAssignments(userId);
-            assignedCategories = withAssignments?.assignedCategories.map(c => ({
-              categoryId: c.categoryId,
-              categoryName: c.categoryName,
-            })) || [];
-            // Also get subscriptions (for read access to other categories)
-            const withSubs = await getUserWithSubscriptions(userId);
-            subscriptions = withSubs?.subscriptions.map(s => ({
-              categoryId: s.categoryId,
-              categoryName: s.categoryName,
-              isActive: s.isActive,
-            })) || [];
-          } else if (u.role === 'user') {
-            const withSubs = await getUserWithSubscriptions(userId);
-            subscriptions = withSubs?.subscriptions.map(s => ({
-              categoryId: s.categoryId,
-              categoryName: s.categoryName,
-              isActive: s.isActive,
-            })) || [];
-          }
-        }
+    const subsByUser = new Map<number, { categoryId: number; categoryName: string; isActive: boolean }[]>();
+    for (const s of subsRows) {
+      const list = subsByUser.get(s.userId) ?? [];
+      list.push({ categoryId: s.categoryId, categoryName: s.categoryName, isActive: s.isActive });
+      subsByUser.set(s.userId, list);
+    }
 
-        return {
-          ...u,
-          id: userId,
-          addedAt: u.addedAt.toISOString(),
-          subscriptions,
-          assignedCategories,
-        };
-      })
-    );
+    const assignsByUser = new Map<number, { categoryId: number; categoryName: string }[]>();
+    for (const a of assignRows) {
+      const list = assignsByUser.get(a.userId) ?? [];
+      list.push({ categoryId: a.categoryId, categoryName: a.categoryName });
+      assignsByUser.set(a.userId, list);
+    }
+
+    const membershipsByUser = new Map<number, { organizationId: number; organizationName: string; role: string }[]>();
+    for (const m of membershipRows) {
+      const list = membershipsByUser.get(m.userId) ?? [];
+      list.push({ organizationId: m.organizationId, organizationName: m.organizationName, role: m.role });
+      membershipsByUser.set(m.userId, list);
+    }
+
+    const enhancedUsers = users.map((u) => {
+      let subscriptions: { categoryId: number; categoryName: string; isActive: boolean }[] = [];
+      let assignedCategories: { categoryId: number; categoryName: string }[] = [];
+
+      if (u.role === 'superuser') {
+        assignedCategories = assignsByUser.get(u.id) ?? [];
+        subscriptions = subsByUser.get(u.id) ?? [];
+      } else if (u.role === 'user') {
+        subscriptions = subsByUser.get(u.id) ?? [];
+      }
+
+      return {
+        ...u,
+        addedAt: u.addedAt.toISOString(),
+        subscriptions,
+        assignedCategories,
+        organizations: membershipsByUser.get(u.id) ?? [],
+      };
+    });
 
     return NextResponse.json({ users: enhancedUsers });
   } catch (error) {
@@ -110,8 +119,9 @@ export async function POST(request: NextRequest) {
     // Create the user
     const user = await addAllowedUser(email, role, admin.email, name);
 
-    // Get the user ID for subscriptions/assignments
-    const userId = await getUserId(email);
+    // addAllowedUser returns the user row including its PK id, so we avoid an
+    // extra lookup here.
+    const userId = user.id;
 
     if (userId) {
       // Add subscriptions for regular users and super users

@@ -1160,7 +1160,7 @@ export interface OrganizationsTable {
   type: 'DEFAULT' | 'ENTITY' | 'INDIVIDUAL';
   is_default: Generated<boolean>;
   credential_mode: 'PLATFORM_MANAGED' | 'ORGANIZATION_BYOK';
-  status: 'active' | 'disabled' | 'suspended';
+  status: 'active' | 'disabled' | 'suspended' | 'archived';
   isolation_mode: 'SOFT' | 'HARD';
   created_at: Generated<string>;
   updated_at: Generated<string>;

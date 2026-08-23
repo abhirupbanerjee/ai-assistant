@@ -208,6 +208,22 @@ export async function listOrganizationsForActor(db: Kysely<DB>, actor: AiSetupAc
     }
   }
 
+  // Whether each org already has an active org_admin (drives the "Admin role
+  // only for orgs without an admin" rule in user creation).
+  const adminMap = new Map<number, boolean>();
+  if (orgIds.length > 0) {
+    const admins = await db
+      .selectFrom('organization_memberships')
+      .select('organization_id')
+      .where('organization_id', 'in', orgIds)
+      .where('role', '=', 'org_admin')
+      .where('status', '=', 'active')
+      .execute();
+    for (const a of admins) {
+      adminMap.set(a.organization_id, true);
+    }
+  }
+
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -219,6 +235,7 @@ export async function listOrganizationsForActor(db: Kysely<DB>, actor: AiSetupAc
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     activeCredentialCount: counts.get(r.id) ?? 0,
+    hasOrgAdmin: adminMap.get(r.id) ?? false,
     membershipRole:
       actor.organizationId === r.id ? actor.membershipRole : null,
   }));

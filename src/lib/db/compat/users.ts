@@ -272,6 +272,107 @@ export async function getUserWithSubscriptions(userId: number): Promise<UserWith
   };
 }
 
+export interface UserSubscriptionRow {
+  userId: number;
+  categoryId: number;
+  categoryName: string;
+  isActive: boolean;
+}
+
+/**
+ * Batch lookup of category subscriptions for many users (avoids the N+1 query
+ * pattern in /api/admin/users).
+ */
+export async function getSubscriptionsByUsers(userIds: number[]): Promise<UserSubscriptionRow[]> {
+  if (userIds.length === 0) return [];
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('user_subscriptions as us')
+    .innerJoin('categories as c', 'us.category_id', 'c.id')
+    .select([
+      'us.user_id as userId',
+      'c.id as categoryId',
+      'c.name as categoryName',
+      'us.is_active as isActive',
+    ])
+    .where('us.user_id', 'in', userIds)
+    .orderBy('c.name')
+    .execute();
+  return rows.map((r) => ({
+    userId: r.userId,
+    categoryId: r.categoryId,
+    categoryName: r.categoryName,
+    isActive: Boolean(r.isActive),
+  }));
+}
+
+export interface UserAssignmentRow {
+  userId: number;
+  categoryId: number;
+  categoryName: string;
+}
+
+/**
+ * Batch lookup of super-user category assignments for many users.
+ */
+export async function getAssignmentsByUsers(userIds: number[]): Promise<UserAssignmentRow[]> {
+  if (userIds.length === 0) return [];
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('super_user_categories as suc')
+    .innerJoin('categories as c', 'suc.category_id', 'c.id')
+    .select([
+      'suc.user_id as userId',
+      'c.id as categoryId',
+      'c.name as categoryName',
+    ])
+    .where('suc.user_id', 'in', userIds)
+    .orderBy('c.name')
+    .execute();
+  return rows.map((r) => ({
+    userId: r.userId,
+    categoryId: r.categoryId,
+    categoryName: r.categoryName,
+  }));
+}
+
+export interface UserOrganizationMembershipRow {
+  userId: number;
+  organizationId: number;
+  organizationName: string;
+  role: string;
+}
+
+/**
+ * Batch lookup of active organization memberships for many users (used to
+ * render the organization column on the admin users page).
+ */
+export async function getOrganizationMembershipsForUsers(
+  userIds: number[]
+): Promise<UserOrganizationMembershipRow[]> {
+  if (userIds.length === 0) return [];
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('organization_memberships as m')
+    .innerJoin('organizations as o', 'o.id', 'm.organization_id')
+    .select([
+      'm.user_id as userId',
+      'o.id as organizationId',
+      'o.name as organizationName',
+      'm.role',
+    ])
+    .where('m.user_id', 'in', userIds)
+    .where('m.status', '=', 'active')
+    .orderBy('o.name')
+    .execute();
+  return rows.map((r) => ({
+    userId: r.userId,
+    organizationId: r.organizationId,
+    organizationName: r.organizationName,
+    role: r.role,
+  }));
+}
+
 export async function addSubscription(
   userId: number,
   categoryId: number,
