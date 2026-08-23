@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { resolveUserMembership } from '@/lib/org-membership';
 import type { ApiError } from '@/types';
 
 export async function GET() {
@@ -20,6 +21,10 @@ export async function GET() {
       );
     }
 
+    // Include the organization membership role so the admin dashboard can
+    // admit BYOK `org_admin` users whose global role is `user`.
+    const membership = await resolveUserMembership(user);
+
     return NextResponse.json({
       id: user.id,
       email: user.email,
@@ -28,6 +33,8 @@ export async function GET() {
       role: user.role || 'user',
       isAdmin: user.isAdmin,
       isSuperAdmin: user.isSuperAdmin || false,
+      membershipRole: membership.membershipRole,
+      organizationId: membership.organizationId,
     });
   } catch (error) {
     console.error('Failed to get current user:', error);

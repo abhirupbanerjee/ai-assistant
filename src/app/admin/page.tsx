@@ -267,7 +267,7 @@ function AdminPageContent() {
   const tabParam = searchParams.get('tab') as TabType | null;
   const sectionParam = searchParams.get('section');
   const [activeTab, setActiveTab] = useState<TabType>(tabParam || 'dashboard');
-  const [userRole, setUserRole] = useState<'super_admin' | 'admin' | 'superuser' | 'user'>('admin');
+  const [userRole, setUserRole] = useState<'super_admin' | 'admin' | 'superuser' | 'user' | 'org_admin'>('admin');
 
   // RAG/LLM settings state
   // Section state for expandable menus
@@ -383,12 +383,20 @@ function AdminPageContent() {
       const response = await fetch('/api/auth/me');
       if (response.ok) {
         const data = await response.json();
-        setUserRole(data.role || 'user');
-        // If user is not admin or superuser, redirect to home
-        if (data.role !== 'super_admin' && data.role !== 'admin' && data.role !== 'superuser') {
+        const role = data.role || 'user';
+        // If user is not admin or superuser, redirect to home — unless they are
+        // an `org_admin` (BYOK org admin whose global role may be `user`), who
+        // is admitted for the consolidated AI & API Setup surface. The
+        // server-side `requireAiSetupActor` authorizes the same set.
+        if (role !== 'super_admin' && role !== 'admin' && role !== 'superuser') {
+          if (data.membershipRole === 'org_admin') {
+            setUserRole('org_admin');
+            return true;
+          }
           router.push('/chat');
           return false;
         }
+        setUserRole(role);
         return true;
       } else if (response.status === 401) {
         router.push('/chat');

@@ -134,6 +134,19 @@ export async function POST(request: NextRequest) {
     // as `org_admin` (plan §4 / Decision 2); subsequent members are `member`.
     if (userId && typeof organizationId === 'number' && Number.isFinite(organizationId)) {
       const db = await getDb();
+
+      const organization = await db
+        .selectFrom('organizations')
+        .select('id')
+        .where('id', '=', organizationId)
+        .executeTakeFirst();
+      if (!organization) {
+        return NextResponse.json(
+          { error: `Organization with ID ${organizationId} not found` },
+          { status: 404 }
+        );
+      }
+
       const existing = await db
         .selectFrom('organization_memberships')
         .select('user_id')

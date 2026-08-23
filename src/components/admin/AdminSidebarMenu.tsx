@@ -147,10 +147,17 @@ export const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] =
 // Tabs that superusers can access (dashboard only)
 const SUPERUSER_ALLOWED_TABS: TabType[] = ['dashboard'];
 
+// BYOK org admins (global role `user`) may reach the consolidated AI & API
+// Setup surface via Settings; everything else stays admin-only.
+const ORG_ADMIN_ALLOWED_TABS: TabType[] = ['settings'];
+
 // Filter menu items based on user role
-const getFilteredMenuConfig = (userRole?: 'super_admin' | 'admin' | 'superuser' | 'user'): MenuConfigItem[] => {
+const getFilteredMenuConfig = (userRole?: 'super_admin' | 'admin' | 'superuser' | 'user' | 'org_admin'): MenuConfigItem[] => {
   if (userRole === 'superuser') {
     return MENU_CONFIG.filter(item => SUPERUSER_ALLOWED_TABS.includes(item.id));
+  }
+  if (userRole === 'org_admin') {
+    return MENU_CONFIG.filter(item => ORG_ADMIN_ALLOWED_TABS.includes(item.id));
   }
   return MENU_CONFIG;
 };
@@ -165,7 +172,7 @@ interface AdminSidebarMenuProps {
   usersSection: UsersSection;
   promptsSection: PromptsSection;
   settingsSection: SettingsSection;
-  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user';
+  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user' | 'org_admin';
   onTabChange: (tab: TabType) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;

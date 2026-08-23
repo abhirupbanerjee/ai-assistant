@@ -112,7 +112,11 @@ export async function resolveActiveOrganizationIdByUserId(
     .select(['role', 'active_organization_id'])
     .where('id', '=', userId)
     .executeTakeFirst();
-  if (!userRow) return null;
+  if (!userRow) {
+    // No users row (legacy caller / race): fall back to deterministic
+    // membership resolution, preserving the pre-active-org behavior.
+    return (await resolveMembershipForUserId(dbx, userId)).organizationId;
+  }
 
   if (userRow.role === 'super_admin') {
     return userRow.active_organization_id ?? null;

@@ -143,12 +143,21 @@ export function safeEncrypt(value: string | null | undefined): string | null {
 
 /**
  * True when a stored value is in the encrypted `iv:authTag:ciphertext` format.
- * Callers that previously used `safeDecrypt(x) || x` should use this helper to
- * distinguish "encrypted but failed to decrypt" (must fail closed) from
- * "unencrypted dev plaintext" (may be used as-is).
+ *
+ * The format is unambiguous because the first two segments have fixed base64
+ * lengths: the GCM IV (12 bytes) encodes to 16 base64 chars and the auth tag
+ * (16 bytes) encodes to 24 base64 chars. Plaintext values (even ones that
+ * contain colons) therefore never match.
  */
 export function isEncryptedValue(value: string | null | undefined): boolean {
-  return !!value && value.trim() !== '' && value.split(':').length === 3;
+  if (!value || value.trim() === '') {
+    return false;
+  }
+  const parts = value.split(':');
+  if (parts.length !== 3) {
+    return false;
+  }
+  return parts[0].length === 16 && parts[1].length === 24;
 }
 
 /**
@@ -165,16 +174,16 @@ export function safeDecrypt(value: string | null | undefined): string | null {
     return null;
   }
 
-  // Check if the value looks like it's encrypted (has the iv:authTag:ciphertext format)
-  const parts = value.split(':');
-  if (parts.length !== 3) {
-    // Might be stored unencrypted (development mode)
+  // Unencrypted dev plaintext is returned as-is.
+  if (!isEncryptedValue(value)) {
     return value;
   }
 
+  // An encrypted value with no key available cannot be decrypted. Fail closed
+  // instead of returning the ciphertext.
   if (!isEncryptionConfigured()) {
-    console.warn('[Encryption] Encryption key not configured, returning value as-is');
-    return value;
+    console.warn('[Encryption] Encryption key not configured; cannot decrypt stored value. Re-save the credential once the key is configured.');
+    return null;
   }
 
   try {

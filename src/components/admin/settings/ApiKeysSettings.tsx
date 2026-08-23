@@ -241,7 +241,7 @@ function SectionHeader({
 // ============================================================================
 
 interface ApiKeysSettingsProps {
-  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user';
+  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user' | 'org_admin';
 }
 
 export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsProps) {

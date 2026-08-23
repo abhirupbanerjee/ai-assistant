@@ -44,6 +44,13 @@ test('safeDecrypt passes through unencrypted dev plaintext', () => {
   assert.equal(isEncryptedValue('sk-plaintext-key'), false);
 });
 
+test('safeDecrypt treats plaintext containing colons as plaintext', () => {
+  // "a:b:c" has 3 segments but the segments are not base64 IV/tag lengths,
+  // so it must be treated as plaintext, not as an encrypted blob.
+  assert.equal(isEncryptedValue('a:b:c'), false);
+  assert.equal(safeDecrypt('a:b:c'), 'a:b:c');
+});
+
 test('safeDecrypt fails closed (null) when the encryption key changed', () => {
   const keyA = generateEncryptionKey();
   const keyB = generateEncryptionKey();
@@ -66,6 +73,23 @@ test('safeDecrypt returns value as-is when encryption is not configured', () => 
   assert.equal(isEncryptionConfigured(), false);
   // Plaintext stored in dev mode keeps working.
   assert.equal(safeDecrypt('sk-dev-plaintext'), 'sk-dev-plaintext');
+});
+
+test('safeDecrypt fails closed when the key is missing but the value is encrypted', () => {
+  const key = generateEncryptionKey();
+  setKey(key);
+  const encrypted = safeEncrypt('sk-secret');
+  assert.ok(encrypted, 'encrypt with a configured key should succeed');
+
+  // Remove the key entirely: an encrypted value must fail closed (null), never
+  // return the ciphertext.
+  setKey(undefined);
+  try {
+    assert.equal(isEncryptedValue(encrypted), true);
+    assert.equal(safeDecrypt(encrypted), null);
+  } finally {
+    setKey(undefined);
+  }
 });
 
 test('isEncryptedValue detects the iv:authTag:ciphertext format', () => {

@@ -119,7 +119,7 @@ function toNum(val: number | string | null | undefined): number {
 // ============ Component ============
 
 interface TokenUsageDashboardProps {
-  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user';
+  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user' | 'org_admin';
 }
 
 export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDashboardProps) {

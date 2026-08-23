@@ -6,6 +6,7 @@
 
 import { getDb, transaction } from '../kysely';
 import { sql } from 'kysely';
+import { getDefaultOrganizationId as resolveDefaultOrganizationId } from '../../org-context';
 
 // Re-export types
 export type {
@@ -40,18 +41,10 @@ const CATEGORY_SELECT = [
 
 /**
  * Resolve the DEFAULT organization id (used when a category is created without
- * an explicit organization). Returns null when no default org exists yet.
+ * an explicit organization). Delegates to the canonical resolver in org-context.
  */
 export async function getDefaultOrganizationId(): Promise<number | null> {
-  const db = await getDb();
-  const row = await db
-    .selectFrom('organizations')
-    .select('id')
-    .where('is_default', '=', true)
-    .orderBy('id')
-    .limit(1)
-    .executeTakeFirst();
-  return row?.id ?? null;
+  return resolveDefaultOrganizationId(await getDb());
 }
 
 export async function getAllCategories(): Promise<DbCategory[]> {
@@ -123,21 +116,33 @@ export async function getCategoryByName(name: string): Promise<DbCategory | unde
 export async function createCategory(input: CreateCategoryInput): Promise<DbCategory> {
   const slug = generateSlug(input.name);
 
-  // Check for unique name and slug
-  const existingName = await getCategoryByName(input.name);
-  if (existingName) {
-    throw new Error(`Category with name "${input.name}" already exists`);
-  }
-
-  const existingSlug = await getCategoryBySlug(slug);
-  if (existingSlug) {
-    throw new Error(`Category with slug "${slug}" already exists`);
-  }
-
   // Default to the DEFAULT organization when the caller does not specify one.
   const organizationId = input.organizationId ?? (await getDefaultOrganizationId());
 
   const db = await getDb();
+
+  // Name/slug uniqueness is scoped to the organization so different tenants can
+  // each create a category with the same name.
+  const existingName = await db
+    .selectFrom('categories')
+    .select('id')
+    .where('name', '=', input.name)
+    .where('organization_id', 'is', organizationId)
+    .executeTakeFirst();
+  if (existingName) {
+    throw new Error(`Category with name "${input.name}" already exists in this organization`);
+  }
+
+  const existingSlug = await db
+    .selectFrom('categories')
+    .select('id')
+    .where('slug', '=', slug)
+    .where('organization_id', 'is', organizationId)
+    .executeTakeFirst();
+  if (existingSlug) {
+    throw new Error(`Category with slug "${slug}" already exists in this organization`);
+  }
+
   const result = await db
     .insertInto('categories')
     .values({
@@ -160,22 +165,33 @@ export async function updateCategory(
   const current = await getCategoryById(id);
   if (!current) return undefined;
 
+  const db = await getDb();
+  const orgId = current.organization_id ?? null;
   const updates: Record<string, unknown> = {};
 
   if (input.name !== undefined && input.name !== current.name) {
-    // Check for duplicate name
-    const existing = await getCategoryByName(input.name);
+    // Name/slug uniqueness is scoped to the organization.
+    const existing = await db
+      .selectFrom('categories')
+      .select('id')
+      .where('name', '=', input.name)
+      .where('organization_id', 'is', orgId)
+      .executeTakeFirst();
     if (existing && existing.id !== id) {
-      throw new Error(`Category with name "${input.name}" already exists`);
+      throw new Error(`Category with name "${input.name}" already exists in this organization`);
     }
 
     updates.name = input.name;
 
-    // Update slug too
     const newSlug = generateSlug(input.name);
-    const existingSlug = await getCategoryBySlug(newSlug);
+    const existingSlug = await db
+      .selectFrom('categories')
+      .select('id')
+      .where('slug', '=', newSlug)
+      .where('organization_id', 'is', orgId)
+      .executeTakeFirst();
     if (existingSlug && existingSlug.id !== id) {
-      throw new Error(`Category with slug "${newSlug}" already exists`);
+      throw new Error(`Category with slug "${newSlug}" already exists in this organization`);
     }
     updates.slug = newSlug;
   }
@@ -192,7 +208,6 @@ export async function updateCategory(
     return current;
   }
 
-  const db = await getDb();
   await db.updateTable('categories').set(updates).where('id', '=', id).execute();
 
   return getCategoryById(id);
