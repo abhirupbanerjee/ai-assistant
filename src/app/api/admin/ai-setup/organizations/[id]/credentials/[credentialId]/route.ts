@@ -22,6 +22,7 @@ import {
   rotateOrganizationCredentialDek,
 } from '@/lib/credential-vault';
 import { resolveOrganizationCredentialById } from '@/lib/provider-credential';
+import { verifyProviderCredential } from '@/lib/provider-verification';
 
 type CredentialAction = 'test' | 'replace' | 'disable' | 'enable' | 'rotate';
 
@@ -78,8 +79,8 @@ export async function POST(
         cred.provider_id,
         credentialId
       );
-      const ok = resolved.available;
-      if (ok) {
+      const verification = await verifyProviderCredential(resolved);
+      if (verification.ok) {
         await db.updateTable('organization_provider_credentials')
           .set({ last_verified_at: new Date().toISOString() })
           .where('organization_id', '=', orgId)
@@ -102,9 +103,15 @@ export async function POST(
         .execute();
 
       return NextResponse.json({
-        ok,
+        ok: verification.ok,
         providerId: cred.provider_id,
-        message: ok ? 'Credential is available' : 'Credential is unavailable or disabled',
+        message: verification.message,
+        verification: {
+          status: verification.status,
+          httpStatus: verification.httpStatus,
+          errorCode: verification.errorCode,
+          modelCount: verification.modelCount,
+        },
       });
     }
 

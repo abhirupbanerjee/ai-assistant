@@ -13,7 +13,7 @@
 
 import { getEnabledModel, getDefaultModel, isModelVisionCapable } from '@/lib/db/compat/enabled-models';
 import { getOcrSettings } from '@/lib/db/compat/config';
-import { isProviderConfigured } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 // ============ Types ============
 
@@ -57,8 +57,7 @@ export async function isImageOcrAvailable(): Promise<boolean> {
 
     switch (provider) {
       case 'mistral': {
-        // Check DB settings first, then provider config (which includes env vars)
-        const hasMistral = ocrSettings.mistralApiKey || await isProviderConfigured('mistral');
+        const hasMistral = (await resolveProviderCredentialForRequest('mistral')).available;
         if (hasMistral) return true;
         break;
       }

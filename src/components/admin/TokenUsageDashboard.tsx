@@ -482,7 +482,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
 
               {balances.length === 0 && unavailableProviders.length === 0 && (
                 <div className="flex items-center justify-center py-12 text-gray-400">
-                  No provider balance data available. Configure API keys in Settings → API Keys.
+                  No provider balance data available. Configure platform keys in Settings → Platform Credentials.
                 </div>
               )}
             </>

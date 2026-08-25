@@ -1816,11 +1816,23 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       secret_ref TEXT NOT NULL,
       kek_version INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+      credential_version INTEGER NOT NULL DEFAULT 1,
       last_verified_at TIMESTAMPTZ,
+      last_verification_attempt_at TIMESTAMPTZ,
+      last_verification_status TEXT,
+      last_verification_http_status INTEGER,
+      last_verification_error_code TEXT,
+      verified_source_fingerprint TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `.execute(database);
+  await sql`ALTER TABLE platform_provider_credentials ADD COLUMN IF NOT EXISTS credential_version INTEGER NOT NULL DEFAULT 1`.execute(database);
+  await sql`ALTER TABLE platform_provider_credentials ADD COLUMN IF NOT EXISTS last_verification_attempt_at TIMESTAMPTZ`.execute(database);
+  await sql`ALTER TABLE platform_provider_credentials ADD COLUMN IF NOT EXISTS last_verification_status TEXT`.execute(database);
+  await sql`ALTER TABLE platform_provider_credentials ADD COLUMN IF NOT EXISTS last_verification_http_status INTEGER`.execute(database);
+  await sql`ALTER TABLE platform_provider_credentials ADD COLUMN IF NOT EXISTS last_verification_error_code TEXT`.execute(database);
+  await sql`ALTER TABLE platform_provider_credentials ADD COLUMN IF NOT EXISTS verified_source_fingerprint TEXT`.execute(database);
   console.log('[Kysely] Ensured platform_provider_credentials table exists (Phase A)');
 
   // Organization-scoped credentials (BYOK). `credential_id` is the stable
@@ -1986,6 +1998,42 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     FOR EACH ROW EXECUTE FUNCTION bump_org_credential_version()
   `.execute(database);
   console.log('[Kysely] Ensured credential_version bump trigger exists (Phase B)');
+
+  // Platform secrets remain in `llm_providers`; the platform credential table
+  // is source metadata. Bump its revision after a key/base mutation so every
+  // provider client cache gets a new identity rather than reusing version 0.
+  await sql`
+    CREATE OR REPLACE FUNCTION bump_platform_credential_version()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      INSERT INTO platform_provider_credentials (
+        provider_id, secret_ref, kek_version, status, credential_version, updated_at
+      ) VALUES (
+        NEW.id, 'llm_providers:' || NEW.id, 1, 'active', 1, NOW()
+      )
+      ON CONFLICT (provider_id) DO UPDATE
+      SET credential_version = platform_provider_credentials.credential_version + 1,
+          secret_ref = 'llm_providers:' || NEW.id,
+          updated_at = NOW(),
+          last_verified_at = NULL,
+          last_verification_attempt_at = NULL,
+          last_verification_status = NULL,
+          last_verification_http_status = NULL,
+          last_verification_error_code = NULL,
+          verified_source_fingerprint = NULL;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `.execute(database);
+  await sql`DROP TRIGGER IF EXISTS trg_bump_platform_credential_version ON llm_providers`.execute(database);
+  await sql`
+    CREATE TRIGGER trg_bump_platform_credential_version
+    AFTER UPDATE OF api_key, api_base ON llm_providers
+    FOR EACH ROW
+    WHEN (OLD.api_key IS DISTINCT FROM NEW.api_key OR OLD.api_base IS DISTINCT FROM NEW.api_base)
+    EXECUTE FUNCTION bump_platform_credential_version()
+  `.execute(database);
+  console.log('[Kysely] Ensured platform credential revision trigger exists');
 
   // Seed `org-credential-resolver-enabled` = true (Phase D). ON CONFLICT DO
   // NOTHING preserves any explicit value; the flag defaults on from Phase D.

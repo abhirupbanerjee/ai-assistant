@@ -40,6 +40,7 @@ import {
 import type { HealthState } from './health-evaluator';
 import { capabilityDisplayName } from './health-evaluator';
 import { getApiKey, getApiBase } from './provider-helpers';
+import { resolvePlatformProviderCredential } from './provider-credential';
 import {
   getLlmSettings,
   getEmbeddingSettings,
@@ -75,6 +76,7 @@ export interface OrgCredentialCandidate {
 export interface PlatformCredentialCandidate {
   providerId: string;
   status: string;
+  credentialVersion?: number;
   apiKey: string | null;
   apiBase: string | null;
 }
@@ -219,7 +221,7 @@ function resolvePlatform(input: ResolveInput): ResolvedCapability {
     credentialRef: {
       providerId,
       credentialId: 'platform',
-      credentialVersion: 0,
+      credentialVersion: platform!.credentialVersion ?? 0,
       apiKey: platform!.apiKey,
       apiBase: platform!.apiBase,
     },
@@ -403,7 +405,7 @@ export async function loadLegacyResolution(
       const primary = settings.providers.find((p) => p.enabled);
       if (!primary) return unavailableLegacy();
       if (primary.provider === 'mistral') {
-        const apiKey = settings.mistralApiKey || (await getApiKey('mistral'));
+        const apiKey = await getApiKey('mistral');
         return { providerId: 'mistral', modelOrServiceId: 'mistral-ocr', apiKey, apiBase: null, available: !!apiKey };
       }
       if (primary.provider === 'azure-di') {
@@ -515,24 +517,16 @@ async function loadPlatformCredentials(
   providerId: string | null
 ): Promise<PlatformCredentialCandidate[]> {
   if (!providerId) return [];
-  const rows = await db
-    .selectFrom('platform_provider_credentials')
-    .select(['provider_id', 'status'])
-    .where('provider_id', '=', providerId)
-    .execute();
-
-  const result: PlatformCredentialCandidate[] = [];
-  for (const row of rows) {
-    // Platform credential secret material still resolves through the legacy
-    // secure source (env or llm_providers) — the same source legacy uses.
-    result.push({
-      providerId: row.provider_id,
-      status: row.status,
-      apiKey: await getApiKey(row.provider_id),
-      apiBase: await getApiBase(row.provider_id),
-    });
-  }
-  return result;
+  const resolved = await resolvePlatformProviderCredential(db, providerId);
+  // A platform metadata row is optional during the rolling migration. The
+  // shared resolver preserves legacy source precedence in either case.
+  return [{
+    providerId: resolved.providerId,
+    status: resolved.available ? 'active' : 'disabled',
+    credentialVersion: resolved.credentialVersion,
+    apiKey: resolved.apiKey,
+    apiBase: resolved.apiBase,
+  }];
 }
 
 async function loadOrgCredentials(

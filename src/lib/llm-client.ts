@@ -18,7 +18,7 @@ import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, st
 import { isMistralModel, stripMistralPrefix, callMistralChat } from './llm/providers/mistral';
 import { isGeminiModel, stripGeminiPrefix, callGeminiChat } from './llm/providers/gemini';
 import { isOpenAIModel, stripOpenAIPrefix, callOpenAIChat } from './llm/providers/openai';
-import { getTemperatureForModel, buildThinkingRequestProfile, isClaudeAdaptiveThinkingModel } from './llm-thinking';
+import { getTemperatureForModel, buildThinkingRequestProfile, isClaudeAdaptiveThinkingModel, isKimiK26Model } from './llm-thinking';
 import { getModelOutputLimit } from './agent/llm-router';
 
 
@@ -50,6 +50,8 @@ export interface InternalCompletionOptions {
   responseSchema?: object;
   /** Optional response_format for OpenAI-native structured output. Passed directly to the OpenAI API. */
   responseFormat?: { type: 'json_object' | 'text' } | { type: 'json_schema'; json_schema: { name: string; schema: object; strict?: boolean } };
+  /** Use explicit no-thinking mode for short/background work. */
+  reasoningMode?: 'enabled' | 'disabled';
 }
 
 // ============ Usage helper ============
@@ -120,11 +122,12 @@ function isGeminiModelId(modelId: string): boolean {
 async function getThinkingCompletionParams(
   model: string,
   requestedMax: number,
+  reasoningMode: InternalCompletionOptions['reasoningMode'] = 'enabled',
 ): Promise<ThinkingCompletionParams> {
   const profile = buildThinkingRequestProfile({
     modelId: model,
     thinkingCapable: true,
-    thinkingEnabled: true,
+    thinkingEnabled: reasoningMode === 'enabled',
     maxTokens: requestedMax,
   });
   if (!profile.enabled) {
@@ -148,6 +151,17 @@ async function getThinkingCompletionParams(
   // non-streaming transport cap. Use outputCeiling for all providers so the
   // reasoning budget formula has positive headroom on every retry.
   const transportCap = outputCeiling;
+
+  // Kimi K2.6 shares max_tokens between visible output and retained reasoning.
+  // Moonshot recommends at least 16K whenever thinking is enabled; lower
+  // internal-service budgets were observed to exhaust on reasoning alone.
+  if (isKimiK26Model(model)) {
+    return {
+      requestParams: profile.requestParams,
+      maxTokens: Math.min(Math.max(requestedMax, 16_000), transportCap),
+      enabled: true,
+    };
+  }
 
   // --- Separate-budget providers (Anthropic legacy, Gemini) ---
   // max_tokens is visible-only; the thinking budget is a separate parameter.
@@ -307,7 +321,7 @@ async function callFireworks(model: string, opts: InternalCompletionOptions): Pr
   // Thinking models (DeepSeek/Kimi hosted on Fireworks) need reasoning headroom.
   // getThinkingCompletionParams now uses the model's DB-driven output ceiling
   // (not the 4096 non-streaming cap) so retry escalation has positive headroom.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
   const baseTemp = opts.temperature ?? 0.3;
 
   // Fireworks requires stream=true for max_tokens > 4096 (non-streaming
@@ -370,7 +384,7 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
   // Thinking models (Claude Sonnet 5, Opus 4.7+, Fable 5) need reasoning headroom.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
   const baseTemp = opts.temperature ?? 0.3;
   // Note: spreading thinking params makes the SDK infer a Stream|Message union,
   // so we type the response explicitly as a non-streaming Message.
@@ -403,7 +417,7 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
     : model.startsWith('ollama-') ? model.slice('ollama-'.length)
     : model;
   // Thinking models (Qwen3, QwQ, GPT-OSS) need reasoning headroom and the think param.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
   const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: ollamaModel,
@@ -429,7 +443,7 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
   const client = await getMoonshotClient();
   const moonshotModel = model.startsWith('moonshot/') ? model.slice('moonshot/'.length) : model;
   // Thinking models (Kimi K2) need reasoning headroom. Non-thinking keep the 4096 cap.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
   const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: moonshotModel,
@@ -446,6 +460,12 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
     const reasoning = (message as unknown as Record<string, unknown>)?.reasoning_content;
     if (reasoning) {
       logEmptyThinkingResponse('Moonshot', moonshotModel, maxTokens, String(reasoning).length);
+      // Kimi K2.6 can consume the shared output budget on reasoning. Make one
+      // bounded follow-up with thinking disabled so background tasks receive a
+      // visible completion instead of silently returning an empty string.
+      if (isKimiK26Model(model) && opts.reasoningMode !== 'disabled') {
+        return callMoonshot(model, { ...opts, reasoningMode: 'disabled' });
+      }
     }
   }
   return '';
@@ -457,7 +477,7 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
   // Thinking models (DeepSeek V4 Pro, DeepSeek Reasoner) need reasoning headroom
   // and thinking request params. Without these, reasoning exhausts the token
   // budget and content comes back empty (the diagram_gen "Empty response" bug).
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
   const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: deepseekModel,
@@ -486,7 +506,7 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
 async function callOllamaCloudDirect(model: string, opts: InternalCompletionOptions): Promise<string> {
   const baseTemp = opts.temperature ?? 0.3;
   // Thinking models (Qwen3, QwQ, GPT-OSS) need reasoning headroom and the think param.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
   const response = await callOllamaCloud(model, opts.messages, {
     temperature: getTemperatureForModel(model, baseTemp),
     maxTokens,
@@ -516,7 +536,7 @@ async function callAzureFoundry(model: string, opts: InternalCompletionOptions):
   // Strip azure-foundry/ prefix for temperature lookup (bare model name used in overrides)
   const cleanModel = stripAzureFoundryPrefix(model);
   // Thinking models (depends on deployed model) need reasoning headroom.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(cleanModel, opts.maxTokens ?? 2000);
+  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(cleanModel, opts.maxTokens ?? 2000, opts.reasoningMode);
   const response = await client.chat.completions.create({
     model, // Provider strips prefix internally for API call
     messages: opts.messages.map(m => ({
@@ -588,7 +608,7 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
   if (isMoonshotModel(model)) return callMoonshot(model, opts);
   if (isDeepSeekModel(model)) return callDeepSeek(model, opts);
   if (isMistralModel(model)) {
-    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
     const result = await callMistralChat(model, opts.messages as Array<{ role: string; content: string }>, {
       temperature: opts.temperature,
       maxTokens,
@@ -597,7 +617,7 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return result.content;
   }
   if (isGeminiModel(model)) {
-    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
     const result = await callGeminiChat(model, opts.messages, {
       temperature: opts.temperature,
       maxTokens,
@@ -608,7 +628,7 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return result.content;
   }
   if (isOpenAIModel(model)) {
-    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
+    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
     const result = await callOpenAIChat(model, opts.messages, {
       temperature: opts.temperature,
       maxTokens,

@@ -11,7 +11,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getProvider } from '@/lib/db/compat/llm-providers';
-import { testProviderConnection, testProviderConnectionWithKey } from '@/lib/services/model-discovery';
+import { getDb } from '@/lib/db/kysely';
+import { resolvePlatformProviderCredential } from '@/lib/provider-credential';
+import { verifyProviderCredential } from '@/lib/provider-verification';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -22,9 +24,9 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
-    if (!user?.isAdmin) {
+    if (!user?.isSuperAdmin) {
       return NextResponse.json<ApiError>(
-        { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
+        { error: 'Super-admin access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }
       );
     }
@@ -52,16 +54,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const hasProvidedKey = !!body.apiKey && !body.apiKey.includes('••');
+    const hasProvidedBase = typeof body.apiBase === 'string' && body.apiBase.trim().length > 0;
 
-    if (hasProvidedKey) {
-      // Test the provided key directly — no DB/ENV read, no storage.
-      const result = await testProviderConnectionWithKey(id, body.apiKey!, body.apiBase);
-      return NextResponse.json({ provider: id, ...result });
+    if (hasProvidedKey || hasProvidedBase) {
+      // Test unsaved input directly. Base-only providers such as Ollama must be
+      // able to verify an edited endpoint without first saving it.
+      const result = await verifyProviderCredential({
+        providerId: id,
+        apiKey: hasProvidedKey ? body.apiKey!.trim() : null,
+        apiBase: hasProvidedBase ? body.apiBase!.trim() : null,
+      });
+      return NextResponse.json({ provider: id, success: result.ok, ...result });
     }
 
-    // Fall back to testing the persisted credential (existing behavior)
-    const result = await testProviderConnection(id);
-    return NextResponse.json({ provider: id, ...result });
+    // Resolve the same canonical platform source and revision used by runtime
+    // provider clients; do not use a separate DB/environment lookup here.
+    const db = await getDb();
+    const resolved = await resolvePlatformProviderCredential(db, id);
+    const result = await verifyProviderCredential(resolved);
+    return NextResponse.json({
+      provider: id,
+      success: result.ok,
+      credentialVersion: resolved.credentialVersion,
+      ...result,
+    });
   } catch (error) {
     console.error('[LLM Provider] Test error:', error);
     return NextResponse.json<ApiError>(

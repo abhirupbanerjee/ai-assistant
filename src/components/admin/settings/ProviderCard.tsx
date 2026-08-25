@@ -105,13 +105,13 @@ export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCar
         </div>
       </div>
 
-      {/* Info tip — manage keys in API Keys page */}
+      {/* Info tip — manage platform keys in Platform Credentials */}
       <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
         <KeyRound size={14} className="text-blue-600 flex-shrink-0" />
         <p className="text-xs text-blue-800">
           API keys are managed in{' '}
           <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
-            Settings &rarr; API Keys
+            Settings &rarr; Platform Credentials
           </a>
         </p>
       </div>

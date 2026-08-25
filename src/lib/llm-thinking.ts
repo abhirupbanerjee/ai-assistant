@@ -104,7 +104,7 @@ export function getEffectiveTemperature(modelId: string, requestedTemperature: n
  */
 export function getTemperatureForModel(modelId: string, requestedTemperature: number | undefined): number | undefined {
   const id = normalizeModelId(modelId);
-  if (isOpenAIOFamilyModel(id) || isClaudeAdaptiveThinkingModel(id)) {
+  if (isOpenAIOFamilyModel(id) || isClaudeAdaptiveThinkingModel(id) || isKimiThinkingModel(id)) {
     return undefined; // Strip entirely — o-series and Claude adaptive-thinking models reject temperature
   }
   if (isTemperatureLockedModel(id)) {
@@ -116,6 +116,11 @@ export function getTemperatureForModel(modelId: string, requestedTemperature: nu
 export function isDefaultThinkingEnabledModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6') || id.startsWith('claude-sonnet-5');
+}
+
+export function isKimiK26Model(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return id.startsWith('kimi-k2.6') || id.startsWith('kimi-k2p6');
 }
 
 export function isLikelyThinkingCapableModel(modelId: string): boolean {
@@ -185,6 +190,9 @@ export function buildThinkingRequestProfile(options: {
   streamFields.add('think_tags');
 
   if (!enabled) {
+    if (isKimiK26Model(options.modelId)) {
+      requestParams.thinking = { type: 'disabled' };
+    }
     if (isNonOOpenAIGpt5Model(options.modelId)) {
       const id = normalizeModelId(options.modelId);
       if (id.startsWith('gpt-5.6')) {
@@ -214,6 +222,15 @@ export function buildThinkingRequestProfile(options: {
     requiresThinkingStatePreservation = true;
     requestParams.thinking = { type: 'enabled' };
     requestParams.reasoning_effort = 'high';
+    streamFields.add('reasoning_content');
+  } else if (isKimiThinkingModel(options.modelId)) {
+    requiresThinkingStatePreservation = true;
+    const id = normalizeModelId(options.modelId);
+    if (id.startsWith('kimi-k3')) {
+      requestParams.reasoning_effort = 'high';
+    } else if (isKimiK26Model(options.modelId)) {
+      requestParams.thinking = { type: 'enabled', keep: 'all' };
+    }
     streamFields.add('reasoning_content');
   } else if (isOllamaModel(options.modelId)) {
     requestParams.think = true;

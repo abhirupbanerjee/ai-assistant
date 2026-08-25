@@ -86,8 +86,8 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'tokens', label: 'Tokens' },
       { id: 'usage', label: 'Usage' },
       { id: 'audit-logs', label: 'Audit Logs' },
-      { id: 'ai-setup', label: 'AI & API Setup' },
-      { id: 'api-keys', label: 'API Keys' },
+      { id: 'ai-setup', label: 'Organization AI Setup & BYOK' },
+      { id: 'api-keys', label: 'Platform Credentials' },
       { id: 'routes', label: 'Routes' },
       { id: 'llm', label: 'LLM' },
       // Autonomous Mode and Agent Registry are L2 siblings of LLM, positioned right after it.

@@ -693,6 +693,57 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
 }
 
 /**
+ * Verify an Ollama Cloud API key without reading its persisted configuration.
+ * The API is OpenAI-compatible and accepts the account key on `/models`.
+ */
+async function discoverOllamaCloudModelsWithKey(apiKey: string, apiBase?: string): Promise<DiscoveredModel[]> {
+  const baseUrl = (apiBase || 'https://api.ollama.com/v1').replace(/\/+$/, '');
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Ollama Cloud API error: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json() as { data?: Array<{ id: string }> };
+  return (data.data ?? []).map((model) => ({
+    id: `ollama-cloud/${model.id}`,
+    name: generateDisplayName(model.id),
+    provider: 'ollama-cloud',
+    toolCapable: isToolCapable(model.id),
+    visionCapable: isVisionCapable(model.id),
+    forcedToolCapable: isForcedToolCapable(model.id),
+    maxInputTokens: getContextWindow(model.id),
+    maxOutputTokens: getDefaultOutputTokens('ollama-cloud'),
+    isEnabled: false,
+  }));
+}
+
+/** Verify a supplied Azure AI Foundry project endpoint using workload identity. */
+async function discoverAzureFoundryModelsAtEndpoint(apiBase: string): Promise<DiscoveredModel[]> {
+  const { AIProjectClient } = await import('@azure/ai-projects');
+  const { DefaultAzureCredential } = await import('@azure/identity');
+  const project = new AIProjectClient(apiBase.replace(/\/$/, ''), new DefaultAzureCredential());
+  const deployments: DiscoveredModel[] = [];
+  for await (const deployment of project.deployments.list()) {
+    if (deployment.type === 'ModelDeployment' && 'modelName' in deployment && 'modelPublisher' in deployment) {
+      const d = deployment as { name: string; modelName: string };
+      deployments.push({
+        id: `azure-foundry/${d.name}`,
+        name: generateDisplayName(d.modelName),
+        provider: 'azure-foundry',
+        toolCapable: isToolCapable(`azure-foundry/${d.name}`),
+        visionCapable: isVisionCapable(`azure-foundry/${d.name}`),
+        forcedToolCapable: isForcedToolCapable(`azure-foundry/${d.name}`),
+        maxInputTokens: getContextWindow(`azure-foundry/${d.name}`),
+        maxOutputTokens: getDefaultOutputTokens('azure-foundry'),
+        isEnabled: false,
+      });
+    }
+  }
+  return deployments.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Discover models from Anthropic API
  * Uses the List Models endpoint: GET /v1/models
  */
@@ -1057,31 +1108,11 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         if (!apiBase) {
           return { success: false, provider, models: [], error: 'AZURE_FOUNDRY_ENDPOINT not configured' };
         }
-        // Use Foundry SDK to list serverless catalog models
-        const { AIProjectClient } = await import('@azure/ai-projects');
-        const { DefaultAzureCredential } = await import('@azure/identity');
-        const project = new AIProjectClient(
-          apiBase.replace(/\/$/, ''),
-          new DefaultAzureCredential(),
-        );
-        const deployments: DiscoveredModel[] = [];
-        for await (const deployment of project.deployments.list()) {
-          if (deployment.type === 'ModelDeployment' && 'modelName' in deployment && 'modelPublisher' in deployment) {
-            const d = deployment as { name: string; modelName: string; modelPublisher: string };
-            deployments.push({
-              id: `azure-foundry/${d.name}`,
-              name: generateDisplayName(d.modelName),
-              provider: 'azure-foundry',
-              toolCapable: isToolCapable(`azure-foundry/${d.name}`),
-              visionCapable: isVisionCapable(`azure-foundry/${d.name}`),
-              forcedToolCapable: isForcedToolCapable(`azure-foundry/${d.name}`),
-              maxInputTokens: getContextWindow(`azure-foundry/${d.name}`),
-              maxOutputTokens: getDefaultOutputTokens('azure-foundry'),
-              isEnabled: !!(await getEnabledModel(`azure-foundry/${d.name}`)),
-            });
-          }
-        }
-        models = deployments.sort((a, b) => a.name.localeCompare(b.name));
+        const discovered = await discoverAzureFoundryModelsAtEndpoint(apiBase);
+        models = await Promise.all(discovered.map(async (model) => ({
+          ...model,
+          isEnabled: !!(await getEnabledModel(model.id)),
+        })));
         break;
       }
 
@@ -1168,10 +1199,7 @@ export async function testProviderConnectionWithKey(
         models = await discoverFireworksModels(apiKey);
         break;
       case 'ollama-cloud': {
-        // ollama-cloud uses a different discovery path; fall back to persisted
-        const result = await discoverModels('ollama-cloud');
-        if (!result.success) return { success: false, message: result.error || 'Connection failed' };
-        models = result.models;
+        models = await discoverOllamaCloudModelsWithKey(apiKey, apiBase);
         break;
       }
       case 'moonshot':
@@ -1181,13 +1209,9 @@ export async function testProviderConnectionWithKey(
         if (!apiBase) {
           return { success: false, message: 'Azure Foundry endpoint URL is required' };
         }
-        // Azure Foundry uses DefaultAzureCredential, not an API key.
-        // Fall back to persisted discovery for now.
-        {
-          const result = await discoverModels('azure-foundry');
-          if (!result.success) return { success: false, message: result.error || 'Connection failed' };
-          models = result.models;
-        }
+        // Azure Foundry uses DefaultAzureCredential. Verify the supplied
+        // endpoint directly rather than falling back to persisted settings.
+        models = await discoverAzureFoundryModelsAtEndpoint(apiBase);
         break;
       default:
         return { success: false, message: `Unknown provider: ${provider}` };

@@ -1223,7 +1223,13 @@ export interface PlatformProviderCredentialsTable {
   secret_ref: string;
   kek_version: number;
   status: 'active' | 'disabled';
+  credential_version: Generated<number>;
   last_verified_at: string | null;
+  last_verification_attempt_at: string | null;
+  last_verification_status: string | null;
+  last_verification_http_status: number | null;
+  last_verification_error_code: string | null;
+  verified_source_fingerprint: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

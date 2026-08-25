@@ -117,17 +117,37 @@ async function resolveLegacy(providerId: string): Promise<ResolvedProviderCreden
  * The platform credential — the same key source as legacy for
  * `PLATFORM_MANAGED` orgs, which is what preserves DEFAULT-org parity.
  */
-async function resolvePlatform(providerId: string): Promise<ResolvedProviderCredential> {
+/**
+ * Resolve the canonical platform credential source and its persisted revision.
+ *
+ * Platform secret material remains in the legacy secure stores (`llm_providers`,
+ * settings, or environment). `platform_provider_credentials` only supplies
+ * lifecycle status and a version that invalidates cached SDK clients whenever a
+ * canonical platform provider row changes. An absent metadata row intentionally
+ * retains legacy availability during rollout.
+ */
+export async function resolvePlatformProviderCredential(
+  db: Kysely<DB>,
+  providerId: string
+): Promise<ResolvedProviderCredential> {
+  const metadata = await db
+    .selectFrom('platform_provider_credentials')
+    .select(['status', 'credential_version'])
+    .where('provider_id', '=', providerId)
+    .executeTakeFirst();
+  const enabled = metadata?.status !== 'disabled';
+  const credentialVersion = metadata?.credential_version ?? 0;
+
   if (providerId === 'cohere') {
     const settings = await getRerankerSettings();
     const apiKey = settings.cohereApiKey || process.env.COHERE_API_KEY || null;
     return {
       providerId,
       credentialId: 'platform',
-      credentialVersion: 0,
-      apiKey,
+      credentialVersion,
+      apiKey: enabled ? apiKey : null,
       apiBase: null,
-      available: !!apiKey,
+      available: enabled && !!apiKey,
     };
   }
 
@@ -136,10 +156,10 @@ async function resolvePlatform(providerId: string): Promise<ResolvedProviderCred
   return {
     providerId,
     credentialId: 'platform',
-    credentialVersion: 0,
-    apiKey,
-    apiBase,
-    available: isAvailable(providerId, apiKey, apiBase),
+    credentialVersion,
+    apiKey: enabled ? apiKey : null,
+    apiBase: enabled ? apiBase : null,
+    available: enabled && isAvailable(providerId, apiKey, apiBase),
   };
 }
 
@@ -338,7 +358,7 @@ export async function resolveProviderCredential(
   }
 
   if (org.credential_mode !== 'ORGANIZATION_BYOK') {
-    return resolvePlatform(providerId);
+    return resolvePlatformProviderCredential(db, providerId);
   }
 
   const byok = await resolveByokCredential(db, org.id, providerId);

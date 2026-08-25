@@ -211,20 +211,21 @@ export async function GET() {
       },
       ocr: {
         ...ocrSettings,
-        // Mask sensitive credentials
-        mistralApiKey: ocrSettings.mistralApiKey ? '••••••••' : '',
+        // Mistral OCR uses the canonical Mistral LLM provider credential.
+        // Do not expose or preserve the retired OCR-local override.
+        mistralApiKey: '',
         azureDiKey: ocrSettings.azureDiKey ? '••••••••' : '',
         // Availability flags
-        hasMistralApiKey: !!(ocrSettings.mistralApiKey),
+        hasMistralApiKey: false,
         hasAzureDiCredentials: !!(ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey),
         // Check if Mistral key is available from LLM provider config
-        mistralFromLlmProvider: !ocrSettings.mistralApiKey && await isProviderConfigured('mistral'),
+        mistralFromLlmProvider: await isProviderConfigured('mistral'),
         mistralOcrApiKeyFromEnv: !!process.env.MISTRAL_API_KEY,
         azureDiFromEnv: !!(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY),
         updatedAt: ocrMeta?.updatedAt || new Date().toISOString(),
         updatedBy: ocrMeta?.updatedBy || 'system',
         providerAvailability: {
-          mistral: Boolean(ocrSettings.mistralApiKey) || await isProviderConfigured('mistral'),
+          mistral: await isProviderConfigured('mistral'),
           'azure-di': Boolean((ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey) || (process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY)),
           'pdf-parse': true,
         },
@@ -1315,11 +1316,13 @@ export async function PUT(request: NextRequest) {
           }
         }
 
-        // Validate Mistral API key (optional)
-        if (mistralApiKey !== undefined && typeof mistralApiKey !== 'string') {
+        // Retire the OCR-local Mistral key. The canonical LLM provider setting
+        // is the only runtime source, so accepting a new override would recreate
+        // the credential-shadowing bug this migration removes.
+        if (mistralApiKey !== undefined) {
           return NextResponse.json<ApiError>(
-            { error: 'Mistral API key must be a string', code: 'VALIDATION_ERROR' },
-            { status: 400 }
+            { error: 'Configure the Mistral API key under LLM Providers; OCR-local Mistral keys are retired', code: 'VALIDATION_ERROR' },
+            { status: 409 }
           );
         }
 
@@ -1346,11 +1349,6 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Reset OCR clients if credentials changed (including when cleared)
-        if (mistralApiKey !== undefined) {
-          const { resetMistralOcrClient } = await import('@/lib/mistral-ocr');
-          resetMistralOcrClient();
-        }
         if (azureDiEndpoint !== undefined || azureDiKey !== undefined) {
           const { resetAzureDIClient } = await import('@/lib/azure-document-intelligence');
           resetAzureDIClient();
@@ -1363,7 +1361,6 @@ export async function PUT(request: NextRequest) {
               enabled: p.enabled,
             })),
           } : {}),
-          ...(mistralApiKey !== undefined ? { mistralApiKey: mistralApiKey || undefined } : {}),
           ...(azureDiEndpoint !== undefined ? { azureDiEndpoint: azureDiEndpoint || undefined } : {}),
           ...(azureDiKey !== undefined ? { azureDiKey: azureDiKey || undefined } : {}),
         }, user.email);

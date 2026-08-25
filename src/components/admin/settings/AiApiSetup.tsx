@@ -341,7 +341,7 @@ export default function AiApiSetup() {
   if (!overview.flag.aiApiSetupUiEnabled) {
     return (
       <div className="p-6 text-sm text-gray-600">
-        AI & API Setup is not enabled (feature flag <code>ai-api-setup-ui-enabled</code> is off).
+        Organization AI Setup &amp; BYOK is not enabled (feature flag <code>ai-api-setup-ui-enabled</code> is off).
       </div>
     );
   }
@@ -358,7 +358,7 @@ export default function AiApiSetup() {
       <section className="bg-white rounded-lg border shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-semibold text-gray-900">Organization / Credential Mode</h2>
+              <h2 className="font-semibold text-gray-900">Organization AI Setup &amp; BYOK</h2>
             <p className="text-sm text-gray-500">Select the organization to configure.</p>
           </div>
           {overview.viewer.isSuperAdmin && (
@@ -527,9 +527,11 @@ export default function AiApiSetup() {
 
       {/* Provider Connections */}
       <section className="bg-white rounded-lg border shadow-sm p-6">
-        <h2 className="font-semibold text-gray-900 mb-3">Provider Connections</h2>
+        <h2 className="font-semibold text-gray-900 mb-3">{org?.credentialMode === 'ORGANIZATION_BYOK' ? 'Org BYOK Credentials' : 'Credential Mode'}</h2>
         <p className="text-sm text-gray-500 mb-4">
-          One credential per provider. Capabilities reference providers without duplicate keys.
+          {org?.credentialMode === 'ORGANIZATION_BYOK'
+            ? 'Organization-specific encrypted credentials. Capabilities reference providers without duplicate keys.'
+            : 'This organization inherits shared platform credentials.'}
         </p>
 
         {/* Mode-aware guidance */}
@@ -537,9 +539,9 @@ export default function AiApiSetup() {
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2 mb-4">
             <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-blue-800">
-              This organization uses platform-managed credentials. Provider keys are configured in
-              Settings &rarr; API Keys by a super admin. Switch the organization to BYOK mode to
-              manage organization-specific keys here.
+              This organization uses shared platform credentials. A super-admin manages the keys in
+              Settings &rarr; Platform Credentials. Switch the organization to BYOK mode to manage
+              organization-specific keys here.
             </p>
           </div>
         )}

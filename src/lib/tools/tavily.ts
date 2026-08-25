@@ -1196,6 +1196,7 @@ export const tavilyWebSearch: ToolDefinition = {
     if (args.end_date) payload.end_date = args.end_date;
     if (chunksPerSource && searchDepth === 'advanced') payload.chunks_per_source = chunksPerSource;
 
+    const startedAt = Date.now();
     try {
       const response = await fetch('https://api.tavily.com/search', {
         method: 'POST',
@@ -1204,10 +1205,33 @@ export const tavilyWebSearch: ToolDefinition = {
       });
 
       if (!response.ok) {
-        throw new Error(`Tavily API error: ${response.status}`);
+        const requestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
+        return JSON.stringify({
+          error: 'Web search provider rejected the request',
+          errorCode: response.status === 401 || response.status === 403 ? 'AUTH_ERROR' : 'UPSTREAM_ERROR',
+          results: [],
+          _toolOutcome: {
+            provider: 'tavily',
+            ok: false,
+            httpStatus: response.status,
+            requestId,
+            latencyMs: Date.now() - startedAt,
+          },
+        });
       }
 
-      const data = await response.json();
+      const data = await response.json() as Record<string, unknown>;
+      // This outcome describes the upstream tool call only. Tool-loop/LLM
+      // failures are recorded separately by the orchestration layer and must
+      // not be presented as a Tavily credential failure.
+      data._toolOutcome = {
+        provider: 'tavily',
+        ok: true,
+        httpStatus: response.status,
+        requestId: response.headers.get('x-request-id') ?? response.headers.get('request-id'),
+        latencyMs: Date.now() - startedAt,
+        resultCount: Array.isArray(data.results) ? data.results.length : 0,
+      };
       const resultString = JSON.stringify(data, null, 2);
 
       // Cache the result
@@ -1215,11 +1239,18 @@ export const tavilyWebSearch: ToolDefinition = {
 
       return resultString;
     } catch (error) {
-      console.error('Tavily API error:', error);
+      console.error('Tavily transport error:', error instanceof Error ? error.message : String(error));
       return JSON.stringify({
         error: 'Web search temporarily unavailable',
-        errorCode: 'API_ERROR',
+        errorCode: 'TRANSPORT_ERROR',
         results: [],
+        _toolOutcome: {
+          provider: 'tavily',
+          ok: false,
+          httpStatus: null,
+          requestId: null,
+          latencyMs: Date.now() - startedAt,
+        },
       });
     }
   },

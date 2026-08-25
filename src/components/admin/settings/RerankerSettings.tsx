@@ -75,7 +75,7 @@ const DEFAULT_PROVIDERS: RerankerProviderConfig[] = [
 export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [settings, setSettings] = useState<RerankerSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
-  // Cohere API key is now managed in Settings → API Keys
+  // Cohere API key is now managed in Settings → Platform Credentials
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -444,7 +444,7 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
                   <p className="text-xs text-blue-800">
                     API keys are managed in{' '}
                     <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
-                      Settings &rarr; API Keys
+                      Settings &rarr; Platform Credentials
                     </a>
                   </p>
                 </div>

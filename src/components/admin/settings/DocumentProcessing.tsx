@@ -49,7 +49,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
   const [settings, setSettings] = useState<OcrSettings | null>(null);
   const [editedProviders, setEditedProviders] = useState<OcrProviderConfig[] | null>(null);
   // Credential inputs
-  // OCR API keys are now managed in Settings → API Keys
+  // OCR API keys are now managed in Settings → Platform Credentials
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -107,7 +107,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
         providers: editedProviders,
       };
 
-      // OCR API keys are managed in Settings → API Keys
+      // OCR API keys are managed in Settings → Platform Credentials
 
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
@@ -295,7 +295,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
                             <p className="text-xs text-blue-800">
                               API keys are managed in{' '}
                               <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
-                                Settings &rarr; API Keys
+                                Settings &rarr; Platform Credentials
                               </a>
                             </p>
                           </div>
@@ -323,7 +323,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
                             <p className="text-xs text-blue-800">
                               API keys are managed in{' '}
                               <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
-                                Settings &rarr; API Keys
+                                Settings &rarr; Platform Credentials
                               </a>
                             </p>
                           </div>

@@ -273,7 +273,10 @@ export async function seedDefaultProviders(): Promise<void> {
     await createProvider({
       id: provider.id,
       name: provider.name,
-      apiKey: apiKey ? safeEncrypt(apiKey) || apiKey : undefined,
+      // createProvider() is the single encryption boundary. Passing an
+      // envelope here would create nested encryption and send ciphertext to
+      // the upstream provider after the one runtime decrypt.
+      apiKey,
       apiBase,
       enabled: provider.enabled,
     });

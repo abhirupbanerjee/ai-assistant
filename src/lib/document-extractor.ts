@@ -21,7 +21,7 @@ import ExcelJS from 'exceljs';
 import { OfficeParser } from 'officeparser';
 import { getOcrSettings } from './db/compat/config';
 import type { OcrProvider } from './db/compat/config';
-import { isProviderConfigured } from '@/lib/provider-helpers';
+import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 // ============================================
 // Types
@@ -366,8 +366,7 @@ async function attemptProvider(
   switch (provider) {
     case 'mistral': {
       // Check OCR settings first, then LLM provider config
-      const ocrSettings = await getOcrSettings();
-      const hasMistral = ocrSettings.mistralApiKey || await isProviderConfigured('mistral');
+      const hasMistral = (await resolveProviderCredentialForRequest('mistral')).available;
       if (!isMistralSupported(mimeType) || !hasMistral) return null;
       try {
         console.log(`[${tierLabel}] Attempting Mistral OCR for ${filename}...`);

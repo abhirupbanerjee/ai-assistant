@@ -342,7 +342,7 @@ function WebSearchConfig({
 
   return (
     <div className="space-y-4">
-      {/* API Key Status - managed in Settings → API Keys */}
+      {/* API Key Status - managed in Settings → Platform Credentials */}
       {!hideSensitive && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -371,7 +371,7 @@ function WebSearchConfig({
             <p className="text-xs text-blue-800">
               API keys are managed in{' '}
               <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
-                Settings &rarr; API Keys
+                Settings &rarr; Platform Credentials
               </a>
             </p>
           </div>

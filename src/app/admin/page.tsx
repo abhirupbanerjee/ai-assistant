@@ -1226,10 +1226,10 @@ function AdminPageContent() {
               {/* Audit Logs Section */}
               {settingsSection === 'audit-logs' && <AuditLogs />}
 
-              {/* AI & API Setup (consolidated) Section */}
+              {/* Organization AI Setup & BYOK Section */}
               {settingsSection === 'ai-setup' && <AiApiSetup />}
 
-              {/* API Keys Section */}
+              {/* Platform Credentials Section */}
               {settingsSection === 'api-keys' && <ApiKeysSettings userRole={userRole} />}
               {/* Routes Settings Section */}
               {settingsSection === 'routes' && <RoutesSettingsPanel />}

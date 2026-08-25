@@ -1,5 +1,4 @@
 import { Mistral } from '@mistralai/mistralai';
-import { getOcrSettings } from '@/lib/db/compat/config';
 import { resolveProviderCredentialForRequest } from '@/lib/provider-credential';
 
 /**
@@ -20,17 +19,10 @@ export function resetMistralOcrClient(): void {}
 async function getMistralClient(): Promise<Mistral> {
   const cred = await resolveProviderCredentialForRequest('mistral');
 
-  let apiKey = cred.apiKey;
-  if (cred.credentialId === 'platform' || cred.credentialId === 'legacy') {
-    // Legacy/platform parity only. BYOK orgs keep their own credential.
-    const ocrSettings = await getOcrSettings();
-    apiKey = ocrSettings.mistralApiKey || cred.apiKey;
+  if (!cred.apiKey) {
+    throw new Error('Mistral API key not configured. Configure Mistral under LLM > Providers.');
   }
-
-  if (!apiKey) {
-    throw new Error('Mistral API key not configured. Set in Settings > Document Processing or LLM > Providers.');
-  }
-  return new Mistral({ apiKey });
+  return new Mistral({ apiKey: cred.apiKey });
 }
 
 export interface MistralPageText {

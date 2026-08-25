@@ -305,7 +305,8 @@ export function seedDefaultProviders(): void {
     createProvider({
       id: provider.id,
       name: provider.name,
-      apiKey: apiKey ? safeEncrypt(apiKey) || apiKey : undefined,
+      // createProvider() owns encryption; do not pass pre-encrypted input.
+      apiKey,
       apiBase,
       enabled: provider.enabled,
     });

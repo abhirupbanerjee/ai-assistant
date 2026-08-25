@@ -262,7 +262,7 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
   // Edited key values (only populated when user changes something)
   const [editedLLMKeys, setEditedLLMKeys] = useState<Record<string, { apiKey?: string; apiBase?: string }>>({});
   const [editedTavilyKey, setEditedTavilyKey] = useState<string | null>(null);
-  const [editedOcr, setEditedOcr] = useState<{ mistralApiKey?: string; azureDiKey?: string; azureDiEndpoint?: string }>({});
+  const [editedOcr, setEditedOcr] = useState<{ azureDiKey?: string; azureDiEndpoint?: string }>({});
   const [editedCohereKey, setEditedCohereKey] = useState<string | null>(null);
 
   // ============================================================================
@@ -340,14 +340,6 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
     if (hasWsKey) return 'db';
     if (settings.tavily.apiKeyFromEnv) return 'env';
     if (settings.tavily.hasApiKey) return 'db';
-    return 'none';
-  }
-
-  function getOcrMistralSource(): SourceBadge {
-    if (!settings) return 'none';
-    if (settings.ocr.hasMistralApiKey) return 'db';
-    if (settings.ocr.mistralFromLlmProvider) return 'llm';
-    if (settings.ocr.mistralOcrApiKeyFromEnv) return 'env';
     return 'none';
   }
 
@@ -459,9 +451,8 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
       }
 
       // Save OCR settings
-      if (editedOcr.mistralApiKey !== undefined || editedOcr.azureDiKey !== undefined || editedOcr.azureDiEndpoint !== undefined) {
+      if (editedOcr.azureDiKey !== undefined || editedOcr.azureDiEndpoint !== undefined) {
         const ocrBody: Record<string, string> = {};
-        if (editedOcr.mistralApiKey !== undefined) ocrBody.mistralApiKey = editedOcr.mistralApiKey;
         if (editedOcr.azureDiKey !== undefined) ocrBody.azureDiKey = editedOcr.azureDiKey;
         if (editedOcr.azureDiEndpoint !== undefined) ocrBody.azureDiEndpoint = editedOcr.azureDiEndpoint;
         promises.push(
@@ -615,7 +606,7 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
         </div>
         <div className="flex-shrink-0 flex items-center gap-2">
           <StatusBadge source={source} />
-          {(source !== 'none') && (
+          {isSuperAdmin && (source !== 'none') && (
             <button
               type="button"
               onClick={() => handleTestProvider(provider.id)}
@@ -672,8 +663,8 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">API Keys &amp; Credentials</h2>
-          <p className="text-sm text-gray-500">Configure all API keys in one place</p>
+          <h2 className="text-lg font-semibold text-gray-900">Platform Keys</h2>
+          <p className="text-sm text-gray-500">Super-admin managed credentials shared by the DEFAULT and PLATFORM_MANAGED organizations.</p>
         </div>
         {isSuperAdmin && (
           <Button
@@ -693,8 +684,8 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
           <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-blue-800">
-            These keys are shared across all PLATFORM_MANAGED organizations.
-            For organization-specific BYOK keys, use AI & API Setup.
+            These keys are shared by the DEFAULT organization and all PLATFORM_MANAGED organizations.
+            For organization-specific BYOK keys and capability routing, use Organization AI Setup &amp; BYOK.
           </p>
         </div>
       ) : (
@@ -702,7 +693,7 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
           <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800">
             Platform credentials are managed by super admins. For organization-specific keys,
-            use AI & API Setup.
+            use Organization AI Setup &amp; BYOK.
           </p>
         </div>
       )}
@@ -810,14 +801,7 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
           optional
         />
         <div className="divide-y divide-gray-100">
-          <KeyInputRow
-            label="Mistral OCR 4"
-            value={editedOcr.mistralApiKey ?? ''}
-            source={getOcrMistralSource()}
-            onChange={(val) => setEditedOcr((prev) => ({ ...prev, mistralApiKey: val }))}
-            placeholder="Enter Mistral API key..."
-            disabled={!isSuperAdmin}
-          />
+          <ReadOnlyKeyRow label="Mistral OCR 4" message="Uses the Mistral key configured under LLM Providers." />
           <KeyInputRow
             label="Azure DI Key"
             value={editedOcr.azureDiKey ?? ''}
