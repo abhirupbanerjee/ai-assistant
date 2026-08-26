@@ -1,7 +1,7 @@
 # AI Assistant — Docker Compose convenience wrapper
 # Use `make help` to see all targets.
 
-.PHONY: help up down build up-app down-app build-app up-connector down-connector build-connector logs-connector status
+.PHONY: help up down build up-app down-app build-app up-connector down-connector build-connector logs-connector status backfill-tenancy
 
 COMPOSE_FILES := -f docker-compose.yml -f services/drive-connector/docker-compose.connector.yml
 BASE_COMPOSE_FILE := -f docker-compose.yml
@@ -43,3 +43,6 @@ logs-connector: ## Tail drive-connector logs
 
 status: ## Show running containers for this project
 	docker compose $(COMPOSE_FILES) ps
+
+backfill-tenancy: ## Run idempotent PostgreSQL and Qdrant organization-tenancy backfills
+	bash scripts/run-tenancy-backfills.sh

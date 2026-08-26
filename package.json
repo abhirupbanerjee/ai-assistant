@@ -21,6 +21,8 @@
     "docker:logs": "docker compose logs -f app",
     "db:setup": "npx tsx src/lib/db/setup.ts",
     "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts && node -e \"const fs=require('fs');let f=fs.readFileSync('src/lib/db/db-types.ts','utf8');f=f.replace(/\\bDate\\b/g,'string').replace(/Generated<string\\s*\\|\\s*null>/g,'Generated<string>');fs.writeFileSync('src/lib/db/db-types.ts',f);\"",
+    "backfill:tenancy": "bash scripts/run-tenancy-backfills.sh",
+    "backfill:tenancy:skip-readiness": "bash scripts/run-tenancy-backfills.sh --skip-readiness",
     "cleanup:expired": "npx tsx src/scripts/cleanup-expired-outputs.ts",
     "eval:routing": "npx tsx eval/routing.ts --mock",
     "eval:routing:mock": "npx tsx eval/routing.ts --mock",
