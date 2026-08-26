@@ -13,7 +13,15 @@ import path from 'path';
 import { createEmbeddings } from './openai';
 import { SemanticChunker } from './chunking/semantic-chunker';
 import { extractHeadings, enrichChunkWithHeading } from './chunking/heading-extractor';
-import { getVectorStore, getCollectionNames } from './vector-store';
+import {
+  getVectorStore,
+  resolveActiveCollectionNames,
+  loadCandidateMappings,
+  candidateTargetsForDocument,
+  type VectorStoreClient,
+  type CandidateTarget,
+  type DocumentCollectionShape,
+} from './vector-store';
 import { readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, writeFileBuffer } from './storage';
 import { getRagSettings } from './db/compat/config';
 import {
@@ -28,7 +36,7 @@ import {
 } from './db/compat/documents';
 import { getCategoryById } from './db/compat/categories';
 import { extractText, getMimeTypeFromFilename, type ExtractedPage } from './document-extractor';
-import type { DocumentChunk, GlobalDocument } from '@/types';
+import type { ChunkMetadata, DocumentChunk, GlobalDocument } from '@/types';
 import {
   isYouTubeUrl,
   extractYouTubeTranscript,
@@ -206,6 +214,69 @@ function toGlobalDocument(doc: DocumentWithCategories): GlobalDocument {
   };
 }
 
+// ============ Generation dual-write helpers (Phase 4) ============
+
+interface DualWriteContext {
+  store: VectorStoreClient;
+  candidateMappings: Record<string, CandidateTarget>;
+}
+
+/**
+ * Best-effort mirror of a point write into candidate (building/validating)
+ * physical collections for the same logical collection names. A candidate
+ * write failure is logged and otherwise ignored so the active write is never
+ * compromised; the Phase 6 validation gate is responsible for detecting and
+ * reconciling any resulting divergence.
+ */
+async function mirrorAddDocuments(
+  ctx: DualWriteContext,
+  shape: DocumentCollectionShape,
+  ids: string[],
+  embeddings: number[][],
+  texts: string[],
+  metadatas: ChunkMetadata[]
+): Promise<void> {
+  const targets = candidateTargetsForDocument(ctx.candidateMappings, shape);
+  for (const target of targets) {
+    try {
+      // `addDocuments` stamps the versioned payload contract (schemaVersion 2)
+      // and derives the `generation` from the candidate physical name.
+      await ctx.store.addDocuments(target.physicalName, ids, embeddings, texts, metadatas);
+    } catch (error) {
+      console.warn(
+        `[Ingest] Dual-write to candidate collection "${target.physicalName}" ` +
+        `(generation ${target.generation}) failed; active write unaffected. The ` +
+        `Phase 6 validation gate will detect and reconcile divergence:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+}
+
+/**
+ * Best-effort mirror of a point delete into candidate (building/validating)
+ * physical collections. Mirrors by the `documentId` payload filter — the same
+ * mechanism the active per-collection delete path uses.
+ */
+async function mirrorDeleteDocuments(
+  ctx: DualWriteContext,
+  shape: DocumentCollectionShape,
+  documentId: string
+): Promise<void> {
+  const targets = candidateTargetsForDocument(ctx.candidateMappings, shape);
+  for (const target of targets) {
+    try {
+      await ctx.store.deleteDocumentsByFilter(target.physicalName, { documentId });
+    } catch (error) {
+      console.warn(
+        `[Ingest] Dual-write delete from candidate collection "${target.physicalName}" ` +
+        `(generation ${target.generation}) failed; active delete unaffected:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+}
+
 /**
  * Ingest a document with category support
  *
@@ -298,7 +369,9 @@ async function processDocumentAsync(
 
     // Get vector store and collection names
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
+    const candidateMappings = await loadCandidateMappings();
+    const dualWriteCtx: DualWriteContext = { store, candidateMappings };
 
     // CRITICAL FIX: Fetch collection list ONCE before batch loop
     // Prevents race condition where new categories created during batch
@@ -341,6 +414,17 @@ async function processDocumentAsync(
       } else if (!isGlobal) {
         await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
+
+      // Dual-write: mirror the same contract-stamped points into any candidate
+      // (building/validating) collection for the same logical names (Phase 4).
+      await mirrorAddDocuments(
+        dualWriteCtx,
+        { isGlobal, categorySlugs },
+        ids,
+        embeddings,
+        texts,
+        metadatas
+      );
     }
 
     await updateDocument(docId, {
@@ -464,7 +548,9 @@ export async function ingestTextContent(
 
     // Get vector store and collection names
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
+    const candidateMappings = await loadCandidateMappings();
+    const dualWriteCtx: DualWriteContext = { store, candidateMappings };
 
     // CRITICAL FIX: Fetch collection list ONCE before batch loop (same as processDocumentAsync)
     // Prevents race condition where new categories created during batch
@@ -498,6 +584,17 @@ export async function ingestTextContent(
         // Legacy: add to default collection (for uncategorized, non-global documents)
         await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
+
+      // Dual-write: mirror the same contract-stamped points into any candidate
+      // (building/validating) collection for the same logical names (Phase 4).
+      await mirrorAddDocuments(
+        dualWriteCtx,
+        { isGlobal, categorySlugs },
+        ids,
+        embeddings,
+        texts,
+        metadatas
+      );
     }
 
     // Update document status
@@ -536,7 +633,9 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
 
   // Get vector store and collection names
   const store = await getVectorStore();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
+  const candidateMappings = await loadCandidateMappings();
+  const dualWriteCtx: DualWriteContext = { store, candidateMappings };
 
   // Delete from vector store
   if (doc.isGlobal) {
@@ -551,6 +650,11 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
     // Legacy: delete from default collection
     await store.deleteDocumentsByFilter(collNames.legacy, { documentId: docId });
   }
+
+  // Dual-write: mirror the delete into any candidate (building/validating)
+  // collection for the same logical names so the candidate has no stale
+  // vectors (Phase 4 / G8).
+  await mirrorDeleteDocuments(dualWriteCtx, { isGlobal: doc.isGlobal, categorySlugs }, docId);
 
   // Delete file
   const globalDocsDir = getGlobalDocsDir();
@@ -592,7 +696,9 @@ export async function reindexDocument(
 
   // Get vector store and collection names
   const store = await getVectorStore();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
+  const candidateMappings = await loadCandidateMappings();
+  const dualWriteCtx: DualWriteContext = { store, candidateMappings };
 
   // Delete existing embeddings from EVERY collection — not just the document's
   // current category collections. A document re-categorized after ingest would
@@ -641,6 +747,17 @@ export async function reindexDocument(
       } else {
         await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
+
+      // Dual-write: mirror the re-embedded points into candidate collections
+      // (the sweep above already cleared candidate copies) (Phase 4).
+      await mirrorAddDocuments(
+        dualWriteCtx,
+        { isGlobal: doc.isGlobal, categorySlugs },
+        ids,
+        embeddings,
+        texts,
+        metadatas
+      );
     }
 
     // Update document status
@@ -718,7 +835,9 @@ export async function updateDocumentCategories(
 
   // Get vector store and collection names
   const store = await getVectorStore();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
+  const candidateMappings = await loadCandidateMappings();
+  const dualWriteCtx: DualWriteContext = { store, candidateMappings };
 
   // If document has embeddings and categories changed, need to re-index
   if (doc.chunk_count > 0 && doc.status === 'ready') {
@@ -726,6 +845,11 @@ export async function updateDocumentCategories(
     for (const slug of oldSlugs) {
       await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
     }
+
+    // Dual-write: mirror the category removal into candidate collections.
+    // Category re-assignment never changes a document's `global` membership, so
+    // only category collections are mirrored here (isGlobal: false).
+    await mirrorDeleteDocuments(dualWriteCtx, { isGlobal: false, categorySlugs: oldSlugs }, docId);
 
     // Re-add to new categories by reusing existing embeddings
     // Determine source collection: global if doc is global, otherwise first category collection
@@ -764,6 +888,14 @@ export async function updateDocumentCategories(
           for (const slug of newSlugs) {
             await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
           }
+          await mirrorAddDocuments(
+            dualWriteCtx,
+            { isGlobal: false, categorySlugs: newSlugs },
+            ids,
+            embeddings,
+            texts,
+            metadatas
+          );
         }
       } else {
         // Copy existing vectors to new category collections — no re-embedding needed
@@ -777,6 +909,14 @@ export async function updateDocumentCategories(
           for (const slug of newSlugs) {
             await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
           }
+          await mirrorAddDocuments(
+            dualWriteCtx,
+            { isGlobal: false, categorySlugs: newSlugs },
+            ids,
+            embeddings,
+            texts,
+            metadatas
+          );
         }
         console.log(`[Ingest] Copied ${existingChunks.length} existing chunks to ${newSlugs.length} category collection(s) for doc ${docId}`);
       }
@@ -804,10 +944,14 @@ export async function toggleDocumentGlobal(
 
   // Get vector store and collection names
   const store = await getVectorStore();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
+  const candidateMappings = await loadCandidateMappings();
+  const dualWriteCtx: DualWriteContext = { store, candidateMappings };
 
   // If document has embeddings and status is changing, need to re-index
   if (doc.chunk_count > 0 && doc.status === 'ready' && doc.isGlobal !== isGlobal) {
+    const docCategorySlugs = doc.categories.map(c => c.slug);
+
     // Fetch collection list once before any batch work
     const allCollections = await store.listCollections();
     const categoryCollections = allCollections.filter(collNames.isCategory);
@@ -825,11 +969,24 @@ export async function toggleDocumentGlobal(
     // Delete from current locations
     if (doc.isGlobal) {
       await store.deleteDocumentsFromAllCollections([docId]);
+      // Dual-write: the doc was global, so remove it from candidate global and
+      // every candidate category collection (Phase 4 / G8).
+      await mirrorDeleteDocuments(
+        dualWriteCtx,
+        { isGlobal: true, categorySlugs: docCategorySlugs },
+        docId
+      );
     } else {
-      const oldSlugs = doc.categories.map(c => c.slug);
-      for (const slug of oldSlugs) {
+      for (const slug of docCategorySlugs) {
         await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
       }
+      // Dual-write: the doc was categorized, so remove it from candidate
+      // category collections.
+      await mirrorDeleteDocuments(
+        dualWriteCtx,
+        { isGlobal: false, categorySlugs: docCategorySlugs },
+        docId
+      );
     }
 
     if (existingChunks.length === 0) {
@@ -866,6 +1023,16 @@ export async function toggleDocumentGlobal(
             await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
           }
         }
+
+        // Dual-write: mirror the re-embedded points into candidate collections.
+        await mirrorAddDocuments(
+          dualWriteCtx,
+          { isGlobal, categorySlugs: docCategorySlugs },
+          ids,
+          embeddings,
+          texts,
+          metadatas
+        );
       }
     } else {
       // Copy existing vectors to new locations — no re-embedding needed
@@ -888,6 +1055,16 @@ export async function toggleDocumentGlobal(
             await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
           }
         }
+
+        // Dual-write: mirror the copied vectors into candidate collections.
+        await mirrorAddDocuments(
+          dualWriteCtx,
+          { isGlobal, categorySlugs: docCategorySlugs },
+          ids,
+          embeddings,
+          texts,
+          metadatas
+        );
       }
       console.log(`[Ingest] Copied ${existingChunks.length} existing chunks for doc ${docId} (isGlobal: ${isGlobal})`);
     }

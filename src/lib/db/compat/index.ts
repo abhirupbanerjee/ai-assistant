@@ -1275,3 +1275,17 @@ export {
   terminateBrowserSession,
   expireStaleBrowserSessions,
 } from './browser-sessions';
+
+// ============ Vector Index Generations (RAG Phase 1) ============
+export {
+  type GenerationStatus,
+  type VectorIndexGeneration,
+  type CreateGenerationInput,
+  getActiveGeneration,
+  getActiveMappings,
+  getCandidateGeneration,
+  getCandidateGenerations,
+  createGeneration,
+  transitionStatus,
+  markActive,
+} from './vector-index-generations';

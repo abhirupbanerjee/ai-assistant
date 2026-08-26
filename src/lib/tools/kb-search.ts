@@ -24,7 +24,7 @@
 import { getRequestContext } from '../request-context';
 import { getDocumentsByCategory, getGlobalDocuments, getRagSettings } from '../db/compat';
 import { getCategoriesByIds } from '../db/compat/categories';
-import { getVectorStore, getCollectionNames } from '../vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from '../vector-store';
 import { rerankChunks } from '../reranker';
 import { ragLogger as logger } from '../logger';
 import type { RetrievedChunk } from '@/types';
@@ -102,7 +102,7 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
     // Build the collection list — same logic as retrieveFullKbDocumentChunks /
     // buildContext: category collections + global + legacy, filtered to existing.
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
     const candidateCollections = (categorySlugs.length > 0
       ? [...categorySlugs.map(collNames.forCategory), collNames.global, collNames.legacy]
       : [collNames.global, collNames.legacy]);
@@ -160,15 +160,26 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
       });
     }
 
-    // Convert to RetrievedChunk[] (same shape as the RAG path).
-    const chunks: RetrievedChunk[] = results.documents.map((doc, i) => ({
-      id: results.ids[i],
-      text: doc,
-      documentName: results.metadatas[i]?.documentName || 'Unknown',
-      pageNumber: results.metadatas[i]?.pageNumber || 1,
-      score: results.scores[i] || 0,
-      source: 'global' as const,
-    }));
+    // Convert to RetrievedChunk[] (same shape as the RAG path). Also capture,
+    // per chunk id, the canonical documentId (from payload metadata) and the
+    // physical source collection so the output can report the real document id
+    // distinctly from the chunk id (G13 fix) and the hit's provenance.
+    const chunkProvenance = new Map<string, { documentId: string; sourceCollection: string }>();
+    const chunks: RetrievedChunk[] = results.documents.map((doc, i) => {
+      const chunkId = results.ids[i];
+      chunkProvenance.set(chunkId, {
+        documentId: results.metadatas[i]?.documentId || '',
+        sourceCollection: results.collections[i] || '',
+      });
+      return {
+        id: chunkId,
+        text: doc,
+        documentName: results.metadatas[i]?.documentName || 'Unknown',
+        pageNumber: results.metadatas[i]?.pageNumber || 1,
+        score: results.scores[i] || 0,
+        source: 'global' as const,
+      };
+    });
 
     // Rerank with NO floor (minScoreOverride: 0) — ordering-only. This is the
     // critical fix: the 0.30 reranker floor that zeroed the pool in the original
@@ -179,15 +190,20 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
     const slice = reranked.slice(0, topK);
     const hasMore = totalFound > slice.length;
 
-    const mappedResults = slice.map(chunk => ({
-      filename: chunk.documentName,
-      page: chunk.pageNumber,
-      text: chunk.text.length > PASSAGE_CHAR_BUDGET
-        ? chunk.text.slice(0, PASSAGE_CHAR_BUDGET) + '…'
-        : chunk.text,
-      score: Math.round(chunk.score * 1000) / 1000, // 3-decimal precision
-      documentId: chunk.id,
-    }));
+    const mappedResults = slice.map(chunk => {
+      const provenance = chunkProvenance.get(chunk.id);
+      return {
+        filename: chunk.documentName,
+        page: chunk.pageNumber,
+        text: chunk.text.length > PASSAGE_CHAR_BUDGET
+          ? chunk.text.slice(0, PASSAGE_CHAR_BUDGET) + '…'
+          : chunk.text,
+        score: Math.round(chunk.score * 1000) / 1000, // 3-decimal precision
+        documentId: provenance?.documentId ?? '',
+        chunkId: chunk.id,
+        sourceCollection: provenance?.sourceCollection ?? '',
+      };
+    });
 
     logger.debug('KB search tool executed', {
       query,

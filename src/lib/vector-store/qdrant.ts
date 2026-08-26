@@ -11,10 +11,15 @@ import type { ChunkMetadata } from '@/types';
 import { getEmbeddingSettings, getRagSettings } from '../db/compat/config';
 import { resolveVectorTenancyOrgId } from '../org-context';
 
-// Collection naming conventions
-const CATEGORY_PREFIX = 'category_';
-const GLOBAL_COLLECTION = 'global_documents';
-const LEGACY_COLLECTION = 'organizational_documents';
+import {
+  CATEGORY_PREFIX,
+  GLOBAL_COLLECTION,
+  LEGACY_COLLECTION,
+  isCategoryName,
+  categorySlugFromName,
+  generationOfPhysicalName,
+} from './collection-names';
+import { buildVectorPayload, ORGANIZATION_ID_PAYLOAD_KEY } from './payload-contract';
 
 // Default vector size (used as fallback)
 const DEFAULT_VECTOR_SIZE = 3072;
@@ -115,15 +120,35 @@ async function getVectorSize(): Promise<number> {
 }
 
 /**
- * Collection name helpers for Qdrant
+ * Collection name helpers for Qdrant.
+ *
+ * These are the deterministic default physical names (generation 1) used as the
+ * fallback when no active generation mapping exists in the DB (first deployment
+ * or recovery). `toSlug` / `isCategory` are generation-suffix aware so they also
+ * correctly handle names like `category_hr__g2`.
  */
 export const qdrantCollectionNames: CollectionNameHelpers = {
   forCategory: (slug: string): string => `${CATEGORY_PREFIX}${slug}`,
-  toSlug: (name: string): string => name.replace(CATEGORY_PREFIX, ''),
-  isCategory: (name: string): boolean => name.startsWith(CATEGORY_PREFIX),
+  toSlug: (name: string): string => categorySlugFromName(name),
+  isCategory: (name: string): boolean => isCategoryName(name),
   global: GLOBAL_COLLECTION,
   legacy: LEGACY_COLLECTION,
 };
+
+// Re-export logical-name and generation-suffix helpers (Phase 2). Logical names
+// are stable identities (`global`, `legacy`, `category:<slug>`); physical names
+// carry the generation suffix.
+export {
+  LOGICAL_GLOBAL,
+  LOGICAL_LEGACY,
+  LOGICAL_CATEGORY_PREFIX,
+  logicalNameForCategory,
+  isCategoryLogicalName,
+  categorySlugFromLogicalName,
+  isGenerationSuffixed,
+  generationOfPhysicalName,
+  stripGenerationSuffix,
+} from './collection-names';
 
 // Singleton client
 let client: QdrantClient | null = null;
@@ -179,8 +204,10 @@ function convertFilter(filter: Record<string, unknown>): { must?: Array<Record<s
 
 /**
  * Payload key holding the owning organization id (plan §8, Decision 8).
+ * Aliased from the versioned payload contract module (Phase 3) so the field
+ * name has a single source of truth.
  */
-export const ORG_ID_PAYLOAD_KEY = 'organization_id';
+export const ORG_ID_PAYLOAD_KEY = ORGANIZATION_ID_PAYLOAD_KEY;
 
 /**
  * Stamp the owning organization id onto a point payload. Pure metadata — the
@@ -296,7 +323,9 @@ export class QdrantVectorStore implements VectorStoreClient {
       },
     });
 
-    // Create payload indexes for common filter fields
+    // Create payload indexes for common filter fields. `organization_id` and
+    // the versioned contract fields are numeric, so they use the `integer`
+    // payload schema (Qdrant rejects `keyword` on non-string fields).
     await qdrant.createPayloadIndex(name, {
       field_name: 'documentId',
       field_schema: 'keyword',
@@ -304,6 +333,18 @@ export class QdrantVectorStore implements VectorStoreClient {
     await qdrant.createPayloadIndex(name, {
       field_name: 'documentName',
       field_schema: 'keyword',
+    });
+    await qdrant.createPayloadIndex(name, {
+      field_name: ORGANIZATION_ID_PAYLOAD_KEY,
+      field_schema: 'integer',
+    });
+    await qdrant.createPayloadIndex(name, {
+      field_name: 'schemaVersion',
+      field_schema: 'integer',
+    });
+    await qdrant.createPayloadIndex(name, {
+      field_name: 'generation',
+      field_schema: 'integer',
     });
 
     console.log(`[Qdrant] Created collection: ${name} (${vectorSize} dimensions)`);
@@ -335,6 +376,110 @@ export class QdrantVectorStore implements VectorStoreClient {
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * Count points in a collection, optionally matching a payload filter.
+   * Backed by Qdrant `count` with `exact: true` so validation comparisons are
+   * exact rather than approximate.
+   */
+  async countDocuments(
+    collectionName: string,
+    filter?: Record<string, unknown>
+  ): Promise<number> {
+    // Skip if collection doesn't exist (nothing to count)
+    if (!(await this.collectionExists(collectionName))) {
+      return 0;
+    }
+
+    const qdrant = getClient();
+    const result = await qdrant.count(collectionName, {
+      exact: true,
+      ...(filter ? { filter: convertFilter(filter) } : {}),
+    });
+    return result.count;
+  }
+
+  /**
+   * Read the vector dimensions (size) configured on a collection. Throws when
+   * the collection config cannot be interpreted so validation fails loudly
+   * instead of silently comparing against a wrong default.
+   */
+  async getCollectionVectorSize(collectionName: string): Promise<number> {
+    const qdrant = getClient();
+    const info = await qdrant.getCollection(collectionName);
+    const vectorConfig = info.config.params.vectors;
+
+    if (!vectorConfig || typeof vectorConfig !== 'object' || !('size' in vectorConfig)) {
+      throw new Error(
+        `Could not determine vector size for collection "${collectionName}". ` +
+        `Collection may be misconfigured.`
+      );
+    }
+
+    const size = vectorConfig.size;
+    if (typeof size !== 'number') {
+      throw new Error(
+        `Could not determine vector size for collection "${collectionName}". ` +
+        `Collection may be misconfigured.`
+      );
+    }
+
+    return size;
+  }
+
+  /**
+   * Enumerate the `documentId` + `chunkIndex` pairs present in a collection,
+   * deduplicated and stably sorted by (documentId, chunkIndex). Reuses the
+   * org-aware scroll pattern from `getDocumentChunksByDocId` so enumeration is
+   * tenant-scoped exactly like queries and full-document reads.
+   */
+  async enumerateDocumentChunks(
+    collectionName: string
+  ): Promise<Array<{ documentId: string; chunkIndex: number }>> {
+    if (!(await this.collectionExists(collectionName))) {
+      return [];
+    }
+
+    const qdrant = getClient();
+    const organizationId = await resolveVectorTenancyOrgId();
+    const scrollFilter = buildOrgAwareScrollFilter(organizationId, {});
+
+    const seen = new Set<string>();
+    const results: Array<{ documentId: string; chunkIndex: number }> = [];
+    let offset: string | number | undefined = undefined;
+
+    do {
+      const response = await qdrant.scroll(collectionName, {
+        filter: scrollFilter,
+        with_vector: false,
+        with_payload: true,
+        limit: 100,
+        ...(offset !== undefined ? { offset } : {}),
+      });
+
+      for (const point of response.points) {
+        const payload = point.payload || {};
+        const documentId = payload.documentId;
+        const chunkIndex = payload.chunkIndex;
+        if (typeof documentId !== 'string' || typeof chunkIndex !== 'number') continue;
+
+        const key = `${documentId}:${chunkIndex}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({ documentId, chunkIndex });
+      }
+
+      const next = response.next_page_offset;
+      offset = (typeof next === 'string' || typeof next === 'number') ? next : undefined;
+    } while (offset !== undefined);
+
+    // Stable ordering so two collections can be compared deterministically.
+    results.sort(
+      (a, b) => a.documentId.localeCompare(b.documentId) || a.chunkIndex - b.chunkIndex
+    );
+
+    return results;
   }
 
   // ============ Document Operations ============
@@ -391,21 +536,27 @@ export class QdrantVectorStore implements VectorStoreClient {
     // payload metadata only — the vector is untouched (no re-embedding).
     const organizationId = await resolveVectorTenancyOrgId();
 
-    // Convert to Qdrant point format
+    // Resolve the generation number from the physical collection name so newly
+    // written points carry the versioned payload contract (Phase 3). Default
+    // generation-1 names (`global_documents`, `category_hr`, …) map to 1.
+    const generation = generationOfPhysicalName(collectionName) ?? 1;
+
+    // Convert to Qdrant point format, stamping the versioned payload contract
+    // (schemaVersion 2 + generation + canonical documentId) alongside text and
+    // originalId. organization_id is included only when tenancy is enabled.
     const points = ids.map((id, i) => ({
       id: stringToUuid(id),
       vector: embeddings[i],
       ...(hybridEnabled
         ? { sparse_vectors: { text: tokenizeForSparseVector(documents[i]) } }
         : {}),
-      payload: stampOrganizationId(
-        {
-          ...metadatas[i],
-          text: documents[i],
-          originalId: id, // Store original ID for retrieval
-        },
-        organizationId
-      ),
+      payload: buildVectorPayload({
+        metadata: metadatas[i],
+        text: documents[i],
+        originalId: id, // Store original ID for retrieval
+        generation,
+        organizationId,
+      }),
     }));
 
     // Batch upsert (100 points at a time)
@@ -596,7 +747,7 @@ export class QdrantVectorStore implements VectorStoreClient {
     // Missing collections are expected when no documents have been ingested
     // into global_documents or organizational_documents yet.
     if (!(await this.collectionExists(collectionName))) {
-      return { ids: [], documents: [], metadatas: [], scores: [] };
+      return { ids: [], documents: [], metadatas: [], scores: [], collections: [] };
     }
 
     const qdrant = getClient();
@@ -666,6 +817,7 @@ export class QdrantVectorStore implements VectorStoreClient {
         return metadata as unknown as ChunkMetadata;
       }),
       scores: mergedResults.map(r => r.score),
+      collections: mergedResults.map(() => collectionName),
     };
   }
 
@@ -678,9 +830,13 @@ export class QdrantVectorStore implements VectorStoreClient {
     hybridSearch?: boolean,
     queryText?: string
   ): Promise<VectorQueryResult> {
-    // Query all collections in parallel
+    // Query all collections in parallel, remembering which collection each
+    // result set came from so per-hit provenance can be reported (G13).
     const results = await Promise.all(
-      collectionNames.map(name => this.query(name, queryEmbedding, nResults, filter, scoreThreshold, hybridSearch, queryText))
+      collectionNames.map(async name => ({
+        collectionName: name,
+        result: await this.query(name, queryEmbedding, nResults, filter, scoreThreshold, hybridSearch, queryText),
+      }))
     );
 
     // Merge and deduplicate
@@ -689,9 +845,10 @@ export class QdrantVectorStore implements VectorStoreClient {
       document: string;
       metadata: ChunkMetadata;
       score: number;
+      collection: string;
     }>();
 
-    for (const result of results) {
+    for (const { collectionName, result } of results) {
       for (let i = 0; i < result.ids.length; i++) {
         const id = result.ids[i];
         const existing = merged.get(id);
@@ -702,6 +859,7 @@ export class QdrantVectorStore implements VectorStoreClient {
             document: result.documents[i],
             metadata: result.metadatas[i],
             score: result.scores[i],
+            collection: collectionName,
           });
         }
       }
@@ -717,6 +875,7 @@ export class QdrantVectorStore implements VectorStoreClient {
       documents: sorted.map(r => r.document),
       metadatas: sorted.map(r => r.metadata),
       scores: sorted.map(r => r.score),
+      collections: sorted.map(r => r.collection),
     };
   }
 

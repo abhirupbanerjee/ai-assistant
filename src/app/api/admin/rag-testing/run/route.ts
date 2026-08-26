@@ -3,7 +3,7 @@ import { getCurrentUser, isAdminRole } from '@/lib/auth';
 import { saveTestResult, type TopChunk } from '@/lib/db/compat';
 import { getRagSettings, getCategoryById } from '@/lib/db/compat';
 import { createEmbedding } from '@/lib/openai';
-import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from '@/lib/vector-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     // Query vector store
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
 
     // Build collection names from category slugs
     const collectionNames = categorySlugs.map(slug => collNames.forCategory(slug));

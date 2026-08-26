@@ -2102,6 +2102,36 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Applied one-time Phase E AI & API Setup UI flag flip');
 
+  // ===================================================================
+  // Vector Index Generation Manager — Phase 1 (see plans/RAG_updates.md
+  // and plans/RAG_updates-review.md §Phase 1). Stores the logical → physical
+  // collection mapping used by the generation-based reindex strategy.
+  // Phase 1 only establishes the schema + compat module; runtime resolution
+  // lands in Phase 2. Idempotent for both upgraded and fresh databases.
+  // ===================================================================
+  await sql`
+    CREATE TABLE IF NOT EXISTS vector_index_generations (
+      id BIGSERIAL PRIMARY KEY,
+      logical_name TEXT NOT NULL,
+      physical_name TEXT NOT NULL,
+      generation INTEGER NOT NULL CHECK (generation > 0),
+      status TEXT NOT NULL DEFAULT 'building'
+        CHECK (status IN ('building', 'validating', 'active', 'retired', 'failed')),
+      embedding_model TEXT,
+      dimensions INTEGER,
+      chunking_version INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      activated_at TIMESTAMPTZ,
+      retire_after TIMESTAMPTZ,
+      notes TEXT,
+      UNIQUE (logical_name, generation)
+    )
+  `.execute(database);
+  // At most one active generation per logical name.
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_index_generations_active ON vector_index_generations(logical_name) WHERE status = 'active'`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_vector_index_generations_status ON vector_index_generations(status)`.execute(database);
+  console.log('[Kysely] Ensured vector_index_generations table exists (Vector Index Generation Manager, Phase 1)');
+
   // Startup assertion: reject invalid feature-flag orderings (plan §17).
   // Phase D turns on org-tenancy + credential resolver + vector tenancy, which
   // is a valid combination; this guards invalid orderings (e.g. vector-tenancy

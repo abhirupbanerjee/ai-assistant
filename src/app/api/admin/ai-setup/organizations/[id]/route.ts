@@ -21,7 +21,7 @@ import {
   getDocumentCategoriesForDocs,
 } from '@/lib/db/compat';
 import { deleteDocument } from '@/lib/ingest';
-import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from '@/lib/vector-store';
 import { invalidateCategoryCache } from '@/lib/redis';
 import { CATEGORY_MEMORY_COLLECTION } from '@/lib/category-memory';
 
@@ -203,7 +203,7 @@ export async function DELETE(
 
     // Drop category vector collections + category memory and invalidate caches.
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
     for (const cat of categories) {
       try {
         await store.deleteCollection(collNames.forCategory(cat.slug));

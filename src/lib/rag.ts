@@ -8,7 +8,7 @@
 import { createEmbeddings, generateResponseWithTools } from './openai';
 import { createInternalCompletion } from './llm-client';
 import type { OpenAI } from 'openai';
-import { getVectorStore, getCollectionNames } from './vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from './vector-store';
 import {
   getCachedQuery,
   cacheQuery,
@@ -608,7 +608,7 @@ export async function buildContext(
 
   // Get vector store and collection names
   const store = await getVectorStore();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
 
   // Query with each embedding and collect results
   const allGlobalChunks: RetrievedChunk[] = [];
@@ -1143,7 +1143,7 @@ export async function ragQuery(
       const detected = detectReferencedDocument(userMessage, uniqueKbDocs);
       if (detected) {
         kbDocTargetedName = detected.document.filename;
-        kbDocChunks = await retrieveFullKbDocumentChunks(detected.document, categorySlugs ?? []);
+        kbDocChunks = await retrieveFullKbDocumentChunks(String(detected.document.id), categorySlugs ?? []);
         logger.debug('KB document targeted by user', {
           filename: detected.document.filename,
           matchStrategy: detected.matchStrategy,

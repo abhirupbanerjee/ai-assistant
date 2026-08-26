@@ -110,3 +110,25 @@ export async function resetVectorStoreConnection(): Promise<void> {
 // Re-export types and helpers
 export * from './types';
 export { qdrantCollectionNames } from './qdrant';
+export {
+  resolveActiveCollectionNames,
+  loadCandidateMappings,
+  invalidateCollectionMappingCache,
+} from './collection-resolver';
+export {
+  shouldMirrorToLogicalName,
+  candidateTargetsForDocument,
+  type CandidateTarget,
+  type DocumentCollectionShape,
+} from './dual-write';
+export {
+  LOGICAL_GLOBAL,
+  LOGICAL_LEGACY,
+  LOGICAL_CATEGORY_PREFIX,
+  logicalNameForCategory,
+  isCategoryLogicalName,
+  categorySlugFromLogicalName,
+  isGenerationSuffixed,
+  generationOfPhysicalName,
+  stripGenerationSuffix,
+} from './collection-names';

@@ -22,7 +22,7 @@ import {
 } from '@/lib/db/compat';
 import { deleteDocument } from '@/lib/ingest';
 import { getDocumentById, getDocumentCategories } from '@/lib/db/compat';
-import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from '@/lib/vector-store';
 import { invalidateCategoryCache } from '@/lib/redis';
 
 // GET - List super user's assigned categories
@@ -206,7 +206,7 @@ export async function DELETE(request: NextRequest) {
 
     // 4. Delete vector store collection for this category
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
     await store.deleteCollection(collNames.forCategory(category.slug));
 
     // 5. Invalidate Redis cache

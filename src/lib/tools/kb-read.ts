@@ -155,7 +155,10 @@ async function executeKbRead(args: KbReadArgs): Promise<string> {
     }
 
     const categorySlugs = categories.map(c => c.slug);
-    const chunks = await retrieveFullKbDocumentChunks(detected.document, categorySlugs);
+    // Retrieval is keyed on the stable canonical DB document id; the filename
+    // (`detected.document.filename`) is used above for fuzzy matching and below
+    // only for output display.
+    const chunks = await retrieveFullKbDocumentChunks(String(detected.document.id), categorySlugs);
 
     if (chunks.length === 0) {
       return JSON.stringify({

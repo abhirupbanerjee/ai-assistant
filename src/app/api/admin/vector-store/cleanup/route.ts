@@ -12,7 +12,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getAllCategories } from '@/lib/db/compat';
 import {
   getVectorStore,
-  getCollectionNames,
+  resolveActiveCollectionNames,
   getVectorStoreProvider,
 } from '@/lib/vector-store';
 
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     const provider = getVectorStoreProvider();
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
 
     // Get all category slugs from database
     const categories = await getAllCategories();

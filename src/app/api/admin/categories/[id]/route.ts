@@ -18,7 +18,7 @@ import {
   deleteCategoryWithRelatedData,
   getDocumentCategories,
 } from '@/lib/db/compat';
-import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from '@/lib/vector-store';
 import { deleteDocument } from '@/lib/ingest';
 import { invalidateCategoryCache } from '@/lib/redis';
 import { CATEGORY_MEMORY_COLLECTION } from '@/lib/category-memory';
@@ -188,7 +188,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
     // 4. Delete vector store collection for this category
     const store = await getVectorStore();
-    const collNames = getCollectionNames();
+    const collNames = await resolveActiveCollectionNames();
     await store.deleteCollection(collNames.forCategory(existing.slug));
     await store.deleteDocumentsByFilter(CATEGORY_MEMORY_COLLECTION, { categoryId });
 

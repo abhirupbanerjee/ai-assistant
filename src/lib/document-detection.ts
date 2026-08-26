@@ -15,7 +15,8 @@
  *      name — using four matching strategies (exact, extension-stripped, token
  *      overlap, substring) so it works regardless of how the user phrases it.
  *   2. Fetching ALL chunks for that document directly from Qdrant via a
- *      documentName payload filter (bypassing similarity search entirely).
+ *      canonical `documentId` payload filter (bypassing similarity search
+ *      entirely). The filename is used only for fuzzy matching and display.
  *   3. Returning them as RetrievedChunk[] with a score of 0 so the caller can
  *      inject them as full-document context and apply a zero-floor rerank with
  *      the empty-result safety net.
@@ -26,7 +27,7 @@
 
 import type { RetrievedChunk } from '@/types';
 import type { DbDocument } from '@/lib/db/compat';
-import { getVectorStore, getCollectionNames } from './vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from './vector-store';
 import { ragLogger as logger } from './logger';
 
 /**
@@ -234,21 +235,25 @@ export function detectReferencedDocument(
  * category collections. This bypasses similarity search entirely — we want every
  * chunk of the document, ordered by chunkIndex, so the model sees the full content.
  *
+ * Retrieval is keyed on the canonical DB document id (stable identity), NOT the
+ * filename: the payload's `documentId` is the authoritative retrieval key, while
+ * `documentName` (the filename) is retained only for display.
+ *
  * The chunks are returned as RetrievedChunk[] with a score of 0 (they didn't come
  * from similarity search). The caller is responsible for applying a zero-floor
  * rerank and the empty-result safety net.
  *
- * @param document - The KB document to retrieve chunks for
+ * @param documentId - The canonical DB document id (e.g. `String(document.id)`)
  * @param categorySlugs - Category slugs for the thread (to know which collections
  *   to search; also searches the global/legacy collections)
  * @returns Array of RetrievedChunk ordered by chunkIndex, or empty if not found
  */
 export async function retrieveFullKbDocumentChunks(
-  document: DbDocument,
+  documentId: string,
   categorySlugs: string[]
 ): Promise<RetrievedChunk[]> {
   const store = await getVectorStore();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
 
   // Build list of collections to search — same logic as buildContext():
   // category collections + global + legacy. Filter to existing collections.
@@ -262,11 +267,11 @@ export async function retrieveFullKbDocumentChunks(
   // Search all relevant collections in parallel — the document may be in any of them
   const searchPromises = collectionsToSearch.map(async (collectionName) => {
     try {
-      return await store.getDocumentChunksByDocName(collectionName, document.filename);
+      return await store.getDocumentChunksByDocId(collectionName, documentId);
     } catch (err) {
       logger.warn('Failed to fetch document chunks from collection', {
         collectionName,
-        documentName: document.filename,
+        documentId,
         error: String(err),
       });
       return [];
@@ -288,7 +293,7 @@ export async function retrieveFullKbDocumentChunks(
       chunks.push({
         id: chunk.id,
         text: chunk.text,
-        documentName: chunk.metadata.documentName || document.filename,
+        documentName: chunk.metadata.documentName || documentId,
         pageNumber: chunk.metadata.pageNumber || 1,
         score: 0, // Not from similarity search — caller applies zero-floor rerank
         source: 'global',
@@ -297,7 +302,7 @@ export async function retrieveFullKbDocumentChunks(
   }
 
   logger.debug('Full KB document chunks retrieved', {
-    documentName: document.filename,
+    documentId,
     chunkCount: chunks.length,
     collectionsSearched: collectionsToSearch.length,
   });

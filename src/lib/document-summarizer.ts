@@ -42,15 +42,10 @@ async function loadDocumentText(
 ): Promise<{ text: string; source: 'qdrant' | 'disk' | 'none'; chunkCount?: number }> {
   // PRIMARY: reassemble text from Qdrant chunks (already-extracted text)
   const categorySlugs = doc.categories.map(c => c.slug);
-  // retrieveFullKbDocumentChunks expects a DbDocument (with is_global), while
-  // DocumentWithCategories carries isGlobal instead. Reconstruct the DbDocument
-  // shape — only filename is actually read by the chunk fetcher.
-  const docForChunks = {
-    ...doc,
-    is_global: doc.isGlobal ? 1 : 0,
-  };
+  // Retrieval is keyed on the canonical DB document id; the filename is only
+  // needed for display elsewhere in the summarizer.
   try {
-    const chunks = await retrieveFullKbDocumentChunks(docForChunks, categorySlugs);
+    const chunks = await retrieveFullKbDocumentChunks(String(doc.id), categorySlugs);
     if (chunks.length > 0) {
       const text = chunks
         .map(c => c.text)

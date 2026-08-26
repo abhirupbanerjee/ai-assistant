@@ -32,7 +32,13 @@
     "eval:mermaid:render": "npx tsx eval/mermaid-render.ts --render",
     "eval:mermaid:update-baseline": "npx tsx eval/mermaid-render.ts --update-baseline",
     "sonar:scan": "sonar-scanner",
-    "sonar:pipeline": "bash scripts/sonar-scan.sh"
+    "sonar:pipeline": "bash scripts/sonar-scan.sh",
+    "vector-index:build": "npx tsx src/scripts/vector-index-generation.ts build",
+    "vector-index:build:dry-run": "npx tsx src/scripts/vector-index-generation.ts build --dry-run",
+    "vector-index:validate": "npx tsx src/scripts/vector-index-generation.ts validate",
+    "vector-index:activate": "npx tsx src/scripts/vector-index-generation.ts activate",
+    "vector-index:rollback": "npx tsx src/scripts/vector-index-generation.ts rollback",
+    "vector-index:report": "npx tsx src/scripts/vector-index-generation.ts report"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

@@ -1700,3 +1700,30 @@ CREATE TABLE IF NOT EXISTS evolved_kb_settings (
 
 INSERT INTO evolved_kb_settings (id, enabled, shadow_mode) VALUES ('default', FALSE, TRUE)
 ON CONFLICT (id) DO NOTHING;
+
+-- ============ Vector Index Generation Manager ============
+
+-- Logical → physical collection mapping for the generation-based reindex
+-- strategy (plans/RAG_updates.md, plans/RAG_updates-review.md §Phase 1).
+-- Phase 1 establishes the schema only; runtime resolution lands in Phase 2.
+CREATE TABLE IF NOT EXISTS vector_index_generations (
+  id BIGSERIAL PRIMARY KEY,
+  logical_name TEXT NOT NULL,
+  physical_name TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK (generation > 0),
+  status TEXT NOT NULL DEFAULT 'building'
+    CHECK (status IN ('building', 'validating', 'active', 'retired', 'failed')),
+  embedding_model TEXT,
+  dimensions INTEGER,
+  chunking_version INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  activated_at TIMESTAMPTZ,
+  retire_after TIMESTAMPTZ,
+  notes TEXT,
+  UNIQUE (logical_name, generation)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_index_generations_active
+  ON vector_index_generations(logical_name) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_vector_index_generations_status
+  ON vector_index_generations(status);

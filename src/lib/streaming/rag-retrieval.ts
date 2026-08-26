@@ -312,7 +312,7 @@ export async function performRAGRetrieval(
       if (detected) {
         kbDocTargetedName = detected.document.filename;
         send?.({ type: 'operation_log', category: 'rag', message: `Retrieving full document: ${detected.document.filename}` });
-        kbDocChunks = await retrieveFullKbDocumentChunks(detected.document, categorySlugs);
+        kbDocChunks = await retrieveFullKbDocumentChunks(String(detected.document.id), categorySlugs);
         logger.debug('KB document targeted by user', {
           filename: detected.document.filename,
           matchStrategy: detected.matchStrategy,

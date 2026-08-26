@@ -15,7 +15,7 @@ import { sql } from 'kysely';
 import {
   getVectorStore,
   getVectorStoreProvider,
-  getCollectionNames,
+  resolveActiveCollectionNames,
   checkVectorStoreHealth,
 } from './vector-store';
 
@@ -167,7 +167,7 @@ export async function getDatabaseStats(): Promise<DatabaseStats> {
 
 export async function getVectorStats(): Promise<VectorStoreStats> {
   const provider = getVectorStoreProvider();
-  const collNames = getCollectionNames();
+  const collNames = await resolveActiveCollectionNames();
 
   try {
     const healthResult = await checkVectorStoreHealth();

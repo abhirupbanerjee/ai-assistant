@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, isAdminRole } from '@/lib/auth';
 import { saveBatchSuite, getBatchSuites, getBatchSuiteDetail, cleanupBatchSuites } from '@/lib/db/rag-profiling';
 import { createEmbedding } from '@/lib/openai';
-import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
+import { getVectorStore, resolveActiveCollectionNames } from '@/lib/vector-store';
 import { getRagSettings, getCategoryById } from '@/lib/db/compat';
 
 export async function POST(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
      // Get current RAG settings
      const settings = await getRagSettings();
      const store = await getVectorStore();
-     const collNames = getCollectionNames();
+     const collNames = await resolveActiveCollectionNames();
 
      // Convert category IDs to slugs
      const categorySlugs: string[] = [];
