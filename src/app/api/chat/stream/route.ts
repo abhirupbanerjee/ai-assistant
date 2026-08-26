@@ -1421,34 +1421,53 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // ============ Save & Cleanup ============
+            // ============ Signal completion ============
+            // Emit `done` immediately after the final content is ready and the
+            // compliance check has run, so the client stops the cursor and
+            // re-enables the input without waiting on persistence below.
             const completionTokens = toolResult.totalTokens || countTokens(fullContent);
-            const assistantMessage: Message = {
-              id: assistantMessageId,
-              role: 'assistant',
-              content: fullContent,
-              sources: allSources,
-              generatedDocuments: documents.length > 0 ? documents : undefined,
-              generatedImages: images.length > 0 ? images : undefined,
-              generatedDiagrams: diagrams.length > 0 ? diagrams : undefined,
-              generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
-              visualizations: visualizations.length > 0 ? visualizations : undefined,
-              timestamp: new Date(),
-              metadata: {
-                model: usedModel,
-                totalMs: Date.now() - requestStart,
-                llmMs,
-                ragMs,
-                completionTokens,
-                tokensEstimated: !toolResult.totalTokens,
-              },
-            };
+            send({
+              type: 'done',
+              messageId: assistantMessageId,
+              threadId,
+              userMessageId,
+              model: usedModel,
+              totalMs: Date.now() - requestStart,
+              llmMs,
+              ragMs,
+              completionTokens,
+              tokensEstimated: !toolResult.totalTokens,
+            });
 
-            await addMessage(user.id, threadId, assistantMessage);
-            await updateThreadTokenCount(threadId, countTokens(fullContent));
-
-            // Save trajectory data after message is persisted (FK: citation_trajectories.message_id → messages.id)
+            // ============ Save & Cleanup (after the client is already done) ============
+            // Persistence errors are logged and never surfaced as SSE errors,
+            // because the response has already been delivered to the user.
             try {
+              const assistantMessage: Message = {
+                id: assistantMessageId,
+                role: 'assistant',
+                content: fullContent,
+                sources: allSources,
+                generatedDocuments: documents.length > 0 ? documents : undefined,
+                generatedImages: images.length > 0 ? images : undefined,
+                generatedDiagrams: diagrams.length > 0 ? diagrams : undefined,
+                generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
+                visualizations: visualizations.length > 0 ? visualizations : undefined,
+                timestamp: new Date(),
+                metadata: {
+                  model: usedModel,
+                  totalMs: Date.now() - requestStart,
+                  llmMs,
+                  ragMs,
+                  completionTokens,
+                  tokensEstimated: !toolResult.totalTokens,
+                },
+              };
+
+              await addMessage(user.id, threadId, assistantMessage);
+              await updateThreadTokenCount(threadId, countTokens(fullContent));
+
+              // Save trajectory data after message is persisted (FK: citation_trajectories.message_id → messages.id)
               const allTrajectoryEntries = [
                 ...(ragResult.trajectoryData ?? []).map(t => ({
                   messageId: assistantMessageId,
@@ -1468,80 +1487,60 @@ export async function POST(request: NextRequest) {
               if (allTrajectoryEntries.length > 0) {
                 await saveTrajectoryEntries(allTrajectoryEntries);
               }
-            } catch (trajectoryError) {
-              console.error('[Stream] Failed to save trajectory data:', trajectoryError);
-            }
 
-            // Link any generated outputs (documents, images, diagrams, podcasts) to this message
-            // This must happen after addMessage since message_id is a foreign key
-            if (documents.length > 0 || images.length > 0 || diagrams.length > 0 || podcasts.length > 0) {
-              try {
+              // Link any generated outputs (documents, images, diagrams, podcasts) to this message
+              // This must happen after addMessage since message_id is a foreign key
+              if (documents.length > 0 || images.length > 0 || diagrams.length > 0 || podcasts.length > 0) {
                 await linkOutputsToMessage(threadId, assistantMessageId);
-              } catch (linkError) {
-                // Log but don't fail - message is saved, just outputs not linked
-                console.error('[Stream] Failed to link outputs to message:', linkError);
               }
-            }
 
-            // Background tasks (non-blocking)
-            if (summarizationSettings.enabled && await shouldSummarize(threadId)) {
-              summarizeThread(threadId).catch(() => {});
-            }
+              // Background tasks (non-blocking)
+              if (summarizationSettings.enabled && await shouldSummarize(threadId)) {
+                summarizeThread(threadId).catch(() => {});
+              }
 
-            if (memorySettings.enabled && memorySettings.autoExtractOnThreadEnd && dbUser) {
-              const recentMessages = conversationHistory.slice(-10).map(m => ({
-                role: m.role,
-                content: m.content,
-              }));
-              await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
-            }
+              if (memorySettings.enabled && memorySettings.autoExtractOnThreadEnd && dbUser) {
+                const recentMessages = conversationHistory.slice(-10).map(m => ({
+                  role: m.role,
+                  content: m.content,
+                }));
+                await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
+              }
 
+              // Explicit awaited post-response assisted-learning hook. The exact
+              // server-verified category is used rather than the request fallback.
+              if (dbUser) {
+                await runCategoryMemoryCandidateLearning({
+                  surface: 'main-chat', userId: dbUser.id, role: dbUser.role, threadId,
+                  categoryId: verifiedThreadCategory?.id ?? null, sourceMessageId: userMessageId,
+                  recentMessages: [
+                    ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
+                    { role: 'assistant', content: fullContent },
+                  ],
+                });
+              }
 
-            // Explicit awaited post-response assisted-learning hook. The exact
-            // server-verified category is used rather than the request fallback.
-            if (dbUser) {
-              await runCategoryMemoryCandidateLearning({
-                surface: 'main-chat', userId: dbUser.id, role: dbUser.role, threadId,
-                categoryId: verifiedThreadCategory?.id ?? null, sourceMessageId: userMessageId,
-                recentMessages: [
-                  ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
-                  { role: 'assistant', content: fullContent },
-                ],
+              // Log token usage for dashboard.
+              //
+              // `credentialId` is intentionally NOT stamped here: the main-chat
+              // path dispatches through `withModelFallback` / `generateResponseWithTools`
+              // (a multi-provider fallback chain), where each attempt resolves its
+              // own credential per-model via `resolveProviderCredentialForRequest`
+              // and does not propagate the winning credential back to this layer.
+              // No single credential id is determinable at this logging layer, so
+              // org-level attribution (organization_id, read from the request
+              // context inside `recordTokenUsage`) is left intact and the
+              // credential-level cost is attributable only where a single resolved
+              // credential is known (embeddings / autonomous paths stamp it).
+              recordTokenUsage({
+                userId: dbUser?.id,
+                category: 'chat',
+                model: usedModel,
+                totalTokens: toolResult.totalTokens,
               });
+            } catch (saveError) {
+              console.error('[Stream] Failed to save message/cleanup:', saveError);
             }
-
-            // Log token usage for dashboard.
-            //
-            // `credentialId` is intentionally NOT stamped here: the main-chat
-            // path dispatches through `withModelFallback` / `generateResponseWithTools`
-            // (a multi-provider fallback chain), where each attempt resolves its
-            // own credential per-model via `resolveProviderCredentialForRequest`
-            // and does not propagate the winning credential back to this layer.
-            // No single credential id is determinable at this logging layer, so
-            // org-level attribution (organization_id, read from the request
-            // context inside `recordTokenUsage`) is left intact and the
-            // credential-level cost is attributable only where a single resolved
-            // credential is known (embeddings / autonomous paths stamp it).
-            recordTokenUsage({
-              userId: dbUser?.id,
-              category: 'chat',
-              model: usedModel,
-              totalTokens: toolResult.totalTokens,
-            });
-
-            // Send completion with metadata
-            send({
-              type: 'done',
-              messageId: assistantMessageId,
-              threadId,
-              userMessageId,
-              model: usedModel,
-              totalMs: Date.now() - requestStart,
-              llmMs,
-              ragMs,
-              completionTokens,
-              tokensEstimated: !toolResult.totalTokens,
-            });
           }
         );
       } catch (error) {

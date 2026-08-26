@@ -57,6 +57,11 @@ const initialState: WorkspaceStreamingState = {
   error: null,
 };
 
+// If no new content arrives within this window after the last chunk and no
+// `done` event has been received, finalize optimistically so the input never
+// stays stuck in a "streaming" state.
+const STALL_TIMEOUT_MS = 2500;
+
 export function useWorkspaceChat({
   workspaceSlug,
   sessionId,
@@ -69,6 +74,8 @@ export function useWorkspaceChat({
   const contentBufferRef = useRef<string>('');
   const accumulatedContentRef = useRef<string>(''); // Track total accumulated content
   const rafRef = useRef<number | null>(null);
+  const completedRef = useRef(false);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flushBuffer = useCallback(() => {
     if (contentBufferRef.current) {
@@ -83,6 +90,38 @@ export function useWorkspaceChat({
     rafRef.current = null;
   }, []);
 
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
+  // Finalize the turn: flush any buffered content, stop the streaming state,
+  // and surface the completed message to the parent via onComplete.
+  const finalizeComplete = useCallback((msgId: string, sources: Source[], metadata?: MessageMetadata) => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (contentBufferRef.current) {
+      accumulatedContentRef.current += contentBufferRef.current;
+      contentBufferRef.current = '';
+    }
+    clearStallTimer();
+    setState(prev => ({
+      ...prev,
+      currentContent: accumulatedContentRef.current,
+      isStreaming: false,
+      phase: 'complete',
+    }));
+    if (onComplete) {
+      onComplete(msgId, accumulatedContentRef.current, sources, metadata);
+    }
+  }, [onComplete, clearStallTimer]);
+
   const sendMessage = useCallback(async (message: string, overrideThreadId?: string, attachments?: string[]) => {
     // Abort any existing request
     if (abortControllerRef.current) {
@@ -92,6 +131,8 @@ export function useWorkspaceChat({
     abortControllerRef.current = new AbortController();
     contentBufferRef.current = '';
     accumulatedContentRef.current = ''; // Reset accumulated content
+    completedRef.current = false;
+    clearStallTimer();
 
     setState({
       isStreaming: true,
@@ -158,6 +199,12 @@ export function useWorkspaceChat({
                 if (!rafRef.current) {
                   rafRef.current = requestAnimationFrame(flushBuffer);
                 }
+                // Re-arm the stall watchdog: if no further content or `done`
+                // arrives shortly, finalize so the UI is never left stuck.
+                clearStallTimer();
+                stallTimerRef.current = setTimeout(() => {
+                  finalizeComplete(`stall-${Date.now()}`, accumulatedSources, undefined);
+                }, STALL_TIMEOUT_MS);
                 break;
 
               case 'sources':
@@ -210,24 +257,7 @@ export function useWorkspaceChat({
                       tokensEstimated: event.tokensEstimated,
                     }
                   : undefined;
-                // Flush any remaining content immediately (not via RAF)
-                if (contentBufferRef.current) {
-                  const finalContent = contentBufferRef.current;
-                  accumulatedContentRef.current += finalContent;
-                  contentBufferRef.current = '';
-                  setState(prev => ({
-                    ...prev,
-                    currentContent: prev.currentContent + finalContent,
-                    isStreaming: false,
-                    phase: 'complete',
-                  }));
-                } else {
-                  setState(prev => ({
-                    ...prev,
-                    isStreaming: false,
-                    phase: 'complete',
-                  }));
-                }
+                finalizeComplete(event.messageId, accumulatedSources, completedMetadata);
                 break;
 
               case 'error':
@@ -241,11 +271,31 @@ export function useWorkspaceChat({
         }
       }
 
-      // Call onComplete callback with accumulated content from ref (avoids stale closure)
-      if (onComplete && messageId) {
-        onComplete(messageId, accumulatedContentRef.current, accumulatedSources, completedMetadata);
+      // Safety: if the stream closed without an explicit `done` event, finalize
+      // with whatever content was buffered so the UI is never left stuck.
+      if (!completedRef.current) {
+        completedRef.current = true;
+        clearStallTimer();
+        if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+        if (contentBufferRef.current) {
+          accumulatedContentRef.current += contentBufferRef.current;
+          contentBufferRef.current = '';
+        }
+        setState(prev => ({
+          ...prev,
+          currentContent: accumulatedContentRef.current,
+          isStreaming: false,
+          phase: 'complete',
+        }));
+        if (onComplete && (messageId || accumulatedContentRef.current)) {
+          onComplete(messageId || `partial-${Date.now()}`, accumulatedContentRef.current, accumulatedSources, completedMetadata);
+        }
       }
     } catch (error) {
+      clearStallTimer();
       if ((error as Error).name === 'AbortError') {
         setState(prev => ({ ...prev, isStreaming: false }));
         return;
@@ -260,24 +310,26 @@ export function useWorkspaceChat({
       onError?.(errorMessage);
     } finally {
       abortControllerRef.current = null;
+      clearStallTimer();
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
     }
-  }, [workspaceSlug, sessionId, threadId, onComplete, onError, flushBuffer]);
+  }, [workspaceSlug, sessionId, threadId, onComplete, onError, flushBuffer, clearStallTimer, finalizeComplete]);
 
   const abort = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    clearStallTimer();
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
     setState(prev => ({ ...prev, isStreaming: false }));
-  }, []);
+  }, [clearStallTimer]);
 
   const reset = useCallback(() => {
     abort();

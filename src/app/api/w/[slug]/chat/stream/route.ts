@@ -506,39 +506,9 @@ export async function POST(
             // Content tokens were already streamed token-by-token via onChunk above.
             const fullContent = toolResult.content;
 
-            // ============ Save Message ============
-            // Convert sources to workspace format (persist the same deduped/capped list)
-            const workspaceSources: WorkspaceMessageSource[] = allSources.map(s => ({
-              document_name: s.documentName,
-              page_number: s.pageNumber,
-              chunk_text: s.chunkText,
-              score: s.score,
-              url: s.url,
-            }));
-
-            await addMessage({
-              workspaceId: workspace.id,
-              sessionId,
-              threadId: currentThreadId,
-              role: 'assistant',
-              content: fullContent,
-              sources: workspaceSources,
-              latencyMs: Date.now() - new Date(userMessage.created_at).getTime(),
-              tokensUsed: toolResult.totalTokens || undefined,
-              model: effectiveWorkspaceModel || undefined,
-            });
-
-            // Increment session message count for assistant message
-            await incrementMessageCount(sessionId);
-
-            // Log token usage for dashboard
-            recordTokenUsage({
-              category: 'workspace',
-              model: effectiveWorkspaceModel || 'unknown',
-              totalTokens: toolResult.totalTokens,
-            });
-
-            // Send completion
+            // ============ Signal completion ============
+            // Emit `done` immediately after the final token so the client can
+            // unlock the input and stop the cursor without waiting on persistence.
             send({
               type: 'done',
               messageId: assistantMessageId,
@@ -550,6 +520,44 @@ export async function POST(
               completionTokens: toolResult.totalTokens || countTokens(fullContent),
               tokensEstimated: !toolResult.totalTokens,
             });
+
+            // ============ Save Message (after the client is already done) ============
+            // Persistence errors are logged but never surfaced as an SSE error,
+            // since the response has already been delivered to the user.
+            try {
+              // Convert sources to workspace format (persist the same deduped/capped list)
+              const workspaceSources: WorkspaceMessageSource[] = allSources.map(s => ({
+                document_name: s.documentName,
+                page_number: s.pageNumber,
+                chunk_text: s.chunkText,
+                score: s.score,
+                url: s.url,
+              }));
+
+              await addMessage({
+                workspaceId: workspace.id,
+                sessionId,
+                threadId: currentThreadId,
+                role: 'assistant',
+                content: fullContent,
+                sources: workspaceSources,
+                latencyMs: Date.now() - new Date(userMessage.created_at).getTime(),
+                tokensUsed: toolResult.totalTokens || undefined,
+                model: effectiveWorkspaceModel || undefined,
+              });
+
+              // Increment session message count for assistant message
+              await incrementMessageCount(sessionId);
+
+              // Log token usage for dashboard
+              recordTokenUsage({
+                category: 'workspace',
+                model: effectiveWorkspaceModel || 'unknown',
+                totalTokens: toolResult.totalTokens,
+              });
+            } catch (saveError) {
+              console.error('Workspace chat message save error:', saveError);
+            }
           }
         );
       } catch (error) {
