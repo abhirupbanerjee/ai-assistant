@@ -29,7 +29,7 @@ export default function WebSearchToggle({
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         aria-pressed={enabled}
-        aria-label={enabled ? 'Web search enabled. Click to disable.' : 'Enable real-time web search.'}
+        aria-label={enabled ? 'Web search & browsing enabled. Click to disable.' : 'Enable real-time web search & browsing.'}
         className={`p-2 rounded-lg transition-colors ${
           enabled
             ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
@@ -44,15 +44,15 @@ export default function WebSearchToggle({
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
           {enabled ? (
             <>
-              <span className="font-medium text-blue-300">Web search</span>
+              <span className="font-medium text-blue-300">Web search & browsing</span>
               <span className="text-gray-300"> enabled</span>
               <p className="text-gray-400 mt-0.5">Click to disable</p>
             </>
           ) : (
             <>
-              <span className="font-medium">Web search</span>
+              <span className="font-medium">Web search & browsing</span>
               <span className="text-gray-300"> disabled</span>
-              <p className="text-gray-400 mt-0.5">Click to enable real-time web search</p>
+              <p className="text-gray-400 mt-0.5">Click to enable real-time web search & browsing</p>
             </>
           )}
           {/* Tooltip arrow */}

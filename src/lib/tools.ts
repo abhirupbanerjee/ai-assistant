@@ -285,6 +285,24 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
 };
 
 /**
+ * Return the names of all registered tools in a given group.
+ * Used by the chat-input "Web search" toggle as a category-wide kill switch
+ * (e.g., disabling every Tavily-backed tool, not just web_search).
+ */
+export function getToolNamesByGroup(group: string): string[] {
+  return Object.values(AVAILABLE_TOOLS)
+    .filter((tool) => tool.group === group)
+    .map((tool) => tool.name);
+}
+
+/**
+ * Canonical set of Tavily-backed web tools (api.tavily.com). Derived from the
+ * `group: 'tavily'` metadata so any future Tavily tool is automatically
+ * included in the web-search kill switch.
+ */
+export const TAVILY_TOOL_NAMES: string[] = getToolNamesByGroup('tavily');
+
+/**
  * Meta-tool injected when preflight clarification is enabled.
  * NOT in AVAILABLE_TOOLS — not DB-managed, not exposed to regular tool routing.
  * Injected by generateResponseWithTools when enableClarification=true.

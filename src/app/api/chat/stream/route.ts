@@ -35,7 +35,7 @@ import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, BrowserSessionInfo, ArtifactComment, ArtifactContext } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
-import { isToolEnabled } from '@/lib/tools';
+import { isToolEnabled, TAVILY_TOOL_NAMES } from '@/lib/tools';
 import { executeAgentTool } from '@/lib/agent-registry/agent-tools';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings } from '@/lib/db/compat';
@@ -1039,10 +1039,13 @@ export async function POST(request: NextRequest) {
               effectiveSystemPrompt += lines.join('\n');
             }
 
-            // Determine which tools to exclude based on user preferences
+            // Determine which tools to exclude based on user preferences.
+            // Disabling web search is a category-wide kill switch for every
+            // Tavily-backed tool (web_search, web_extract, web_crawl, web_map),
+            // not just the single web_search function.
             const excludeTools: string[] = [];
             if (!webSearchEnabled) {
-              excludeTools.push('web_search');
+              excludeTools.push(...TAVILY_TOOL_NAMES);
             }
 
             // Execute tools with streaming callbacks and automatic fallback

@@ -43,6 +43,7 @@ import { runWithContextAsync } from '@/lib/request-context';
 import { resolveUserOrganizationIdByUserId } from '@/lib/org-membership';
 import { generateResponseWithTools } from '@/lib/openai';
 import { recordTokenUsage } from '@/lib/token-logger';
+import { TAVILY_TOOL_NAMES } from '@/lib/tools';
 import { selectBestModel, isAutoSentinel } from '@/lib/auto-model-selector';
 import {
   createSSEEncoder,
@@ -371,10 +372,12 @@ export async function POST(
             // Determine if this is embed mode (text-only, no visual artifacts)
             const isEmbedMode = workspace.type === 'embed';
 
-            // Determine which tools to exclude based on workspace settings
+            // Determine which tools to exclude based on workspace settings.
+            // Disabling web search is a category-wide kill switch for every
+            // Tavily-backed tool (web_search, web_extract, web_crawl, web_map).
             const excludeTools: string[] = [];
             if (!workspace.web_search_enabled) {
-              excludeTools.push('web_search');
+              excludeTools.push(...TAVILY_TOOL_NAMES);
             }
 
             // Execute tools with streaming callbacks
