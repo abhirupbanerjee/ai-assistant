@@ -856,7 +856,7 @@ export function getMemorySettings(): MemorySettings {
     categoryMemoryMaxRetrievedItems: 5,
     categoryMemoryTokenBudget: 800,
     suggestionsEnabled: true,
-    automaticCategoryCandidateExtractionEnabled: false,
+    automaticCategoryCandidateExtractionEnabled: true,
     categoryCandidateExtractionThreshold: 6,
     categoryCandidateConfidenceThreshold: 0.85,
     categoryCandidateExtractionMaxTokens: 600,

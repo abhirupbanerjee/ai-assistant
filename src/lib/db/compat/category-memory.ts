@@ -4,6 +4,8 @@ import type { DB } from '../db-types';
 import type { UserRole } from '../users';
 import { detectCategoryMemoryAdvisories, type CategoryMemoryAdvisoryFlag } from '../../category-memory-moderation';
 import { normalizeCategoryMemoryText } from '../../category-memory-moderation';
+import { resolveUserOrganizationIdByUserId } from '../../org-membership';
+import { getDefaultOrganizationId } from '../../org-context';
 
 export type CategoryMemoryType = 'fact' | 'terminology' | 'decision' | 'process' | 'faq' | 'caveat';
 export type CategoryMemoryStatus = 'draft' | 'suggested' | 'approved' | 'archived' | 'rejected';
@@ -165,22 +167,37 @@ async function appendEvent(
 
 export async function getCategoryMemoryAccess(userId: number, role: UserRole, categoryId: number): Promise<CategoryMemoryAccess> {
   const db = await getDb();
-  const [category, subscription, assignment] = await Promise.all([
-    db.selectFrom('categories').select(['id', 'memory_enabled']).where('id', '=', categoryId).executeTakeFirst(),
+  const [category, subscription, assignment, userOrgId] = await Promise.all([
+    db.selectFrom('categories').select(['id', 'memory_enabled', 'organization_id']).where('id', '=', categoryId).executeTakeFirst(),
     db.selectFrom('user_subscriptions').select('category_id')
       .where('user_id', '=', userId).where('category_id', '=', categoryId).where('is_active', '=', 1).executeTakeFirst(),
     role === 'superuser'
       ? db.selectFrom('super_user_categories').select('category_id')
         .where('user_id', '=', userId).where('category_id', '=', categoryId).executeTakeFirst()
       : Promise.resolve(undefined),
+    resolveUserOrganizationIdByUserId(userId, db),
   ]);
   if (!category) return { canRead: false, canManage: false, categoryEnabled: false };
+  const permission = calculateCategoryMemoryPermission({
+    role,
+    hasActiveSubscription: Boolean(subscription),
+    hasSuperuserAssignment: Boolean(assignment),
+  });
+  // Organization tenancy guard: non-admin access is restricted to the category's
+  // owning organization. Admins/super_admins keep deployment-wide access (parity
+  // with calculateCategoryMemoryPermission). Legacy categories without an org and
+  // users with no resolvable membership fall back to the DEFAULT organization,
+  // preserving single-tenant parity while blocking cross-org access.
+  if (role !== 'admin' && role !== 'super_admin' && category.organization_id != null) {
+    const defaultOrgId = userOrgId == null ? await getDefaultOrganizationId(db) : null;
+    const effectiveOrgId = userOrgId ?? defaultOrgId;
+    if (effectiveOrgId !== category.organization_id) {
+      permission.canRead = false;
+      permission.canManage = false;
+    }
+  }
   return {
-    ...calculateCategoryMemoryPermission({
-      role,
-      hasActiveSubscription: Boolean(subscription),
-      hasSuperuserAssignment: Boolean(assignment),
-    }),
+    ...permission,
     categoryEnabled: Boolean(category.memory_enabled),
   };
 }
