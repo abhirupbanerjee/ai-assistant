@@ -23,6 +23,7 @@ interface LLMProviderRow {
   api_key: string | null;
   api_base: string | null;
   enabled: number;
+  kind: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ function mapRowToProvider(row: LLMProviderRow): LLMProvider {
     apiKey: row.api_key,
     apiBase: row.api_base,
     enabled: !!row.enabled,
+    kind: (row.kind as 'direct' | 'aggregator' | 'local' | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

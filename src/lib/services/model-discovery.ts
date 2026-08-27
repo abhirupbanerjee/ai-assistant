@@ -820,17 +820,11 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
  * "Get Model Details" endpoint at /api/admin/llm/models/get-details to auto-fill
  * capabilities and pricing from web search.
  */
-async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[]> {
-  // Validate API key by calling the models endpoint
-  const response = await fetch('https://api.fireworks.ai/inference/v1/models', {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Fireworks API error: ${response.status} ${response.statusText}`);
-  }
-
-  const FIREWORKS_MODELS = [
+/**
+ * Fallback model list for Fireworks when the API returns no chat models.
+ * **Exit Gate 2:** delete this array and the fallback branch below.
+ */
+const FIREWORKS_FALLBACK_MODELS = [
     {
       id: 'fireworks/glm-5p2',
       name: 'GLM 5.2',
@@ -957,15 +951,82 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       maxInputTokens: 1048576,
       maxOutputTokens: 16384,
     },
-  ];
+];
 
-  return Promise.all(
-    FIREWORKS_MODELS.map(async m => ({
-      ...m,
+/**
+ * Discover models from the Fireworks AI API.
+ *
+ * Calls `GET /v1/models`, parses the response (which returns only `{ id, object }` —
+ * no capability metadata), applies the §3 alias transform
+ * (`accounts/fireworks/models/<name>` → `fireworks/<name>`), filters to chat-only
+ * models via `isFireworksChatModel()`, and classifies each model using the existing
+ * pattern-matching functions.
+ *
+ * Falls back to `FIREWORKS_FALLBACK_MODELS` if the API returns zero chat models
+ * (e.g. empty response, all models filtered out). **Exit Gate 2** removes the fallback.
+ */
+async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch('https://api.fireworks.ai/inference/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Fireworks API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { data?: Array<{ id: string; object: string }> };
+  const apiModels = data.data ?? [];
+
+  // Alias transform: accounts/fireworks/models/<name> → fireworks/<name>
+  const FIREWORKS_PREFIX = 'accounts/fireworks/models/';
+  const aliasId = (transportId: string): string =>
+    transportId.startsWith(FIREWORKS_PREFIX)
+      ? 'fireworks/' + transportId.slice(FIREWORKS_PREFIX.length)
+      : transportId;
+
+  // Parse, filter, and classify each model from the API response
+  const discovered: DiscoveredModel[] = [];
+  for (const apiModel of apiModels) {
+    const transportId = apiModel.id;
+    // Filter: only chat models (drops embeddings, audio, image-gen, moderation, etc.)
+    if (!isFireworksChatModel(transportId)) continue;
+
+    const id = aliasId(transportId);
+    const contextWindow = getContextWindow(id) ?? getContextWindow(transportId);
+
+    discovered.push({
+      id,
+      name: generateDisplayName(id),
       provider: 'fireworks',
+      toolCapable: isToolCapable(id),
+      visionCapable: isVisionCapable(id),
+      forcedToolCapable: isForcedToolCapable(id),
+      maxInputTokens: contextWindow,
+      maxOutputTokens: getFireworksOutputTokens(id),
+      isEnabled: false, // set below
+    });
+  }
+
+  // Resolve enabled status for each discovered model
+  const withEnabled = await Promise.all(
+    discovered.map(async m => ({
+      ...m,
       isEnabled: !!(await getEnabledModel(m.id)),
     }))
   );
+
+  // Fallback: if API returned no chat models, use the hardcoded list
+  if (withEnabled.length === 0) {
+    return Promise.all(
+      FIREWORKS_FALLBACK_MODELS.map(async m => ({
+        ...m,
+        provider: 'fireworks',
+        isEnabled: !!(await getEnabledModel(m.id)),
+      }))
+    );
+  }
+
+  return withEnabled;
 }
 
 /**

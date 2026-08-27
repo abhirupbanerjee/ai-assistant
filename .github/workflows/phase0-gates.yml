@@ -1,0 +1,40 @@
+name: Phase 0 Gates
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  phase0-parity-tests:
+    name: Phase 0 Parity & Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate 1: Golden-master parity harness (§7.3 item 6)
+      - name: Golden-master parity harness
+        run: npx tsx --test src/lib/db/compat/enabled-models.catalog-parity.test.ts
+
+      # Gate 2: Classification parity test (§7.2 item 6)
+      - name: Classification parity test
+        run: npx tsx --test src/lib/services/model-discovery.classification-parity.test.ts
+
+      # Gate 3: Write-funnel grep (§7.3 item 4)
+      - name: Write-funnel grep gate
+        run: bash scripts/phase0-write-funnel-grep.sh
+
+      # Gate 4: Type-check (catches schema/mapper regressions)
+      - name: TypeScript type-check
+        run: npx tsc --noEmit

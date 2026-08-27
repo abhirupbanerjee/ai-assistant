@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Wrench, Eye, Check, RefreshCw, AlertCircle, Brain } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
+import { Search, Wrench, Eye, Check, RefreshCw, AlertCircle, Brain, Sparkles, AlertTriangle, ArrowDownUp } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -14,6 +14,15 @@ interface LLMProvider {
   apiKeyConfigured: boolean;
   apiBase: string | null;
   enabled: boolean;
+  kind?: 'direct' | 'aggregator' | 'local' | null;
+}
+
+type CatalogStatus = 'active' | 'new' | 'pending_changes' | 'retired';
+
+interface PendingChange {
+  field: string;
+  oldValue: string | number | null;
+  newValue: string | number | null;
 }
 
 interface DiscoveredModel {
@@ -28,6 +37,10 @@ interface DiscoveredModel {
   maxInputTokens: number | null;
   maxOutputTokens: number;
   isEnabled: boolean;
+  // Phase 0 catalog fields
+  status?: CatalogStatus;
+  pendingChanges?: PendingChange[];
+  snapshotHash?: string | null;
 }
 
 interface DiscoveryResult {
@@ -64,6 +77,8 @@ export default function ModelDiscoveryModal({
   const [selectedModels, setSelectedModels] = useState<Map<string, DiscoveredModel>>(new Map());
   const [modelsToRemove, setModelsToRemove] = useState<Set<string>>(new Set());
   const [outputTokenOverrides, setOutputTokenOverrides] = useState<Map<string, number>>(new Map());
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   // Ref tracks current discoveryResults for cache checks inside effects without stale closures
   const discoveryResultsRef = useRef(discoveryResults);
@@ -81,9 +96,36 @@ export default function ModelDiscoveryModal({
       setSelectedModels(new Map());
       setModelsToRemove(new Set());
       setOutputTokenOverrides(new Map());
+      setSyncResult(null);
       setError(null);
     }
   }, [isOpen, initialProvider, providers]);
+
+  // Phase 0: Sync catalog from provider (drift detection)
+  const handleSync = useCallback(async (providerId: string) => {
+    setIsSyncing(true);
+    setSyncResult(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/model-catalog/sync?provider=${providerId}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Sync failed');
+      }
+      const r = data;
+      setSyncResult(`Synced: ${r.newModels?.length || 0} new, ${r.changedModels?.length || 0} changed, ${r.retiredModels?.length || 0} retired`);
+      // Re-discover models after sync to reflect catalog updates
+      setDiscoveryResults(prev => {
+        const next = new Map(prev);
+        next.delete(providerId);
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
 
   // Discover models from provider (fetches only if not already cached)
   const discoverModels = useCallback(async (providerId: string) => {
@@ -122,6 +164,28 @@ export default function ModelDiscoveryModal({
     model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     model.id.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
+
+  // Phase 0: Group models by catalog status for display
+  const groupedModels = useMemo(() => {
+    const groups: Record<CatalogStatus, DiscoveredModel[]> = {
+      active: [],
+      new: [],
+      pending_changes: [],
+      retired: [],
+    };
+    for (const model of filteredModels) {
+      const status = model.status ?? (model.isEnabled ? 'active' : 'new');
+      groups[status].push(model);
+    }
+    return groups;
+  }, [filteredModels]);
+
+  const statusGroupConfig: { status: CatalogStatus; label: string; icon: typeof Check; color: string }[] = [
+    { status: 'active', label: 'Active', icon: Check, color: 'text-green-600' },
+    { status: 'new', label: 'New', icon: Sparkles, color: 'text-blue-600' },
+    { status: 'pending_changes', label: 'Pending Changes', icon: AlertTriangle, color: 'text-yellow-600' },
+    { status: 'retired', label: 'Retired', icon: ArrowDownUp, color: 'text-gray-500' },
+  ];
 
   // Toggle model selection (for new models to add) — stores full model object
   const toggleModel = (model: DiscoveredModel) => {
@@ -321,13 +385,24 @@ export default function ModelDiscoveryModal({
         {/* Models List */}
         {!isLoading && discoveryResult?.success && (
           <>
-            {/* Selection controls */}
+            {/* Selection controls + Sync button */}
             <div className="flex items-center justify-between text-sm">
               <div className="text-gray-500">
                 Found {discoveryResult.models.length} models
                 {filteredModels.length !== discoveryResult.models.length && ` (${filteredModels.length} shown)`}
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleSync(selectedProvider)}
+                  disabled={isSyncing}
+                  loading={isSyncing}
+                >
+                  <RefreshCw size={12} className="mr-1" />
+                  Sync from provider
+                </Button>
+                <span className="text-gray-300">|</span>
                 <button
                   onClick={selectAll}
                   className="text-blue-600 hover:text-blue-800"
@@ -344,7 +419,15 @@ export default function ModelDiscoveryModal({
               </div>
             </div>
 
-            {/* Models table */}
+            {/* Sync result */}
+            {syncResult && (
+              <div className="p-2 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700 text-sm">
+                <Check size={14} className="flex-shrink-0" />
+                <span>{syncResult}</span>
+              </div>
+            )}
+
+            {/* Models table — grouped by catalog status (Phase 0) */}
             <div className="max-h-80 overflow-y-auto border rounded-lg">
               {filteredModels.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
@@ -372,99 +455,133 @@ export default function ModelDiscoveryModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredModels.map(model => (
-                      <tr
-                        key={model.id}
-                        className={`cursor-pointer ${
-                          model.isEnabled && modelsToRemove.has(model.id)
-                            ? 'bg-red-50 hover:bg-red-100'
-                            : model.isEnabled
-                            ? 'hover:bg-gray-100'
-                            : selectedModels.has(model.id)
-                            ? 'bg-blue-50 hover:bg-blue-100'
-                            : 'hover:bg-blue-50'
-                        }`}
-                        onClick={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model)}
-                      >
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={model.isEnabled ? !modelsToRemove.has(model.id) : selectedModels.has(model.id)}
-                            onChange={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model)}
-                            onClick={(e) => e.stopPropagation()}
-                            className={`rounded border-gray-300 focus:ring-blue-500 ${
-                              model.isEnabled ? 'text-green-600' : 'text-blue-600'
-                            }`}
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-sm text-gray-900">{model.name}</div>
-                          <div className="text-xs text-gray-400">{model.id}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {model.toolCapable && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700" title="Tools">
-                                <Wrench size={10} className="mr-0.5" />
+                    {statusGroupConfig.map(({ status, label, icon: StatusIcon, color }) => {
+                      const groupModels = groupedModels[status];
+                      if (groupModels.length === 0) return null;
+                      return (
+                        <Fragment key={status}>
+                          {/* Status group header row */}
+                          <tr className="bg-gray-50/75">
+                            <td colSpan={5} className="px-4 py-1.5">
+                              <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`}>
+                                <StatusIcon size={12} />
+                                {label} ({groupModels.length})
                               </span>
-                            )}
-                            {model.visionCapable && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700" title="Vision">
-                                <Eye size={10} className="mr-0.5" />
-                              </span>
-                            )}
-                            {model.thinkingCapable && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700" title="Thinking">
-                                <Brain size={10} className="mr-0.5" />
-                              </span>
-                            )}
-                            {model.maxInputTokens && (
-                              <span className="text-xs text-gray-500">
-                                {(model.maxInputTokens / 1000).toFixed(0)}K
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          {model.isEnabled ? (
-                            <span className="text-xs text-gray-500">
-                              {model.maxOutputTokens ? `${(model.maxOutputTokens / 1000).toFixed(0)}K` : '—'}
-                            </span>
-                          ) : (
-                            <input
-                              type="number"
-                              value={getModelOutputTokens(model)}
-                              onChange={(e) => setModelOutputTokens(model.id, parseInt(e.target.value) || 0)}
-                              className="w-20 px-2 py-1 text-xs border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                              min={1}
-                              max={100000}
-                            />
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {model.isEnabled ? (
-                            modelsToRemove.has(model.id) ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">
-                                Will Remove
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">
-                                <Check size={10} className="mr-1" />
-                                Enabled
-                              </span>
-                            )
-                          ) : (
-                            selectedModels.has(model.id) ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
-                                Will Add
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
-                            )
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                            </td>
+                          </tr>
+                          {/* Model rows */}
+                          {groupModels.map(model => (
+                            <tr
+                              key={model.id}
+                              className={`cursor-pointer ${
+                                model.isEnabled && modelsToRemove.has(model.id)
+                                  ? 'bg-red-50 hover:bg-red-100'
+                                  : model.isEnabled
+                                  ? 'hover:bg-gray-100'
+                                  : selectedModels.has(model.id)
+                                  ? 'bg-blue-50 hover:bg-blue-100'
+                                  : 'hover:bg-blue-50'
+                              }`}
+                              onClick={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model)}
+                            >
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={model.isEnabled ? !modelsToRemove.has(model.id) : selectedModels.has(model.id)}
+                                  onChange={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`rounded border-gray-300 focus:ring-blue-500 ${
+                                    model.isEnabled ? 'text-green-600' : 'text-blue-600'
+                                  }`}
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="font-medium text-sm text-gray-900">
+                                  {model.name}
+                                  {model.status === 'new' && (
+                                    <span className="ml-1 text-blue-500 text-xs">🆕</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-400">{model.id}</div>
+                                {/* Pending changes diff (self-describing providers only; hidden for Fireworks) */}
+                                {model.pendingChanges && model.pendingChanges.length > 0 && (
+                                  <div className="mt-1 space-y-0.5">
+                                    {model.pendingChanges.map((change, i) => (
+                                      <div key={i} className="text-xs text-yellow-600 flex items-center gap-1">
+                                        <AlertTriangle size={10} />
+                                        <span>{change.field}: {change.oldValue ?? '—'} → {change.newValue ?? '—'}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  {model.toolCapable && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700" title="Tools">
+                                      <Wrench size={10} className="mr-0.5" />
+                                    </span>
+                                  )}
+                                  {model.visionCapable && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700" title="Vision">
+                                      <Eye size={10} className="mr-0.5" />
+                                    </span>
+                                  )}
+                                  {model.thinkingCapable && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700" title="Thinking">
+                                      <Brain size={10} className="mr-0.5" />
+                                    </span>
+                                  )}
+                                  {model.maxInputTokens && (
+                                    <span className="text-xs text-gray-500">
+                                      {(model.maxInputTokens / 1000).toFixed(0)}K
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                {model.isEnabled ? (
+                                  <span className="text-xs text-gray-500">
+                                    {model.maxOutputTokens ? `${(model.maxOutputTokens / 1000).toFixed(0)}K` : '—'}
+                                  </span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    value={getModelOutputTokens(model)}
+                                    onChange={(e) => setModelOutputTokens(model.id, parseInt(e.target.value) || 0)}
+                                    className="w-20 px-2 py-1 text-xs border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    min={1}
+                                    max={100000}
+                                  />
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {model.isEnabled ? (
+                                  modelsToRemove.has(model.id) ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">
+                                      Will Remove
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">
+                                      <Check size={10} className="mr-1" />
+                                      Enabled
+                                    </span>
+                                  )
+                                ) : (
+                                  selectedModels.has(model.id) ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+                                      Will Add
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">—</span>
+                                  )
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

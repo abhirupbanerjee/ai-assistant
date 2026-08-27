@@ -405,7 +405,8 @@ export type ErrorCode =
   // LLM fallback error codes
   | 'NO_MODELS_AVAILABLE'
   | 'ALL_MODELS_FAILED'
-  | 'CAPABILITY_UNAVAILABLE';
+  | 'CAPABILITY_UNAVAILABLE'
+  | 'ORG_DEPLOY_NOT_SUPPORTED';
 
 // ============ Storage Types ============
 

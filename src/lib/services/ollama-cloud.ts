@@ -8,9 +8,9 @@
  * Uses native /api/chat format (not OpenAI-compatible).
  */
 
-import { getDb } from '@/lib/db/kysely';
 import { getProviderApiKey } from '@/lib/db/compat/llm-providers';
-import { getEnabledModel } from '@/lib/db/compat/enabled-models';
+import { getEnabledModel, getModelsByProvider, createEnabledModel, updateEnabledModel } from '@/lib/db/compat/enabled-models';
+import type { EnabledModel } from '@/lib/db/compat/enabled-models';
 import { generateDisplayName } from '@/lib/llm-utils';
 import type { DiscoveredModel } from './model-discovery';
 
@@ -284,34 +284,32 @@ export async function callOllamaCloud(
 
 /**
  * Sync discovered Ollama Cloud models to the enabled_models table
- * New models are added as disabled by default
+ * New models are added as disabled by default.
+ * Routed through compat layer so the write-through mirror fires for both
+ * enabled_models and model_catalog + organization_deployment.
  */
 export async function syncCloudModelsToDatabase(): Promise<{
   added: number;
   total: number;
 }> {
   const models = await discoverOllamaCloudModels();
-  const db = await getDb();
   let added = 0;
 
   for (const model of models) {
     const existing = await getEnabledModel(model.id);
     if (!existing) {
-      await db
-        .insertInto('enabled_models')
-        .values({
-          id: model.id,
-          provider_id: OLLAMA_CLOUD_PROVIDER_ID,
-          display_name: model.name,
-          tool_capable: model.toolCapable ? 1 : 0,
-          vision_capable: model.visionCapable ? 1 : 0,
-          max_input_tokens: model.maxInputTokens,
-          max_output_tokens: model.maxOutputTokens,
-          is_default: 0,
-          enabled: 0, // Disabled by default
-          sort_order: 9900,
-        })
-        .execute();
+      await createEnabledModel({
+        id: model.id,
+        providerId: OLLAMA_CLOUD_PROVIDER_ID,
+        displayName: model.name,
+        toolCapable: model.toolCapable,
+        visionCapable: model.visionCapable,
+        maxInputTokens: model.maxInputTokens ?? undefined,
+        maxOutputTokens: model.maxOutputTokens ?? undefined,
+        isDefault: false,
+        enabled: false, // Disabled by default
+        sortOrder: 9900,
+      });
       added++;
     }
   }
@@ -322,102 +320,81 @@ export async function syncCloudModelsToDatabase(): Promise<{
 // ============ Model Management ============
 
 /**
- * Get all Ollama Cloud models from the database
+ * Get all Ollama Cloud models from the database.
+ * Routed through compat layer (MODEL_CATALOG_READS flag-aware).
  */
-export async function getAllCloudModels() {
-  const db = await getDb();
-  return db
-    .selectFrom('enabled_models')
-    .selectAll()
-    .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-    .orderBy('sort_order')
-    .orderBy('display_name')
-    .execute();
+export async function getAllCloudModels(): Promise<EnabledModel[]> {
+  return getModelsByProvider(OLLAMA_CLOUD_PROVIDER_ID);
 }
 
 /**
- * Get enabled Ollama Cloud models only
+ * Get enabled Ollama Cloud models only.
+ * Routed through compat layer (MODEL_CATALOG_READS flag-aware).
  */
-export async function getEnabledCloudModels() {
-  const db = await getDb();
-  return db
-    .selectFrom('enabled_models')
-    .selectAll()
-    .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-    .where('enabled', '=', 1)
-    .orderBy('sort_order')
-    .orderBy('display_name')
-    .execute();
+export async function getEnabledCloudModels(): Promise<EnabledModel[]> {
+  const all = await getModelsByProvider(OLLAMA_CLOUD_PROVIDER_ID);
+  return all.filter((m) => m.enabled);
 }
 
 /**
- * Enable a specific Ollama Cloud model
+ * Enable a specific Ollama Cloud model.
+ * Routed through compat layer so the write-through mirror fires.
  */
 export async function enableCloudModel(id: string): Promise<void> {
-  const db = await getDb();
-  await db
-    .updateTable('enabled_models')
-    .set({ enabled: 1 })
-    .where('id', '=', id)
-    .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-    .execute();
+  await updateEnabledModel(id, { enabled: true });
 }
 
 /**
- * Disable a specific Ollama Cloud model
+ * Disable a specific Ollama Cloud model.
+ * Routed through compat layer so the write-through mirror fires.
  */
 export async function disableCloudModel(id: string): Promise<void> {
-  const db = await getDb();
-  await db
-    .updateTable('enabled_models')
-    .set({ enabled: 0 })
-    .where('id', '=', id)
-    .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-    .execute();
+  await updateEnabledModel(id, { enabled: false });
 }
 
 /**
- * Enable all Ollama Cloud models
+ * Enable all Ollama Cloud models.
+ * Routed through compat layer so the write-through mirror fires.
  */
 export async function enableAllCloudModels(): Promise<number> {
-  const db = await getDb();
-  await db
-    .updateTable('enabled_models')
-    .set({ enabled: 1 })
-    .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-    .execute();
-  return 0; // Kysely doesn't expose numUpdatedRows on UpdateResult[]
+  const models = await getModelsByProvider(OLLAMA_CLOUD_PROVIDER_ID);
+  let count = 0;
+  for (const model of models) {
+    if (!model.enabled) {
+      await updateEnabledModel(model.id, { enabled: true });
+      count++;
+    }
+  }
+  return count;
 }
 
 /**
- * Disable all Ollama Cloud models
+ * Disable all Ollama Cloud models.
+ * Routed through compat layer so the write-through mirror fires.
  */
 export async function disableAllCloudModels(): Promise<number> {
-  const db = await getDb();
-  await db
-    .updateTable('enabled_models')
-    .set({ enabled: 0 })
-    .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-    .execute();
-  return 0;
+  const models = await getModelsByProvider(OLLAMA_CLOUD_PROVIDER_ID);
+  let count = 0;
+  for (const model of models) {
+    if (model.enabled) {
+      await updateEnabledModel(model.id, { enabled: false });
+      count++;
+    }
+  }
+  return count;
 }
 
 /**
- * Batch update model status (enable/disable multiple models at once)
+ * Batch update model status (enable/disable multiple models at once).
+ * Routed through compat layer so the write-through mirror fires.
  */
 export async function batchUpdateModelStatus(
   updates: Array<{ id: string; enabled: boolean }>
 ): Promise<number> {
-  const db = await getDb();
   let updated = 0;
 
   for (const { id, enabled } of updates) {
-    await db
-      .updateTable('enabled_models')
-      .set({ enabled: enabled ? 1 : 0 })
-      .where('id', '=', id)
-      .where('provider_id', '=', OLLAMA_CLOUD_PROVIDER_ID)
-      .execute();
+    await updateEnabledModel(id, { enabled });
     updated++;
   }
 

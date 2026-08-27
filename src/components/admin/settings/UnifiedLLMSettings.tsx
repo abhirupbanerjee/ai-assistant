@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
@@ -24,6 +24,7 @@ interface LLMProvider {
   apiKeyConfigured: boolean;
   apiBase: string | null;
   enabled: boolean;
+  kind?: 'direct' | 'aggregator' | 'local' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,30 +68,113 @@ interface DetailsResult {
 
 type SectionId = 'providers' | 'models' | 'auto-leaderboard';
 
-// ============ Route Classification (mirrors server-side isRoute2Model) ============
+// ============ Route Classification (Phase 0: driven by providers.kind) ============
+//
+// After Phase 0, route classification comes from the `providers.kind` field
+// returned by the API. The frontend reads this from the API response rather
+// than from a hardcoded frontend constant.
+//
+// Fallback sets are kept for backward compatibility during migration (when
+// `kind` is not yet populated in the DB). Once migration is verified, the
+// fallbacks can be removed.
 
-const ROUTE_2_PROVIDERS = new Set(['openai', 'anthropic', 'moonshot', 'deepseek', 'mistral', 'gemini']);
-const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
-// Must stay in sync with src/lib/llm-fallback.ts isRoute2Model()
-const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-')
-  || id.startsWith('moonshot/')
-  || id.startsWith('deepseek-') || id.startsWith('deepseek/')
-  || id.startsWith('mistral/') || id.startsWith('mistral-')
-  || id.startsWith('codestral/') || id.startsWith('codestral-')
-  || id.startsWith('pixtral/') || id.startsWith('pixtral-')
-  || id.startsWith('gemini/') || id.startsWith('gemini-')
-  || id.startsWith('openai/') || id.startsWith('gpt-')
-  || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
+const FALLBACK_ROUTE_2_PROVIDERS = new Set(['openai', 'anthropic', 'moonshot', 'deepseek', 'mistral', 'gemini']);
+const FALLBACK_ROUTE_3_PROVIDERS = new Set(['ollama']);
+const FALLBACK_ROUTE_5_PROVIDERS = new Set(['azure-foundry', 'fireworks', 'ollama-cloud']);
 
-const ROUTE_3_PROVIDERS = new Set(['ollama']);
-const isRoute3Provider = (id: string) => ROUTE_3_PROVIDERS.has(id);
-const isRoute3Model = (id: string) => id.startsWith('ollama-') || id.startsWith('ollama/');
+/**
+ * Build kind-based route classification from loaded providers.
+ * Returns a map from provider ID → route number (2, 3, or 5).
+ */
+function buildRouteMap(providers: LLMProvider[]): Map<string, number> {
+  const routeMap = new Map<string, number>();
+  for (const p of providers) {
+    if (p.kind === 'direct') {
+      routeMap.set(p.id, 2);
+    } else if (p.kind === 'local') {
+      routeMap.set(p.id, 3);
+    } else if (p.kind === 'aggregator') {
+      routeMap.set(p.id, 5);
+    } else if (FALLBACK_ROUTE_5_PROVIDERS.has(p.id)) {
+      routeMap.set(p.id, 5);
+    } else if (FALLBACK_ROUTE_3_PROVIDERS.has(p.id)) {
+      routeMap.set(p.id, 3);
+    } else if (FALLBACK_ROUTE_2_PROVIDERS.has(p.id)) {
+      routeMap.set(p.id, 2);
+    } else {
+      routeMap.set(p.id, 2); // default to route 2
+    }
+  }
+  return routeMap;
+}
 
-const ROUTE_5_PROVIDERS = new Set(['azure-foundry', 'fireworks', 'ollama-cloud']);
-const isRoute5Provider = (id: string) => ROUTE_5_PROVIDERS.has(id);
-const isRoute5Model = (id: string) =>
-  id.startsWith('azure-foundry/') || id.startsWith('fireworks/') || id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
+/**
+ * Determine a model's route from the provider's kind (or fallback patterns).
+ */
+function isRoute5Model(modelId: string, routeMap?: Map<string, number>): boolean {
+  // Check by provider prefix if routeMap is available
+  if (routeMap) {
+    for (const [providerId, route] of routeMap) {
+      if (route === 5 && (modelId.startsWith(`${providerId}/`) || modelId.startsWith(`${providerId}-`))) {
+        return true;
+      }
+    }
+  }
+  // Fallback pattern match (backward compat)
+  return modelId.startsWith('azure-foundry/') || modelId.startsWith('fireworks/') || modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud');
+}
+
+function isRoute3Model(modelId: string, routeMap?: Map<string, number>): boolean {
+  if (routeMap) {
+    for (const [providerId, route] of routeMap) {
+      if (route === 3 && (modelId.startsWith(`${providerId}/`) || modelId.startsWith(`${providerId}-`))) {
+        return true;
+      }
+    }
+  }
+  return modelId.startsWith('ollama-') || modelId.startsWith('ollama/');
+}
+
+function isRoute2Model(modelId: string, routeMap?: Map<string, number>): boolean {
+  if (routeMap) {
+    for (const [providerId, route] of routeMap) {
+      if (route === 2 && (modelId.startsWith(`${providerId}/`) || modelId.startsWith(`${providerId}-`))) {
+        return true;
+      }
+    }
+  }
+  // Fallback pattern match (backward compat)
+  return modelId.startsWith('anthropic/') || modelId.startsWith('claude-')
+    || modelId.startsWith('moonshot/')
+    || modelId.startsWith('deepseek-') || modelId.startsWith('deepseek/')
+    || modelId.startsWith('mistral/') || modelId.startsWith('mistral-')
+    || modelId.startsWith('codestral/') || modelId.startsWith('codestral-')
+    || modelId.startsWith('pixtral/') || modelId.startsWith('pixtral-')
+    || modelId.startsWith('gemini/') || modelId.startsWith('gemini-')
+    || modelId.startsWith('openai/') || modelId.startsWith('gpt-')
+    || modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4');
+}
+
+function isRoute2Provider(providerId: string, routeMap?: Map<string, number>): boolean {
+  if (routeMap && routeMap.has(providerId)) {
+    return routeMap.get(providerId) === 2;
+  }
+  return FALLBACK_ROUTE_2_PROVIDERS.has(providerId);
+}
+
+function isRoute3Provider(providerId: string, routeMap?: Map<string, number>): boolean {
+  if (routeMap && routeMap.has(providerId)) {
+    return routeMap.get(providerId) === 3;
+  }
+  return FALLBACK_ROUTE_3_PROVIDERS.has(providerId);
+}
+
+function isRoute5Provider(providerId: string, routeMap?: Map<string, number>): boolean {
+  if (routeMap && routeMap.has(providerId)) {
+    return routeMap.get(providerId) === 5;
+  }
+  return FALLBACK_ROUTE_5_PROVIDERS.has(providerId);
+}
 
 // ============ Component ============
 
@@ -164,19 +248,22 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const route3Disabled = routesSettings ? !routesSettings.route3Enabled : false;
   const route5Disabled = routesSettings ? !routesSettings.route5Enabled : false;
 
+  // Phase 0: Build route map from providers.kind (API-driven, not hardcoded)
+  const routeMap = useMemo(() => buildRouteMap(providers), [providers]);
+
   const isModelOnDisabledRoute = (modelId: string) => {
     if (!routesSettings || allRoutesEnabled) return false;
     // NOTE: Route 5 MUST be checked first
-    if (isRoute5Model(modelId)) return route5Disabled;
-    if (isRoute3Model(modelId)) return route3Disabled;
+    if (isRoute5Model(modelId, routeMap)) return route5Disabled;
+    if (isRoute3Model(modelId, routeMap)) return route3Disabled;
     return route2Disabled;
   };
 
   const isProviderOnDisabledRoute = (providerId: string) => {
     if (!routesSettings || allRoutesEnabled) return false;
     // NOTE: Route 5 MUST be checked first
-    if (isRoute5Provider(providerId)) return route5Disabled;
-    if (isRoute3Provider(providerId)) return route3Disabled;
+    if (isRoute5Provider(providerId, routeMap)) return route5Disabled;
+    if (isRoute3Provider(providerId, routeMap)) return route3Disabled;
     return route2Disabled;
   };
 
@@ -724,10 +811,26 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                     provider={provider}
                     onUpdate={(updates) => handleProviderUpdate(provider.id, updates)}
                     onTest={() => handleTestProvider(provider.id)}
+                    onSync={async () => {
+                      try {
+                        const res = await fetch(`/api/admin/model-catalog/sync?provider=${provider.id}`, { method: 'POST' });
+                        if (!res.ok) {
+                          const data = await res.json();
+                          throw new Error(data.error || 'Sync failed');
+                        }
+                        const result = await res.json();
+                        const r = result;
+                        const summary = `${r.newModels?.length || 0} new, ${r.changedModels?.length || 0} changed, ${r.retiredModels?.length || 0} retired`;
+                        showSuccess(`Synced ${provider.id}: ${summary}`);
+                        await loadData();
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Sync failed');
+                      }
+                    }}
                   />
                   {routeDisabled && (
                     <p className="text-xs text-gray-400 mt-1 ml-5">
-                      {isRoute5Provider(provider.id) ? 'Route 5' : isRoute3Provider(provider.id) ? 'Route 3' : isRoute2Provider(provider.id) ? 'Route 2' : 'Route 1'} is disabled
+                      {isRoute5Provider(provider.id, routeMap) ? 'Route 5' : isRoute3Provider(provider.id, routeMap) ? 'Route 3' : isRoute2Provider(provider.id, routeMap) ? 'Route 2' : 'Route 1'} is disabled
                     </p>
                   )}
                 </div>
@@ -1024,7 +1127,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         <td className="px-4 py-3 whitespace-nowrap">
                           {routeOff ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500"
-                              title={`${isRoute5Model(model.id) ? 'Route 5' : isRoute3Model(model.id) ? 'Route 3' : isRoute2Model(model.id) ? 'Route 2' : 'Route 1'} is disabled`}>Route Off</span>
+                              title={`${isRoute5Model(model.id, routeMap) ? 'Route 5' : isRoute3Model(model.id, routeMap) ? 'Route 3' : isRoute2Model(model.id, routeMap) ? 'Route 2' : 'Route 1'} is disabled`}>Route Off</span>
                           ) : model.providerEnabled === false ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700" title="Provider is disabled">Provider Off</span>
                           ) : model.enabled ? (

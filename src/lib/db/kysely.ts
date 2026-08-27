@@ -10,6 +10,7 @@
  */
 
 import { Kysely, PostgresDialect, sql } from 'kysely';
+export { sql };
 import { Pool, types as pgTypes } from 'pg';
 import type { DB } from './db-types';
 import { assertFeatureFlagCombinations, readFeatureFlagCombinations } from '../feature-flag-combinations';
@@ -60,12 +61,62 @@ export async function getDb(): Promise<Kysely<DB>> {
 }
 
 /**
+ * Run a versioned migration exactly once.  Checks the `_migrations` table for
+ * the given `id`; if already present, the callback is skipped.  Otherwise the
+ * callback executes inside a transaction and the id is recorded.
+ *
+ * **Important:** the `_migrations` table itself must exist before calling this.
+ * It is created unconditionally at the top of [`runPostgresMigrations()`].
+ *
+ * Existing (pre-version-table) migrations are NOT wrapped — they remain
+ * idempotent and replay on every boot.  Only **new** migrations should use this
+ * helper.
+ */
+async function runMigration(
+  database: Kysely<DB>,
+  id: string,
+  fn: (trx: Kysely<DB>) => Promise<void>,
+): Promise<void> {
+  const already = await database
+    .selectFrom('_migrations' as never)
+    .select('id' as never)
+    .where('id' as never, '=', id as never)
+    .executeTakeFirst();
+
+  if (already) {
+    return; // already applied
+  }
+
+  console.log(`[Kysely] Applying migration "${id}"...`);
+  await database.transaction().execute(async (trx) => {
+    await fn(trx);
+    await trx
+      .insertInto('_migrations' as never)
+      .values({ id: id as never, applied_at: new Date().toISOString() as never } as never)
+      .execute();
+  });
+  console.log(`[Kysely] Migration "${id}" applied`);
+}
+
+/**
  * Run idempotent PostgreSQL schema migrations for existing databases.
  * The docker-entrypoint init script only runs on first init, so schema
  * changes for existing deployments must be applied here.
  */
 async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] Running PostgreSQL migrations...');
+
+  // ── Migration version table (Phase 0 prerequisite) ──────────────────
+  // Created first so runMigration() can be used for new migrations below.
+  // All existing migrations above remain idempotent and replay on every boot;
+  // only new migrations are wrapped in runMigration().
+  await sql`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      id          TEXT PRIMARY KEY,
+      applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  console.log('[Kysely] Ensured _migrations table exists');
 
   // Personal + Shared Category Memory, Phase 1 foundation. This is an authorized
   // clean reset: the legacy per-user/per-category fact table is deliberately not
@@ -2131,6 +2182,438 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_index_generations_active ON vector_index_generations(logical_name) WHERE status = 'active'`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_vector_index_generations_status ON vector_index_generations(status)`.execute(database);
   console.log('[Kysely] Ensured vector_index_generations table exists (Vector Index Generation Manager, Phase 1)');
+
+  // ===================================================================
+  // Phase 0 — Structural Foundations: Catalog-Driven Model Discovery
+  // (see plans/Redesign-setup-routeaggregators.md)
+  //
+  // Schema migrations (CREATE TABLE / ALTER TABLE) are idempotent and
+  // replay on every boot, consistent with all existing migrations above.
+  // The seed (copy from enabled_models → model_catalog + organization_deployment)
+  // is wrapped in runMigration() so it executes exactly once.
+  // ===================================================================
+
+  // §7.1 item 1 — Add `kind` and `discovery_manifest` columns to providers table
+  await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'direct' CHECK (kind IN ('direct', 'aggregator', 'local'))`.execute(database);
+  await sql`ALTER TABLE providers ADD COLUMN IF NOT EXISTS discovery_manifest JSONB`.execute(database);
+  console.log('[Kysely] Ensured providers.kind + discovery_manifest columns exist (Phase 0)');
+
+  // §7.1 item 2 — Create model_catalog table (ONE row per discovered model/service)
+  await sql`
+    CREATE TABLE IF NOT EXISTS model_catalog (
+      id                    TEXT PRIMARY KEY,
+      provider_id           TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+      capability_id         TEXT NOT NULL,
+      subfeature_id         TEXT,
+      transport_model_id    TEXT NOT NULL,
+      upstream_provider_id  TEXT,
+      model_author_id       TEXT,
+      region_codes          TEXT[],
+      modality              JSONB NOT NULL DEFAULT '{"input":[],"output":[]}'::jsonb,
+      capabilities          JSONB NOT NULL DEFAULT '{}'::jsonb,
+      max_input_tokens      INTEGER,
+      max_output_tokens     INTEGER,
+      dimensions            INTEGER,
+      input_cost_per_1m     NUMERIC(12,8),
+      output_cost_per_1m    NUMERIC(12,8),
+      catalog_source        TEXT NOT NULL DEFAULT 'seed',
+      catalog_seen_at       TIMESTAMPTZ,
+      snapshot_hash         TEXT,
+      capability_tier       TEXT NOT NULL DEFAULT 'unclassified'
+        CHECK (capability_tier IN ('swarm_full', 'swarm_limited', 'unclassified')),
+      capability_scores     JSONB,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status                TEXT NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new', 'active', 'retired')),
+      pending_changes       BOOLEAN NOT NULL DEFAULT FALSE,
+      replaced_by           TEXT,
+      UNIQUE (provider_id, transport_model_id)
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_model_catalog_provider ON model_catalog(provider_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_model_catalog_capability ON model_catalog(capability_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_model_catalog_status ON model_catalog(status)`.execute(database);
+  console.log('[Kysely] Ensured model_catalog table exists (Phase 0)');
+
+  // §7.1 item 2b — Create model_catalog_snapshot table (append-only prior-row history)
+  await sql`
+    CREATE TABLE IF NOT EXISTS model_catalog_snapshot (
+      id                  BIGSERIAL PRIMARY KEY,
+      catalog_id          TEXT NOT NULL REFERENCES model_catalog(id) ON DELETE CASCADE,
+      snapshot_hash       TEXT,
+      captured_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      max_input_tokens    INTEGER,
+      max_output_tokens   INTEGER,
+      input_cost_per_1m   NUMERIC(12,8),
+      output_cost_per_1m  NUMERIC(12,8),
+      modality            JSONB,
+      capabilities        JSONB
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_model_catalog_snapshot_catalog ON model_catalog_snapshot(catalog_id, captured_at DESC)`.execute(database);
+  console.log('[Kysely] Ensured model_catalog_snapshot table exists (Phase 0)');
+
+  // §7.1 item 3 — Create organization_deployment table (checkbox result / scope override)
+  await sql`
+    CREATE TABLE IF NOT EXISTS organization_deployment (
+      id                          BIGSERIAL PRIMARY KEY,
+      org_id                      INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+      catalog_id                  TEXT REFERENCES model_catalog(id) ON DELETE CASCADE,
+      capability_id               TEXT,
+      enabled                     BOOLEAN NOT NULL DEFAULT FALSE,
+      is_default_for_capability   BOOLEAN NOT NULL DEFAULT FALSE,
+      sort_order                  INTEGER NOT NULL DEFAULT 9900,
+      approved_by                 TEXT,
+      approved_at                 TIMESTAMPTZ,
+      created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (org_id, catalog_id),
+      UNIQUE (org_id, capability_id),
+      CHECK (catalog_id IS NOT NULL OR capability_id IS NOT NULL)
+    )
+  `.execute(database);
+  // Partial unique index: one global default per capability (org_id IS NULL)
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_org_deployment_global_default ON organization_deployment(capability_id) WHERE org_id IS NULL AND is_default_for_capability = TRUE`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_deployment_org ON organization_deployment(org_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_deployment_catalog ON organization_deployment(catalog_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_org_deployment_enabled ON organization_deployment(enabled) WHERE enabled = TRUE`.execute(database);
+  console.log('[Kysely] Ensured organization_deployment table exists (Phase 0)');
+
+  // §7.1 item 4 — Create capability_subfeatures table (empty in Phase 0; future Eden phases)
+  await sql`
+    CREATE TABLE IF NOT EXISTS capability_subfeatures (
+      id              TEXT PRIMARY KEY,
+      capability_id   TEXT NOT NULL,
+      name            TEXT NOT NULL,
+      result_contract TEXT,
+      adapter_ref     TEXT,
+      sort_order      INTEGER NOT NULL DEFAULT 100,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_capability_subfeatures_capability ON capability_subfeatures(capability_id)`.execute(database);
+  console.log('[Kysely] Ensured capability_subfeatures table exists (Phase 0)');
+
+  // §7.1 item 6 — Set providers.kind for all known providers (idempotent)
+  await sql`UPDATE providers SET kind = 'aggregator' WHERE id = 'fireworks'`.execute(database);
+  await sql`UPDATE providers SET kind = 'local' WHERE id = 'ollama'`.execute(database);
+  // All other providers default to 'direct' via column DEFAULT
+  console.log('[Kysely] Set providers.kind for Fireworks (aggregator) and Ollama (local)');
+
+  // §7.1 items 5, 7, 8 — Versioned seed migration: copy enabled_models → model_catalog
+  // + organization_deployment, seed discovery_manifest, run invariant assertions.
+  // Wrapped in runMigration() so it executes exactly once.
+  await runMigration(database, 'phase0_catalog_seed', async (trx) => {
+    // ── Seed model_catalog from live enabled_models ──────────────────
+    // Every enabled_models row becomes a model_catalog row with status='active'.
+    // The id is copied byte-identical (ID invariant, plan §4).
+    // For Fireworks models, transport_model_id uses the alias→transport transform;
+    // for all other providers, transport_model_id = id (they are already the API form).
+    const enabledRows = await trx
+      .selectFrom('enabled_models as m')
+      .innerJoin('llm_providers as p', 'm.provider_id', 'p.id')
+      .select([
+        'm.id',
+        'm.provider_id',
+        'm.display_name',
+        'm.tool_capable',
+        'm.vision_capable',
+        'm.parallel_tool_capable',
+        'm.thinking_capable',
+        'm.forced_tool_capable',
+        'm.capability_tier',
+        'm.max_input_tokens',
+        'm.max_output_tokens',
+        'm.input_cost_per_1m',
+        'm.output_cost_per_1m',
+        'm.is_default',
+        'm.enabled',
+        'm.sort_order',
+        'm.capability_scores',
+      ])
+      .execute();
+
+    for (const row of enabledRows) {
+      // Transport model ID: Fireworks uses the alias form (fireworks/<name>) as id,
+      // but the API transport form is accounts/fireworks/models/<name>.
+      // For all other providers, id == transport_model_id.
+      const transportModelId = row.provider_id === 'fireworks'
+        ? `accounts/fireworks/models/${row.id.replace(/^fireworks\//, '')}`
+        : row.id;
+
+      // Build capabilities JSONB from boolean flags
+      const capabilities = {
+        tool_capable: row.tool_capable === 1,
+        vision_capable: row.vision_capable === 1,
+        parallel_tool_capable: row.parallel_tool_capable === 1,
+        thinking_capable: row.thinking_capable === 1,
+        forced_tool_capable: row.forced_tool_capable === 1,
+      };
+
+      // Build modality JSONB (input/output arrays; vision_capable implies image input)
+      const modality = {
+        input: row.vision_capable === 1 ? ['text', 'image'] : ['text'],
+        output: ['text'],
+      };
+
+      // Compute a presence-only snapshot hash for seed (Fireworks returns only {id, object})
+      // For seed, we use a simple hash of the transport_model_id — enough for presence detection.
+      const { createHash } = await import('crypto');
+      const snapshotHash = createHash('sha256')
+        .update(`${row.provider_id}:${transportModelId}`)
+        .digest('hex')
+        .substring(0, 16);
+
+      // Determine display_name — use the existing display_name from enabled_models
+      const displayName = row.display_name || row.id;
+
+      await sql`
+        INSERT INTO model_catalog (
+          id, provider_id, capability_id, subfeature_id, transport_model_id,
+          upstream_provider_id, model_author_id, region_codes, modality, capabilities,
+          max_input_tokens, max_output_tokens, dimensions,
+          input_cost_per_1m, output_cost_per_1m,
+          catalog_source, catalog_seen_at, snapshot_hash,
+          capability_tier, capability_scores, status, pending_changes, replaced_by
+        )
+        VALUES (
+          ${row.id},
+          ${row.provider_id},
+          'llm',
+          NULL,
+          ${transportModelId},
+          NULL,
+          NULL,
+          NULL,
+          ${JSON.stringify(modality)}::jsonb,
+          ${JSON.stringify(capabilities)}::jsonb,
+          ${row.max_input_tokens ?? null},
+          ${row.max_output_tokens ?? null},
+          NULL,
+          ${row.input_cost_per_1m ?? null},
+          ${row.output_cost_per_1m ?? null},
+          'seed',
+          ${new Date().toISOString()},
+          ${snapshotHash},
+          ${row.capability_tier || 'unclassified'},
+          ${row.capability_scores ? JSON.stringify(row.capability_scores) : null}::jsonb,
+          'active',
+          FALSE,
+          NULL
+        )
+        ON CONFLICT (id) DO NOTHING
+      `.execute(trx);
+    }
+    console.log(`[Kysely] Phase 0 seed: copied ${enabledRows.length} enabled_models → model_catalog`);
+
+    // ── Seed organization_deployment from enabled/is_default/sort_order ──
+    // Phase 0 is global-only: org_id is always NULL.
+    // Availability = an enabled deployment row (mirrors enabled=1 semantics).
+    for (const row of enabledRows) {
+      const isDefault = row.is_default === 1;
+      const isEnabled = row.enabled === 1;
+
+      // Find the catalog_id we just inserted (or that already existed)
+      const catalogRow = await sql`
+        SELECT id FROM model_catalog WHERE id = ${row.id} LIMIT 1
+      `.execute(trx);
+      if (catalogRow.rows.length === 0) continue;
+
+      await sql`
+        INSERT INTO organization_deployment (
+          org_id, catalog_id, capability_id, enabled, is_default_for_capability,
+          sort_order, approved_by, approved_at
+        )
+        VALUES (
+          NULL,
+          ${row.id},
+          'llm',
+          ${isEnabled},
+          ${isDefault},
+          ${row.sort_order},
+          NULL,
+          ${new Date().toISOString()}
+        )
+        ON CONFLICT (org_id, catalog_id) DO NOTHING
+      `.execute(trx);
+    }
+    console.log(`[Kysely] Phase 0 seed: created organization_deployment rows for ${enabledRows.length} models`);
+
+    // ── Seed discovery_manifest for Fireworks ──────────────────────────
+    // Classification rules extracted from current pattern-matching arrays in model-discovery.ts.
+    // These rules are written against the transport form (accounts/fireworks/models/<name>).
+    const fireworksManifest = {
+      discovery: {
+        endpoint: '/v1/models',
+        auth: { header: 'Authorization', prefix: 'Bearer ' },
+        responsePath: 'data',
+        idField: 'id',
+      },
+      aliasTransform: {
+        stripPrefix: 'accounts/fireworks/models/',
+        prepend: 'fireworks/',
+      },
+      classification: {
+        llm: {
+          match: '.*',  // all Fireworks models are LLM unless matched by a more specific rule
+          exclude: ['.*-embedding-.*', '.*-reranker-.*'],
+        },
+        embeddings: {
+          match: '.*-embedding-.*',
+        },
+        reranking: {
+          match: '.*-reranker-.*',
+        },
+      },
+      capabilities: {
+        tool_capable: { patterns: [
+          'accounts/fireworks/models/.*',  // all Fireworks LLMs are tool-capable
+        ]},
+        vision_capable: { patterns: [
+          'accounts/fireworks/models/kimi-k2p7-code',
+          'accounts/fireworks/models/kimi-k2p6',
+          'accounts/fireworks/models/kimi-k2p5',
+          'accounts/fireworks/models/qwen3p7-plus',
+          'accounts/fireworks/models/minimax-m3',
+        ]},
+        forced_tool_capable: { patterns: [
+          'accounts/fireworks/models/glm-5p2',
+          'accounts/fireworks/models/glm-5p1',
+          'accounts/fireworks/models/kimi-k2p7-code',
+          'accounts/fireworks/models/kimi-k2p6',
+          'accounts/fireworks/models/kimi-k2p5',
+          'accounts/fireworks/models/qwen3p7-plus',
+          'accounts/fireworks/models/minimax-m3',
+          'accounts/fireworks/models/minimax-m2p7',
+          'accounts/fireworks/models/minimax-m2p5',
+          'accounts/fireworks/models/nemotron-3-ultra-nvfp4',
+          'accounts/fireworks/models/deepseek-v4-flash',
+          'accounts/fireworks/models/deepseek-v4-pro',
+        ]},
+        parallel_tool_capable: { patterns: [] },  // populated from PARALLEL_TOOL_CAPABLE_PATTERNS
+        thinking_capable: { patterns: [] },       // populated from thinking patterns
+      },
+      contextWindows: {
+        'accounts/fireworks/models/glm-5p2': 1048576,
+        'accounts/fireworks/models/glm-5p1': 202752,
+        'accounts/fireworks/models/kimi-k2p7-code': 262144,
+        'accounts/fireworks/models/kimi-k2p6': 262144,
+        'accounts/fireworks/models/kimi-k2p5': 262144,
+        'accounts/fireworks/models/qwen3p7-plus': 262144,
+        'accounts/fireworks/models/minimax-m3': 512000,
+        'accounts/fireworks/models/minimax-m2p7': 196608,
+        'accounts/fireworks/models/minimax-m2p5': 196608,
+        'accounts/fireworks/models/gpt-oss-120b': 131072,
+        'accounts/fireworks/models/gpt-oss-20b': 131072,
+        'accounts/fireworks/models/nemotron-3-ultra-nvfp4': 262144,
+        'accounts/fireworks/models/deepseek-v4-flash': 1048576,
+        'accounts/fireworks/models/deepseek-v4-pro': 1048576,
+      },
+      maxOutputTokens: {
+        'accounts/fireworks/models/minimax-m3': 32768,
+      },
+    };
+
+    await trx
+      .updateTable('providers' as never)
+      .set({ discovery_manifest: JSON.stringify(fireworksManifest) as never } as never)
+      .where('id' as never, '=', 'fireworks' as never)
+      .execute();
+    console.log('[Kysely] Phase 0 seed: seeded Fireworks discovery_manifest');
+
+    // ── Seed default discovery_manifest for native providers ───────────
+    // Native providers (OpenAI, Gemini, etc.) are self-describing — their APIs
+    // return capability metadata, so the manifest is simpler.
+    const nativeManifest = {
+      discovery: {
+        auth: { header: 'Authorization', prefix: 'Bearer ' },
+        responsePath: 'data',
+        idField: 'id',
+      },
+      aliasTransform: null,
+      classification: {
+        llm: { match: '.*', exclude: ['.*-embedding-.*', '.*-reranker-.*', 'whisper-.*', 'tts-.*'] },
+        embeddings: { match: '.*-embedding-.*' },
+      },
+      capabilities: {},
+      contextWindows: {},
+      maxOutputTokens: {},
+    };
+
+    for (const providerId of ['openai', 'gemini', 'mistral', 'deepseek', 'moonshot', 'anthropic', 'azure-foundry']) {
+      await trx
+        .updateTable('providers' as never)
+        .set({ discovery_manifest: JSON.stringify(nativeManifest) as never } as never)
+        .where('id' as never, '=', providerId as never)
+        .execute();
+    }
+    console.log('[Kysely] Phase 0 seed: seeded discovery_manifest for 7 native providers');
+
+    // ── §7.1 item 8: Boot-time invariant assertions ───────────────────
+    // (a) ID-set equality between enabled_models and model_catalog for capability_id='llm'
+    const catalogIds = await trx
+      .selectFrom('model_catalog' as never)
+      .select('id' as never)
+      .where('capability_id' as never, '=', 'llm' as never)
+      .execute();
+    const catalogIdSet = new Set(catalogIds.map((r: any) => r.id));
+
+    const enabledIds = await trx
+      .selectFrom('enabled_models')
+      .select('id')
+      .execute();
+    const enabledIdSet = new Set(enabledIds.map((r: any) => r.id));
+
+    // Symmetric difference must be empty (every enabled_model has a catalog row and vice versa)
+    const missingInCatalog = [...enabledIdSet].filter(id => !catalogIdSet.has(id));
+    const missingInEnabled = [...catalogIdSet].filter(id => !enabledIdSet.has(id));
+    if (missingInCatalog.length > 0 || missingInEnabled.length > 0) {
+      throw new Error(
+        `[Kysely] Phase 0 invariant (a) failed: ID-set mismatch. ` +
+        `Missing in catalog: ${missingInCatalog.join(', ')}. ` +
+        `Missing in enabled_models: ${missingInEnabled.join(', ')}.`
+      );
+    }
+
+    // (b) Every enabled=1 row has exactly one organization_deployment.enabled=true row
+    const enabledModelIds = await trx
+      .selectFrom('enabled_models')
+      .select('id')
+      .where('enabled', '=', 1)
+      .execute();
+    for (const { id } of enabledModelIds) {
+      const depRows = await trx
+        .selectFrom('organization_deployment' as never)
+        .select('id' as never)
+        .where('catalog_id' as never, '=', id as never)
+        .where('org_id' as never, 'is', null as never)
+        .where('enabled' as never, '=', true as never)
+        .execute();
+      if (depRows.length !== 1) {
+        throw new Error(
+          `[Kysely] Phase 0 invariant (b) failed: enabled model "${id}" has ${depRows.length} enabled deployment rows (expected 1).`
+        );
+      }
+    }
+
+    // (c) Exactly one global default for 'llm' capability
+    const globalDefaults = await trx
+      .selectFrom('organization_deployment' as never)
+      .select('id' as never)
+      .where('org_id' as never, 'is', null as never)
+      .where('is_default_for_capability' as never, '=', true as never)
+      .where('capability_id' as never, '=', 'llm' as never)
+      .execute();
+    if (globalDefaults.length !== 1) {
+      throw new Error(
+        `[Kysely] Phase 0 invariant (c) failed: found ${globalDefaults.length} global defaults for 'llm' (expected 1).`
+      );
+    }
+
+    console.log('[Kysely] Phase 0 invariant assertions passed (a: ID-set equality, b: deployment coverage, c: single default)');
+  });
 
   // Startup assertion: reject invalid feature-flag orderings (plan §17).
   // Phase D turns on org-tenancy + credential resolver + vector tenancy, which

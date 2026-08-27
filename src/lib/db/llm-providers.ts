@@ -25,6 +25,7 @@ export interface LLMProvider {
   apiKey: string | null;      // Encrypted API key (null for ollama)
   apiBase: string | null;     // Custom endpoint (for ollama or Azure)
   enabled: boolean;
+  kind?: 'direct' | 'aggregator' | 'local' | null; // Phase 0: provider routing type
   createdAt: string;
   updatedAt: string;
 }

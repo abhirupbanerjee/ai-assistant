@@ -1186,6 +1186,10 @@ export interface ProvidersTable {
   id: string;
   name: string;
   description: string | null;
+  /** 'direct' (native API), 'aggregator' (resells other providers), 'local' (self-hosted) */
+  kind: Generated<string>;
+  /** JSONB: discovery endpoint config, auth, classification rules, alias transform */
+  discovery_manifest: unknown | null;
   enabled: Generated<boolean>;
   sort_order: number;
   created_at: Generated<string>;
@@ -1194,6 +1198,97 @@ export interface ProvidersTable {
 
 export type Provider = Selectable<ProvidersTable>;
 export type NewProvider = Insertable<ProvidersTable>;
+
+// ============ Model Catalog (Phase 0) ============
+
+export interface ModelCatalogTable {
+  id: string;
+  provider_id: string;
+  capability_id: string;
+  subfeature_id: string | null;
+  transport_model_id: string;
+  upstream_provider_id: string | null;
+  model_author_id: string | null;
+  region_codes: string[] | null;
+  modality: unknown;
+  capabilities: unknown;
+  max_input_tokens: number | null;
+  max_output_tokens: number | null;
+  dimensions: number | null;
+  input_cost_per_1m: number | null;
+  output_cost_per_1m: number | null;
+  catalog_source: Generated<string>;
+  catalog_seen_at: string | null;
+  snapshot_hash: string | null;
+  capability_tier: Generated<string>;
+  capability_scores: unknown | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+  status: Generated<string>;
+  pending_changes: Generated<boolean>;
+  replaced_by: string | null;
+}
+
+export type ModelCatalog = Selectable<ModelCatalogTable>;
+export type NewModelCatalog = Insertable<ModelCatalogTable>;
+export type ModelCatalogUpdate = Updateable<ModelCatalogTable>;
+
+export interface ModelCatalogSnapshotTable {
+  id: Generated<number>;
+  catalog_id: string;
+  snapshot_hash: string | null;
+  captured_at: Generated<string>;
+  max_input_tokens: number | null;
+  max_output_tokens: number | null;
+  input_cost_per_1m: number | null;
+  output_cost_per_1m: number | null;
+  modality: unknown | null;
+  capabilities: unknown | null;
+}
+
+export type ModelCatalogSnapshot = Selectable<ModelCatalogSnapshotTable>;
+export type NewModelCatalogSnapshot = Insertable<ModelCatalogSnapshotTable>;
+
+export interface OrganizationDeploymentTable {
+  id: Generated<number>;
+  org_id: number | null;
+  catalog_id: string | null;
+  capability_id: string | null;
+  enabled: Generated<boolean>;
+  is_default_for_capability: Generated<boolean>;
+  sort_order: Generated<number>;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type OrganizationDeployment = Selectable<OrganizationDeploymentTable>;
+export type NewOrganizationDeployment = Insertable<OrganizationDeploymentTable>;
+export type OrganizationDeploymentUpdate = Updateable<OrganizationDeploymentTable>;
+
+export interface CapabilitySubfeaturesTable {
+  id: string;
+  capability_id: string;
+  name: string;
+  result_contract: string | null;
+  adapter_ref: string | null;
+  sort_order: Generated<number>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type CapabilitySubfeature = Selectable<CapabilitySubfeaturesTable>;
+export type NewCapabilitySubfeature = Insertable<CapabilitySubfeaturesTable>;
+
+// ============ Migration Version Table (Phase 0 prerequisite) ============
+
+export interface MigrationsTable {
+  id: string;
+  applied_at: Generated<string>;
+}
+
+// ============ Capabilities (existing) ============
 
 export interface CapabilitiesTable {
   id: string;
@@ -1379,6 +1474,12 @@ export interface DB {
   organization_provider_credentials: OrganizationProviderCredentialsTable;
   organization_capability_config: OrganizationCapabilityConfigTable;
   credential_audit_log: CredentialAuditLogTable;
+  // Phase 0 — Catalog-Driven Model Discovery
+  model_catalog: ModelCatalogTable;
+  model_catalog_snapshot: ModelCatalogSnapshotTable;
+  organization_deployment: OrganizationDeploymentTable;
+  capability_subfeatures: CapabilitySubfeaturesTable;
+  _migrations: MigrationsTable;
 }
 
 // ============ Browser Sessions ============

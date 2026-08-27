@@ -20,6 +20,8 @@ interface EnabledModel {
   id: string;
   displayName: string;
   providerId: string;
+  // Phase 0: catalog status for badge display
+  status?: 'active' | 'new' | 'retired' | string;
 }
 
 // ============================================================================
@@ -184,11 +186,26 @@ export default function AiApiSetup() {
   }, [load]);
 
   // Fetch enabled LLM models for the LLM capability dropdown
+  // Phase 0: also fetch catalog entries to merge status badges
   useEffect(() => {
-    fetch('/api/models')
-      .then((res) => (res.ok ? res.json() : { models: [] }))
-      .then((data) => setEnabledModels(data.models || []))
-      .catch(() => setEnabledModels([]));
+    Promise.all([
+      fetch('/api/models').then((res) => (res.ok ? res.json() : { models: [] })),
+      fetch('/api/admin/model-catalog').then((res) => (res.ok ? res.json() : [])).catch(() => []),
+    ]).then(([modelsData, catalogData]: [any, any[]]) => {
+      const catalogMap = new Map<string, string>();
+      if (Array.isArray(catalogData)) {
+        for (const entry of catalogData) {
+          if (entry.id && entry.status) {
+            catalogMap.set(entry.id, entry.status);
+          }
+        }
+      }
+      const models: EnabledModel[] = (modelsData.models || []).map((m: EnabledModel) => ({
+        ...m,
+        status: catalogMap.get(m.id) ?? 'active',
+      }));
+      setEnabledModels(models);
+    }).catch(() => setEnabledModels([]));
   }, []);
 
   const org = overview?.organizations.find((o) => o.id === selectedOrgId);
@@ -484,11 +501,39 @@ export default function AiApiSetup() {
                         className="border rounded-md px-2 py-1 text-sm w-64"
                       >
                         <option value="">— automatic default —</option>
-                        {modelOptions.map((modelId) => (
-                          <option key={modelId} value={modelId}>{modelId}</option>
-                        ))}
+                        {modelOptions.map((modelId) => {
+                          // Phase 0: show status badge in dropdown label
+                          const model = enabledModels.find((m) => m.id === modelId);
+                          const status = model?.status;
+                          let label = modelId;
+                          if (status === 'new') label = `🆕 ${modelId}`;
+                          else if (status === 'retired') label = `⚠️ ${modelId} (retired)`;
+                          return (
+                            <option key={modelId} value={modelId}>{label}</option>
+                          );
+                        })}
                       </select>
                     )}
+                    {/* Phase 0: warn when a retired model is still bound to a config */}
+                    {(() => {
+                      if (!cfg.model) return null;
+                      const model = enabledModels.find((m) => m.id === cfg.model);
+                      if (model?.status === 'retired') {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700" title="This model is retired — consider switching">
+                            Retired model
+                          </span>
+                        );
+                      }
+                      if (model?.status === 'new') {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700" title="New model — review recommended">
+                            New
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                     {keyMissing ? (
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                         Key required

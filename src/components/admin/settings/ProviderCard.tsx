@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, X, KeyRound } from 'lucide-react';
+import { Check, X, KeyRound, RefreshCw, Layers, Zap, Server } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 interface LLMProvider {
@@ -11,21 +11,57 @@ interface LLMProvider {
   apiKeyConfigured: boolean;
   apiBase: string | null;
   enabled: boolean;
+  kind?: 'direct' | 'aggregator' | 'local' | null;
+  lastSyncedAt?: string | null;
 }
 
 interface ProviderCardProps {
   provider: LLMProvider;
   onUpdate: (updates: { apiKey?: string; apiBase?: string; enabled?: boolean }) => Promise<void>;
   onTest: () => Promise<{ success: boolean; message: string }>;
+  onSync?: () => Promise<void>;
 }
 
-export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCardProps) {
+export default function ProviderCard({ provider, onUpdate, onTest, onSync }: ProviderCardProps) {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const isOllama = provider.id === 'ollama';
   const isOllamaCloud = provider.id === 'ollama-cloud';
   const isConfigured = provider.apiKeyConfigured || (isOllama && provider.apiBase);
+
+  // Phase 0: kind badge config
+  const kindConfig: Record<string, { label: string; icon: typeof Layers; color: string }> = {
+    aggregator: { label: 'Aggregator', icon: Layers, color: 'bg-purple-100 text-purple-700' },
+    direct: { label: 'Direct SDK', icon: Zap, color: 'bg-blue-100 text-blue-700' },
+    local: { label: 'Local', icon: Server, color: 'bg-gray-100 text-gray-700' },
+  };
+  const kindBadge = provider.kind ? kindConfig[provider.kind] : null;
+
+  const handleSync = async () => {
+    if (!onSync) return;
+    setIsSyncing(true);
+    try {
+      await onSync();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const formatLastSynced = (ts: string | null | undefined) => {
+    if (!ts) return null;
+    const date = new Date(ts);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+  };
 
   const handleTest = async () => {
     setIsTesting(true);
@@ -51,13 +87,33 @@ export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCar
 
           {/* Provider info */}
           <div>
-            <h4 className="font-medium text-gray-900">{provider.name}</h4>
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium text-gray-900">{provider.name}</h4>
+              {kindBadge && (
+                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium ${kindBadge.color}`}>
+                  <kindBadge.icon size={10} />
+                  {kindBadge.label}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-500">{provider.id}</p>
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          {isConfigured && onSync && provider.kind === 'aggregator' && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSync}
+              disabled={isSyncing || !provider.enabled}
+              loading={isSyncing}
+            >
+              <RefreshCw size={12} className="mr-1" />
+              Sync
+            </Button>
+          )}
           {isConfigured && (
             <Button
               size="sm"
@@ -71,6 +127,11 @@ export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCar
           )}
         </div>
       </div>
+
+      {/* Last synced timestamp for aggregators */}
+      {provider.kind === 'aggregator' && provider.lastSyncedAt && (
+        <p className="text-xs text-gray-400 mt-1">Last synced: {formatLastSynced(provider.lastSyncedAt)}</p>
+      )}
 
       {/* Read-only key status */}
       <div className="mt-3 flex items-center justify-between">
