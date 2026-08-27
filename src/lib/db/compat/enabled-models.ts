@@ -15,6 +15,18 @@
 import { getDb, sql, transaction } from '../kysely';
 import { getProvider } from './llm-providers';
 
+/**
+ * Convert an alias-style model ID to its transport form.
+ * For Fireworks: `fireworks/<name>` → `accounts/fireworks/models/<name>`
+ * For all other providers: the ID is unchanged.
+ */
+function toTransportId(providerId: string, modelId: string): string {
+  if (providerId === 'fireworks' && modelId.startsWith('fireworks/')) {
+    return 'accounts/fireworks/models/' + modelId.slice('fireworks/'.length);
+  }
+  return modelId;
+}
+
 // Re-export types from sync module
 export type {
   EnabledModel,
@@ -532,12 +544,14 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
       .execute();
 
     // 2. Catalog write-through mirror (model_catalog upsert)
+    const transportModelId = toTransportId(input.providerId, input.id);
     await sql`
-      INSERT INTO model_catalog (id, provider_id, capability_id, capabilities, max_input_tokens, max_output_tokens, input_cost_per_1m, output_cost_per_1m, capability_tier, capability_scores, status, created_at, updated_at)
+      INSERT INTO model_catalog (id, provider_id, capability_id, transport_model_id, capabilities, max_input_tokens, max_output_tokens, input_cost_per_1m, output_cost_per_1m, capability_tier, capability_scores, status, created_at, updated_at)
       VALUES (
         ${input.id},
         ${input.providerId},
         'llm',
+        ${transportModelId},
         ${JSON.stringify(caps)}::jsonb,
         ${input.maxInputTokens || null},
         ${input.maxOutputTokens || null},
@@ -550,6 +564,7 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
         NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
+        transport_model_id = EXCLUDED.transport_model_id,
         capabilities = EXCLUDED.capabilities,
         max_input_tokens = EXCLUDED.max_input_tokens,
         max_output_tokens = EXCLUDED.max_output_tokens,
@@ -672,10 +687,8 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
 
   if (Object.keys(updateObj).length === 0) return existing;
 
-  // Build catalog mirror update fragments from the same input
-  const catalogSetClauses: string[] = ['updated_at = NOW()'];
-  const catalogParams: unknown[] = [];
-  let paramIdx = 1;
+  // Build catalog mirror update object from the same input
+  const catalogUpdate: Record<string, unknown> = {};
 
   if (input.toolCapable !== undefined || input.visionCapable !== undefined ||
       input.parallelToolCapable !== undefined || input.thinkingCapable !== undefined ||
@@ -687,60 +700,38 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
       thinkingCapable: input.thinkingCapable ?? existing.thinkingCapable,
       forcedToolCapable: input.forcedToolCapable ?? existing.forcedToolCapable,
     });
-    catalogSetClauses.push(`capabilities = $${paramIdx}::jsonb`);
-    catalogParams.push(JSON.stringify(mergedCaps));
-    paramIdx++;
+    catalogUpdate.capabilities = JSON.stringify(mergedCaps);
   }
   if (input.maxInputTokens !== undefined) {
-    catalogSetClauses.push(`max_input_tokens = $${paramIdx}`);
-    catalogParams.push(input.maxInputTokens || null);
-    paramIdx++;
+    catalogUpdate.max_input_tokens = input.maxInputTokens || null;
   }
   if (input.maxOutputTokens !== undefined) {
-    catalogSetClauses.push(`max_output_tokens = $${paramIdx}`);
-    catalogParams.push(input.maxOutputTokens || null);
-    paramIdx++;
+    catalogUpdate.max_output_tokens = input.maxOutputTokens || null;
   }
   if (input.inputCostPer1M !== undefined) {
-    catalogSetClauses.push(`input_cost_per_1m = $${paramIdx}`);
-    catalogParams.push(input.inputCostPer1M ?? null);
-    paramIdx++;
+    catalogUpdate.input_cost_per_1m = input.inputCostPer1M ?? null;
   }
   if (input.outputCostPer1M !== undefined) {
-    catalogSetClauses.push(`output_cost_per_1m = $${paramIdx}`);
-    catalogParams.push(input.outputCostPer1M ?? null);
-    paramIdx++;
+    catalogUpdate.output_cost_per_1m = input.outputCostPer1M ?? null;
   }
   if (input.capabilityTier !== undefined) {
-    catalogSetClauses.push(`capability_tier = $${paramIdx}`);
-    catalogParams.push(input.capabilityTier);
-    paramIdx++;
+    catalogUpdate.capability_tier = input.capabilityTier;
   }
   if (input.capabilityScores !== undefined) {
-    catalogSetClauses.push(`capability_scores = $${paramIdx}::jsonb`);
-    catalogParams.push(input.capabilityScores ? JSON.stringify(input.capabilityScores) : null);
-    paramIdx++;
+    catalogUpdate.capability_scores = input.capabilityScores ? JSON.stringify(input.capabilityScores) : null;
   }
 
-  // organization_deployment update fragments
-  const odSetClauses: string[] = ['updated_at = NOW()'];
-  const odParams: unknown[] = [];
-  let odIdx = 1;
+  // organization_deployment update object
+  const odUpdate: Record<string, unknown> = {};
 
   if (input.enabled !== undefined) {
-    odSetClauses.push(`enabled = $${odIdx}`);
-    odParams.push(input.enabled);
-    odIdx++;
+    odUpdate.enabled = input.enabled;
   }
   if (input.sortOrder !== undefined) {
-    odSetClauses.push(`sort_order = $${odIdx}`);
-    odParams.push(input.sortOrder);
-    odIdx++;
+    odUpdate.sort_order = input.sortOrder;
   }
   if (input.isDefault !== undefined) {
-    odSetClauses.push(`is_default_for_capability = $${odIdx}`);
-    odParams.push(input.isDefault);
-    odIdx++;
+    odUpdate.is_default_for_capability = input.isDefault;
   }
 
   const isDefault = input.isDefault ?? false;
@@ -760,11 +751,13 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
       .where('id', '=', id)
       .execute();
 
-    // 2. Catalog mirror update
-    if (catalogSetClauses.length > 1) {
-      catalogParams.push(id);
-      const catalogQuery = `UPDATE model_catalog SET ${catalogSetClauses.join(', ')} WHERE id = $${paramIdx}`;
-      await sql.raw(catalogQuery).execute(trx);
+    // 2. Catalog mirror update (use query builder for safe parameter binding)
+    if (Object.keys(catalogUpdate).length > 0) {
+      await trx
+        .updateTable('model_catalog')
+        .set({ ...catalogUpdate, updated_at: new Date().toISOString() })
+        .where('id', '=', id)
+        .execute();
     }
 
     // 3. Organization deployment mirror update
@@ -775,10 +768,14 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
         WHERE org_id IS NULL AND capability_id = 'llm' AND is_default_for_capability = TRUE AND catalog_id != ${id}
       `.execute(trx);
     }
-    if (odSetClauses.length > 1) {
-      odParams.push(id);
-      const odQuery = `UPDATE organization_deployment SET ${odSetClauses.join(', ')} WHERE org_id IS NULL AND capability_id = 'llm' AND catalog_id = $${odIdx}`;
-      await sql.raw(odQuery).execute(trx);
+    if (Object.keys(odUpdate).length > 0) {
+      await trx
+        .updateTable('organization_deployment')
+        .set({ ...odUpdate, updated_at: new Date().toISOString() })
+        .where('org_id', 'is', null)
+        .where('capability_id', '=', 'llm')
+        .where('catalog_id', '=', id)
+        .execute();
     }
   });
 
