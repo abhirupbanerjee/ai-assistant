@@ -114,12 +114,15 @@ export default function ModelDiscoveryModal({
       }
       const r = data;
       setSyncResult(`Synced: ${r.newModels?.length || 0} new, ${r.changedModels?.length || 0} changed, ${r.retiredModels?.length || 0} retired`);
-      // Re-discover models after sync to reflect catalog updates
+      // Re-discover models after sync to reflect catalog updates.
+      // Clear the cache first so discoverModels actually hits the API,
+      // then explicitly trigger a fresh fetch.
       setDiscoveryResults(prev => {
         const next = new Map(prev);
         next.delete(providerId);
         return next;
       });
+      discoverModels(providerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sync failed');
     } finally {

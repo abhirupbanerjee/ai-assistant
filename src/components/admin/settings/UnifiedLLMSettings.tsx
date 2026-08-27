@@ -234,11 +234,16 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   // Get Details state
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
   const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult; applyError?: string } | null>(null);
+// Bulk "Clear All" state
+const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+const [clearingAll, setClearingAll] = useState(false);
+const [clearAllError, setClearAllError] = useState<string | null>(null);
 
-  // Bulk "Clear All" state
-  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
-  const [clearingAll, setClearingAll] = useState(false);
-  const [clearAllError, setClearAllError] = useState<string | null>(null);
+// Model list filters
+type ModelStatusFilter = 'all' | 'enabled' | 'disabled';
+const [modelStatusFilter, setModelStatusFilter] = useState<ModelStatusFilter>('all');
+const [modelProviderFilter, setModelProviderFilter] = useState<string>('all');
+
 
 
   // ============ Route Gating (derived) ============
@@ -441,6 +446,31 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const clearableModels = enabledModels.filter(
     m => !m.isDefault && m.id !== fallbackModelId && m.providerEnabled !== false
   );
+
+  // Build the list of providers that have enabled models (for the provider filter dropdown)
+  const modelProvidersWithModels = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of enabledModels) {
+      if (!seen.has(m.providerId)) {
+        seen.set(m.providerId, getProviderName(m.providerId));
+      }
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [enabledModels, providers]);
+
+  // Apply status + provider filters to the enabled models list
+  const filteredEnabledModels = useMemo(() => {
+    return enabledModels.filter(m => {
+      // Provider filter
+      if (modelProviderFilter !== 'all' && m.providerId !== modelProviderFilter) return false;
+      // Status filter (respect route-off and provider-off as "disabled")
+      const routeOff = isModelOnDisabledRoute(m.id);
+      const isDisabled = !m.enabled || m.providerEnabled === false || routeOff;
+      if (modelStatusFilter === 'enabled' && isDisabled) return false;
+      if (modelStatusFilter === 'disabled' && !isDisabled) return false;
+      return true;
+    });
+  }, [enabledModels, modelStatusFilter, modelProviderFilter]);
 
   const handleClearAllModels = async () => {
     setClearAllError(null);
@@ -869,11 +899,48 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         </SectionHeader>
         {expandedSections.has('models') && (
           <>
+            {enabledModels.length > 0 && (
+              <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-gray-50/50 flex-wrap">
+                <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                  <span className="font-medium">Status:</span>
+                  <select
+                    value={modelStatusFilter}
+                    onChange={(e) => setModelStatusFilter(e.target.value as ModelStatusFilter)}
+                    className="rounded-md border border-gray-300 text-sm py-1 px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="all">All</option>
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                  <span className="font-medium">Provider:</span>
+                  <select
+                    value={modelProviderFilter}
+                    onChange={(e) => setModelProviderFilter(e.target.value)}
+                    className="rounded-md border border-gray-300 text-sm py-1 px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="all">All Providers</option>
+                    {modelProvidersWithModels.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <span className="text-sm text-gray-400 ml-auto">
+                  {filteredEnabledModels.length} of {enabledModels.length} models
+                </span>
+              </div>
+            )}
             <div className="overflow-x-auto">
               {enabledModels.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <p>No models enabled yet.</p>
                   <p className="text-sm mt-1">Configure a provider above and click &quot;Manage Models&quot; to get started.</p>
+                </div>
+              ) : filteredEnabledModels.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <p>No models match the current filters.</p>
+                  <p className="text-sm mt-1">Adjust the status or provider filter above to see more models.</p>
                 </div>
               ) : (
                 <table className="min-w-full divide-y divide-gray-200">
@@ -897,7 +964,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {enabledModels.filter(m => m.providerEnabled !== false).map(model => {
+                    {filteredEnabledModels.map(model => {
                       const routeOff = isModelOnDisabledRoute(model.id);
                       return (
                       <React.Fragment key={model.id}>

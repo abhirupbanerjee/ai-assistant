@@ -691,6 +691,7 @@ export {
   isModelVisionCapable,
   isModelParallelToolCapable,
   isModelThinkingCapable,
+  getDeployedModelIds,
   getToolCapableModelIds,
   // Sort Order
   updateModelSortOrder,

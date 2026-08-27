@@ -726,6 +726,12 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
 
   if (input.enabled !== undefined) {
     odUpdate.enabled = input.enabled;
+    // When enabling a model, also promote catalog status back to 'active'.
+    // This handles models that were retired (via deleteEnabledModel) or
+    // never deployed (status='new' from catalog sync).
+    if (input.enabled) {
+      catalogUpdate.status = 'active';
+    }
   }
   if (input.sortOrder !== undefined) {
     odUpdate.sort_order = input.sortOrder;
@@ -745,11 +751,43 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
         .where('id', '!=', id)
         .execute();
     }
-    await trx
-      .updateTable('enabled_models')
-      .set(updateObj)
-      .where('id', '=', id)
-      .execute();
+    // When enabling, the legacy row may have been deleted by deleteEnabledModel.
+    // Try UPDATE first; if 0 rows affected, re-insert with current values.
+    if (input.enabled === true) {
+      const result = await trx
+        .updateTable('enabled_models')
+        .set(updateObj)
+        .where('id', '=', id)
+        .executeTakeFirst();
+      if (Number(result.numUpdatedRows ?? 0) === 0) {
+        await trx
+          .insertInto('enabled_models')
+          .values({
+            id,
+            provider_id: existing.providerId,
+            display_name: existing.displayName,
+            tool_capable: existing.toolCapable ? 1 : 0,
+            vision_capable: existing.visionCapable ? 1 : 0,
+            parallel_tool_capable: existing.parallelToolCapable ? 1 : 0,
+            thinking_capable: existing.thinkingCapable ? 1 : 0,
+            forced_tool_capable: existing.forcedToolCapable ? 1 : 0,
+            max_input_tokens: existing.maxInputTokens ?? null,
+            max_output_tokens: existing.maxOutputTokens ?? null,
+            input_cost_per_1m: existing.inputCostPer1M ?? null,
+            output_cost_per_1m: existing.outputCostPer1M ?? null,
+            is_default: isDefault ? 1 : 0,
+            enabled: 1,
+            sort_order: existing.sortOrder,
+          })
+          .execute();
+      }
+    } else {
+      await trx
+        .updateTable('enabled_models')
+        .set(updateObj)
+        .where('id', '=', id)
+        .execute();
+    }
 
     // 2. Catalog mirror update (use query builder for safe parameter binding)
     if (Object.keys(catalogUpdate).length > 0) {
@@ -769,13 +807,35 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
       `.execute(trx);
     }
     if (Object.keys(odUpdate).length > 0) {
-      await trx
-        .updateTable('organization_deployment')
-        .set({ ...odUpdate, updated_at: new Date().toISOString() })
-        .where('org_id', 'is', null)
-        .where('capability_id', '=', 'llm')
-        .where('catalog_id', '=', id)
-        .execute();
+      // When enabling, the deployment row may not exist (e.g. it was deleted
+      // by deleteEnabledModel which marks the catalog row as 'retired' and
+      // removes the organization_deployment row). A plain UPDATE would
+      // silently affect 0 rows, so we use an UPSERT to re-create it.
+      if (input.enabled === true) {
+        await sql`
+          INSERT INTO organization_deployment (catalog_id, org_id, capability_id, enabled, is_default_for_capability, sort_order, created_at, updated_at)
+          VALUES (
+            ${id}, NULL, 'llm',
+            ${odUpdate.enabled ?? existing.enabled ?? true},
+            ${odUpdate.is_default_for_capability ?? existing.isDefault ?? false},
+            ${odUpdate.sort_order ?? existing.sortOrder ?? 9900},
+            NOW(), NOW()
+          )
+          ON CONFLICT (catalog_id, org_id, capability_id) DO UPDATE SET
+            enabled = EXCLUDED.enabled,
+            is_default_for_capability = EXCLUDED.is_default_for_capability,
+            sort_order = EXCLUDED.sort_order,
+            updated_at = NOW()
+        `.execute(trx);
+      } else {
+        await trx
+          .updateTable('organization_deployment')
+          .set({ ...odUpdate, updated_at: new Date().toISOString() })
+          .where('org_id', 'is', null)
+          .where('capability_id', '=', 'llm')
+          .where('catalog_id', '=', id)
+          .execute();
+      }
     }
   });
 
@@ -917,6 +977,28 @@ export async function isModelThinkingCapable(id: string): Promise<boolean> {
 export async function isModelForcedToolCapable(id: string): Promise<boolean> {
   const model = await getEnabledModel(id);
   return model?.forcedToolCapable ?? true;
+}
+
+/**
+ * Batch-check which model IDs are actually deployed (have an organization_deployment
+ * row with org_id=NULL and capability_id='llm'). This is the correct check for
+ * "is this model enabled in the AI Assistant" — as opposed to getEnabledModel()
+ * which returns any model_catalog row regardless of deployment/status.
+ *
+ * @param ids  Model IDs to check
+ * @returns Set of IDs that have a deployment row (regardless of od.enabled flag)
+ */
+export async function getDeployedModelIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const db = await getDb();
+  const rows = await sql<{ catalog_id: string }>`
+    SELECT catalog_id
+    FROM organization_deployment
+    WHERE org_id IS NULL
+      AND capability_id = 'llm'
+      AND catalog_id = ANY(${ids}::text[])
+  `.execute(db);
+  return new Set(rows.rows.map(r => r.catalog_id));
 }
 
 /**

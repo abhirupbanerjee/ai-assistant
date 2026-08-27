@@ -5,7 +5,7 @@
  */
 
 import { getProviderApiKey, getProviderApiBase } from '../db/compat/llm-providers';
-import { getEnabledModel } from '../db/compat/enabled-models';
+import { getEnabledModel, getDeployedModelIds } from '../db/compat/enabled-models';
 import { isLikelyThinkingCapableModel, isClaudeAdaptiveThinkingModel } from '@/lib/llm-thinking';
 import { generateDisplayName, getProviderFromModelPath } from '../llm-utils';
 import { getMoonshotBaseUrl } from '../moonshot-config';
@@ -1179,6 +1179,16 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
 
       default:
         return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
+    }
+
+    // Batch-check actual deployment status (organization_deployment rows).
+    // The per-discoverer isEnabled calls above use getEnabledModel() which
+    // returns any model_catalog row regardless of status/deployment — so a
+    // retired or `new` (never-deployed) model would incorrectly show as
+    // enabled. Here we override with the correct batch check.
+    if (models.length > 0) {
+      const deployedIds = await getDeployedModelIds(models.map(m => m.id));
+      models = models.map(m => ({ ...m, isEnabled: deployedIds.has(m.id) }));
     }
 
     return { success: true, provider, models };
