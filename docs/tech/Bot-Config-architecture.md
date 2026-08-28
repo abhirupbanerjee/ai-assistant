@@ -251,6 +251,7 @@ Per-model flags stored in `enabled_models` table, configurable in Admin > Settin
 | **Vision** | `vision_capable` | Enable/disable image/vision processing |
 | **Parallel** | `parallel_tool_capable` | Enable concurrent tool execution (`Promise.allSettled`) instead of sequential |
 | **Thinking** | `thinking_capable` | Identify models with extended reasoning output (thinking blocks, `<think>` tags) |
+| **Forced Tools** | `forced_tool_capable` | Honor forced `tool_choice` (`required` / specific function pin); models that can't reliably honor it get `tool_choice` downgraded to `auto` |
 
 Defaults are auto-detected by `src/lib/services/model-discovery.ts` when models are added or refreshed.
 

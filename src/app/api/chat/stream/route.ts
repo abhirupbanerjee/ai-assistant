@@ -576,7 +576,7 @@ export async function POST(request: NextRequest) {
                 if (dbUser) {
                   await runCategoryMemoryCandidateLearning({
                     surface: 'main-chat', userId: dbUser.id, role: dbUser.role, threadId,
-                    categoryId: verifiedThreadCategory?.id ?? null, sourceMessageId: userMessageId,
+                    categoryId: verifiedThreadCategory?.id ?? categoryIds[0] ?? null, sourceMessageId: userMessageId,
                     recentMessages: [
                       ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
                       { role: 'assistant', content: assistantMessage.content },
@@ -1510,12 +1510,13 @@ export async function POST(request: NextRequest) {
                 await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
               }
 
-              // Explicit awaited post-response assisted-learning hook. The exact
-              // server-verified category is used rather than the request fallback.
+              // Explicit awaited post-response assisted-learning hook. Use the
+              // server-verified category, falling back to the thread's first
+              // category when the client did not send an activeCategoryId.
               if (dbUser) {
                 await runCategoryMemoryCandidateLearning({
                   surface: 'main-chat', userId: dbUser.id, role: dbUser.role, threadId,
-                  categoryId: verifiedThreadCategory?.id ?? null, sourceMessageId: userMessageId,
+                  categoryId: verifiedThreadCategory?.id ?? categoryIds[0] ?? null, sourceMessageId: userMessageId,
                   recentMessages: [
                     ...conversationHistory.slice(-9).map((item) => ({ role: item.role, content: item.content })),
                     { role: 'assistant', content: fullContent },

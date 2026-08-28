@@ -335,6 +335,7 @@ Image Upload Request
 | `isVisionCapableModel(modelId)` | Check if model supports vision via `enabled_models` DB |
 | `isModelParallelToolCapable(modelId)` | Check if model supports concurrent tool execution via `enabled_models` DB |
 | `isModelThinkingCapable(modelId)` | Check if model outputs reasoning/thinking content via `enabled_models` DB |
+| `isModelForcedToolCapable(modelId)` | Check if model honors forced `tool_choice` (`required` / specific function) via `enabled_models` DB |
 | `isImageOcrAvailable()` | Check if Mistral or Azure DI OCR is configured |
 | `getImageCapabilities(modelId)` | Return full `ImageCapabilities` object with strategy |
 
@@ -346,6 +347,7 @@ Image Upload Request
 | `vision_capable` | Image/multimodal input support | Yes, via `VISION_CAPABLE_PATTERNS` |
 | `parallel_tool_capable` | Concurrent tool execution (uses `Promise.allSettled`) | Yes, via `PARALLEL_TOOL_CAPABLE_PATTERNS` |
 | `thinking_capable` | Extended reasoning/thinking output | Yes, via `THINKING_CAPABLE_PATTERNS` |
+| `forced_tool_capable` | Forced tool choice (`required` / specific function pin) | Yes, via `FORCED_TOOL_CAPABLE_PATTERNS` |
 
 **ImageCapabilities Interface**:
 ```typescript

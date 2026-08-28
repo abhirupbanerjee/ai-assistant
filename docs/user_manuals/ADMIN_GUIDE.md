@@ -1707,7 +1707,7 @@ When a vision-capable model is configured, users can upload images in their chat
 
 #### Model Capability Toggles
 
-Each model row in the LLM Settings table has four capability toggles:
+Each model row in the LLM Settings table has **five** capability toggles:
 
 | Toggle | Icon | Description | Impact |
 |--------|------|-------------|--------|
@@ -1715,12 +1715,19 @@ Each model row in the LLM Settings table has four capability toggles:
 | **Vision** | Eye | Model supports image/multimodal input | Enables file upload in chat |
 | **Parallel** | Zap | Model handles multiple tool calls concurrently | Tool calls execute in parallel instead of sequentially |
 | **Thinking** | Brain | Model outputs reasoning/thinking content | Identifies models with extended reasoning (e.g., Claude thinking blocks, DeepSeek `<think>` tags) |
+| **Forced Tools** | Wrench | Model supports forced `tool_choice` (`required` or a specific function pin) | Tool-routing rules that pin a specific tool are honored; when Off, `tool_choice` is downgraded to `auto` |
 
 Defaults are auto-detected when models are added or refreshed (via "Get Details" or "Refresh Capabilities"). Admins can override any toggle manually.
 
 **Parallel-capable models:** Claude, Gemini, Mistral Large, GPT-4.1, GPT-5-nano, GPT-5.2+, Fireworks-hosted models
 
 **Thinking-capable models:** Claude, Qwen3, QwQ, DeepSeek-R1, o1/o3/o4
+
+**Forced-tool capable models:** Most OpenAI-compatible chat models (OpenAI GPT-4/5/5.5/5.6, Google Gemini, Mistral, Fireworks-hosted models, DeepSeek V4, Kimi K2.5/K2.6/K2.7/K3, GLM-5.x).
+
+**Not forced-tool capable:** OpenAI o-series (`o1`, `o3`, `o3-mini`, `o4-mini`), GPT-OSS (`gpt-oss-120b`, `gpt-oss-20b`), Claude adaptive-thinking models, older think-tag reasoning models (`qwen3`, `qwq`, `kimi-k2.5`/`kimi-k2.6` dot-aliases), and all Ollama/Ollama Cloud models.
+
+> **Forced Tools explained:** When a tool-routing rule uses force mode `Required`, the app tries to pin a specific tool via the OpenAI `tool_choice` parameter. Some models (notably reasoning/think-tag models and adaptive-thinking Claude models) do not reliably honor a pinned tool and may ignore it or hallucinate tool results. If **Forced Tools** is Off for a model, the app automatically downgrades `tool_choice` to `auto` for that model, letting the model choose its own tool (or none). Keep it On only for models known to support forced tool choice.
 
 > **Note:** When a route is disabled, all toggles for that route's models become read-only (greyed out).
 

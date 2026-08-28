@@ -175,6 +175,7 @@ Capabilities are auto-detected via regex patterns in `src/lib/services/model-dis
 | Vision/multimodal | `vision_capable` | `isVisionCapable(modelId)` | `config-capability-checker.ts` — image upload gating |
 | Parallel tool calls | `parallel_tool_capable` | `isParallelToolCapable(modelId)` | `openai.ts` — sequential vs `Promise.allSettled` execution |
 | Thinking/reasoning | `thinking_capable` | `isThinkingCapable(modelId)` | UI — thinking content display |
+| Forced tool choice | `forced_tool_capable` | `isForcedToolCapable(modelId)` | `openai.ts` — downgrade `tool_choice` (`required` / function pin) to `auto` for models that can't honor it |
 
 ### Model Registration: Dynamic vs Static
 

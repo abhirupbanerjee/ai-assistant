@@ -109,6 +109,7 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 | Set default model | `enabled_models` | `compat/enabled-models.ts` |
 | Check parallel tool capability | `enabled_models` | `compat/enabled-models.ts` (`isModelParallelToolCapable`) |
 | Check thinking capability | `enabled_models` | `compat/enabled-models.ts` (`isModelThinkingCapable`) |
+| Check forced tool capability | `enabled_models` | `compat/enabled-models.ts` (`isModelForcedToolCapable`) |
 | Refresh model capabilities | `enabled_models` | `compat/enabled-models.ts` (`refreshModelCapabilities`) |
 | Log model latency | `model_latency_log` | `compat/model-latency.ts` |
 | Registry provider support | `providers`, `capabilities`, `provider_capabilities` | `provider-registry.ts` |
