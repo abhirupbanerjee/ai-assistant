@@ -233,6 +233,8 @@ Write instructions specific to this bot's purpose. This is prepended to the glob
 - Specify citation requirements
 - Set tone (formal report, concise summary, technical analysis)
 
+> **Surface scoping:** Agent Bots receive **no personal style context**. The user's Personal Memory response style (tone / verbosity / custom persona) applies to main chat only; workspaces and Agent Bots get no `<response_style>` block. Set the bot's tone explicitly in this System Prompt field.
+
 ##### Categories
 
 Select which document categories the bot can retrieve from:

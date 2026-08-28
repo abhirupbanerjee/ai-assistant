@@ -919,7 +919,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           processingDetails: {
             ...prev.processingDetails,
             operationLog: [...prev.processingDetails.operationLog, {
-              category: (['rag','llm','memory','tool','upload','system','compliance','plan','agent'] as const).includes(event.category as any) ? event.category : 'system',
+              category: (['rag','llm','memory','tool','upload','system','compliance','plan','agent','style'] as const).includes(event.category as any) ? event.category : 'system',
               message: event.message,
               timestamp: Date.now(),
             }],
@@ -1121,6 +1121,12 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           // can resolve them. Non-default UI choices are explicit overrides.
           targetLanguage: preferences?.targetLanguage !== 'en' ? preferences?.targetLanguage : undefined,
           responseTone: preferences?.responseTone !== 'default' ? preferences?.responseTone : undefined,
+          // Non-default verbosity is an explicit override; the default lets the
+          // server resolve the profile's stored verbosity.
+          verbosity: preferences?.verbosity !== 'balanced' ? preferences?.verbosity : undefined,
+          // Transient custom persona fields only apply when the custom tone is selected.
+          customToneName: preferences?.responseTone === 'custom' ? preferences?.customToneName || undefined : undefined,
+          customToneInstruction: preferences?.responseTone === 'custom' ? preferences?.customToneInstruction || undefined : undefined,
           showCitationTrajectory: preferences?.showCitationTrajectory,
           thinkingEnabled: preferences?.thinkingEnabled,
           toolHints: preferences?.toolHints,

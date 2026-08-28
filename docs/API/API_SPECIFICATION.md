@@ -641,6 +641,44 @@ curl -X POST https://ai.abhirup.app/api/chat \
 
 ---
 
+#### `POST /api/chat/stream`
+
+Send a message and receive a streaming RAG response over Server-Sent Events (SSE).
+
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Request Body**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | User's question |
+| `threadId` | string | Yes | Thread ID |
+| `responseTone` | string | No | Persona/tone: `default` \| `friendly` \| `formal` \| `direct` \| `professional` \| `custom`. Legacy selector values `concise`, `detailed`, `explanatory`, `creative` are accepted and mapped server-side. Defaults to `default`. |
+| `verbosity` | string | No | `brief` \| `balanced` \| `detailed`. Chat-input override; defaults to `balanced`. |
+| `customToneName` | string | No | Transient custom persona name (≤ 60 chars). Used only with `responseTone: "custom"`; never persisted. |
+| `customToneInstruction` | string | No | Transient custom persona instruction (≤ 500 chars, non-empty when `responseTone: "custom"`); never persisted. |
+
+**Example Request**:
+
+```bash
+curl -X POST https://ai.abhirup.app/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "message": "What is the annual leave policy?",
+    "threadId": "550e8400-e29b-41d4-a716-446655440000",
+    "responseTone": "formal",
+    "verbosity": "brief"
+  }'
+```
+
+**Resolution precedence**: current-turn instruction > chat-input override (`responseTone` + optional fields) > stored profile > default. The resolved style is appended to the system prompt as a `<response_style>` block after RAG grounding and emitted to the per-turn operation log (`category: 'style'`).
+
+**Response**: `200 OK` with `text/event-stream` SSE events (`status`, `operation_log`, `message`, `sources`, `done`, `error`).
+
+---
+
 #### `POST /api/chat/hitl`
 
 Submit user response to HITL (Human-in-the-Loop) clarification dialog.
@@ -1245,6 +1283,91 @@ curl -X GET https://ai.abhirup.app/api/user/subscriptions \
   }>;
 }
 ```
+
+---
+
+### 6.5 Personal Memory (User Preferences)
+
+Personal Memory stores per-user communication and artifact preferences used in main chat. These endpoints reject requests carrying `x-agent-bot-api-key` or `x-workspace-slug` headers.
+
+#### `GET /api/user/memory`
+
+Returns the user's preference profile, interests, and pending learned preferences.
+
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Response** `200 OK`:
+
+```typescript
+{
+  profile: {
+    preferredLanguage: string | null;
+    translationLanguage: string | null;
+    translationMode: 'never' | 'when_requested' | 'always';
+    tone: 'default' | 'friendly' | 'formal' | 'direct' | 'professional' | 'custom';
+    customToneName: string | null;         // ≤ 60 chars; set only for tone: 'custom'
+    customToneInstruction: string | null;  // ≤ 500 chars; non-empty when tone: 'custom'
+    verbosity: 'brief' | 'balanced' | 'detailed';
+    complexity: 'simple' | 'standard' | 'technical' | 'executive';
+    preferredFormat: 'auto' | 'bullets' | 'steps' | 'prose' | 'table';
+    preferredDiagramFormat: 'auto' | 'mermaid' | 'ascii' | 'infographic';
+    preferredDocumentFormat: 'auto' | 'markdown' | 'docx' | 'pdf';
+    includeExamples: boolean | null;
+    includeCitations: boolean | null;
+    source: 'user_set' | 'inferred';
+    learningEnabled: boolean;
+  };
+  interests: Array<{ id: number; topic: string; source: 'user_set' | 'inferred'; confidence: number; isActive: boolean; hitCount: number }>;
+  pendingPreferences: Array<{ id: number; field: string; value: unknown; confidence: number }>;
+  limits: { maxInterests: number };
+  categoryMemory: { enabled: boolean };
+}
+```
+
+#### `PATCH /api/user/memory`
+
+Update preferences or act on interests/pending learned candidates.
+
+**Request Body**:
+
+```typescript
+{
+  action: 'update_preferences' | 'set_learning' | 'set_interest_active' | 'accept_pending_preference' | 'reject_pending_preference';
+  preferences?: PersonalPreferencePatch;  // required for update_preferences
+  learningEnabled?: boolean;
+  interestId?: number;
+  active?: boolean;
+  candidateId?: number;
+  replacement?: PersonalPreferencePatch;
+}
+```
+
+`PersonalPreferencePatch` fields (all optional): `preferredLanguage`, `translationLanguage`, `translationMode`, `tone` (`default | friendly | formal | direct | professional | custom`), `customToneName` (≤ 60 chars), `customToneInstruction` (≤ 500 chars), `verbosity` (`brief | balanced | detailed`), `complexity`, `preferredFormat`, `preferredDiagramFormat`, `preferredDocumentFormat`, `includeExamples`, `includeCitations`.
+
+When `tone: 'custom'`, `customToneInstruction` must be non-empty. The custom persona fields are user-authored only and never inferred.
+
+**Example** — save a custom persona:
+
+```bash
+curl -X PATCH https://ai.abhirup.app/api/user/memory \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "action": "update_preferences",
+    "preferences": {
+      "tone": "custom",
+      "customToneName": "Government Advisor",
+      "customToneInstruction": "Answer like a warm but concise civil servant; never use jargon."
+    }
+  }'
+```
+
+**Response** `200 OK`: `{ profile: { ... } }`
+
+#### `DELETE /api/user/memory`
+
+Clear memory data by scope: `?scope=inferred` (learned), `?scope=preferences` (reset preferences), or `?scope=all`.
 
 ---
 

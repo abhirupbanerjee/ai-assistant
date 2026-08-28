@@ -1463,6 +1463,64 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /chat/stream:
+    post:
+      tags:
+        - Chat
+      summary: Send streaming chat message
+      description: Send a message and receive a streaming RAG response over Server-Sent Events (SSE). Response style fields are optional and resolved server-side with precedence current-turn instruction > chat-input override > stored profile > default.
+      operationId: sendStreamingMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: User's question
+                threadId:
+                  type: string
+                  format: uuid
+                  description: Thread ID
+                responseTone:
+                  type: string
+                  description: Persona/tone. Canonical values are `default`, `friendly`, `formal`, `direct`, `professional`, `custom`; legacy values `concise`, `detailed`, `explanatory`, `creative` are accepted and mapped server-side.
+                  enum: [default, friendly, formal, direct, professional, custom, concise, detailed, explanatory, creative]
+                  default: default
+                verbosity:
+                  type: string
+                  enum: [brief, balanced, detailed]
+                  default: balanced
+                  description: Chat-input verbosity override
+                customToneName:
+                  type: string
+                  maxLength: 60
+                  description: Transient custom persona name (only used with `responseTone: custom`)
+                customToneInstruction:
+                  type: string
+                  maxLength: 500
+                  description: Transient custom persona instruction (non-empty when `responseTone: custom`)
+              required:
+                - message
+                - threadId
+      responses:
+        '200':
+          description: SSE stream of events (status, operation_log, message, sources, done, error)
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /threads:
     get:
       tags:
@@ -1759,6 +1817,97 @@ paths:
                           type: string
                         isActive:
                           type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/memory:
+    get:
+      tags:
+        - User
+      summary: Get personal memory
+      description: Get the current user's preference profile, interests, and pending learned preferences. Rejects agent-bot and workspace surface headers.
+      operationId: getPersonalMemory
+      responses:
+        '200':
+          description: Personal memory payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    type: object
+                    properties:
+                      tone:
+                        type: string
+                        enum: [default, friendly, formal, direct, professional, custom]
+                      customToneName:
+                        type: string
+                        nullable: true
+                        maxLength: 60
+                      customToneInstruction:
+                        type: string
+                        nullable: true
+                        maxLength: 500
+                      verbosity:
+                        type: string
+                        enum: [brief, balanced, detailed]
+                  interests:
+                    type: array
+                    items:
+                      type: object
+                  pendingPreferences:
+                    type: array
+                    items:
+                      type: object
+                  limits:
+                    type: object
+                  categoryMemory:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags:
+        - User
+      summary: Update personal memory
+      description: Update preferences or act on interests/pending candidates. With `action: update_preferences`, pass a `preferences` object containing `tone` (`default|friendly|formal|direct|professional|custom`), `customToneName` (≤60 chars), `customToneInstruction` (≤500 chars, non-empty when `tone` is `custom`), `verbosity` (`brief|balanced|detailed`), and other preference fields.
+      operationId: updatePersonalMemory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum: [update_preferences, set_learning, set_interest_active, accept_pending_preference, reject_pending_preference]
+                preferences:
+                  type: object
+                  properties:
+                    tone:
+                      type: string
+                      enum: [default, friendly, formal, direct, professional, custom]
+                    customToneName:
+                      type: string
+                      maxLength: 60
+                    customToneInstruction:
+                      type: string
+                      maxLength: 500
+                    verbosity:
+                      type: string
+                      enum: [brief, balanced, detailed]
+      responses:
+        '200':
+          description: Updated profile
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '401':
           $ref: '#/components/responses/Unauthorized'
 

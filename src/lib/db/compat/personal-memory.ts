@@ -1,11 +1,11 @@
 import { sql, type Updateable } from 'kysely';
 import { getDb } from '../kysely';
-import type { PersonalPreferenceProfilesTable } from '../db-types';
+import type { PersonalPreferenceProfilesTable, PendingPersonalPreferenceCandidatesTable } from '../db-types';
 import type { Selectable } from 'kysely';
 
 export type PersonalMemorySource = 'user_set' | 'inferred';
 export type TranslationMode = 'never' | 'when_requested' | 'always';
-export type PersonalTone = 'default' | 'friendly' | 'formal' | 'direct' | 'professional';
+export type PersonalTone = 'default' | 'friendly' | 'formal' | 'direct' | 'professional' | 'custom';
 export type PersonalVerbosity = 'brief' | 'balanced' | 'detailed';
 export type PersonalComplexity = 'simple' | 'standard' | 'technical' | 'executive';
 export type PersonalFormat = 'auto' | 'bullets' | 'steps' | 'prose' | 'table';
@@ -18,6 +18,8 @@ export interface PersonalPreferenceProfile {
   translationLanguage: string | null;
   translationMode: TranslationMode;
   tone: PersonalTone;
+  customToneName: string | null;
+  customToneInstruction: string | null;
   verbosity: PersonalVerbosity;
   complexity: PersonalComplexity;
   preferredFormat: PersonalFormat;
@@ -51,6 +53,8 @@ export interface PersonalPreferencePatch {
   translationLanguage?: string | null;
   translationMode?: TranslationMode;
   tone?: PersonalTone;
+  customToneName?: string | null;
+  customToneInstruction?: string | null;
   verbosity?: PersonalVerbosity;
   complexity?: PersonalComplexity;
   preferredFormat?: PersonalFormat;
@@ -73,15 +77,18 @@ export interface PendingPersonalPreferenceCandidate {
 }
 
 const PREFERENCE_FIELDS = [
-  'preferredLanguage', 'translationLanguage', 'translationMode', 'tone', 'verbosity',
-  'complexity', 'preferredFormat', 'preferredDiagramFormat', 'preferredDocumentFormat',
+  'preferredLanguage', 'translationLanguage', 'translationMode', 'tone', 'customToneName', 'customToneInstruction',
+  'verbosity', 'complexity', 'preferredFormat', 'preferredDiagramFormat', 'preferredDocumentFormat',
   'includeExamples', 'includeCitations',
 ] as const satisfies readonly PersonalPreferenceField[];
+
+/** User-authored only. Never inferred, never a pending candidate, no `_source` column. */
+const CUSTOM_PERSONA_FIELDS = new Set<PersonalPreferenceField>(['customToneName', 'customToneInstruction']);
 
 const PREFERENCE_FIELD_SET = new Set<string>(PREFERENCE_FIELDS);
 const ENUM_VALUES: Partial<Record<PersonalPreferenceField, ReadonlySet<unknown>>> = {
   translationMode: new Set(['never', 'when_requested', 'always']),
-  tone: new Set(['default', 'friendly', 'formal', 'direct', 'professional']),
+  tone: new Set(['default', 'friendly', 'formal', 'direct', 'professional', 'custom']),
   verbosity: new Set(['brief', 'balanced', 'detailed']),
   complexity: new Set(['simple', 'standard', 'technical', 'executive']),
   preferredFormat: new Set(['auto', 'bullets', 'steps', 'prose', 'table']),
@@ -106,12 +113,21 @@ export function validatePersonalPreferencePatch(input: unknown):
         return { ok: false, error: `${field} must be null or a non-empty string of at most 80 characters` };
       }
       if (typeof value === 'string') value = value.trim();
+    } else if (key === 'customToneName' || key === 'customToneInstruction') {
+      const maxLength = key === 'customToneName' ? 60 : 500;
+      if (value !== null && (typeof value !== 'string' || value.trim().length > maxLength)) {
+        return { ok: false, error: `${field} must be null or a string of at most ${maxLength} characters` };
+      }
+      value = typeof value === 'string' ? (value.trim() || null) : null;
     } else if (key === 'includeExamples' || key === 'includeCitations') {
       if (value !== null && typeof value !== 'boolean') return { ok: false, error: `${field} must be boolean or null` };
     } else if (!ENUM_VALUES[key]?.has(value)) {
       return { ok: false, error: `Invalid value for ${field}` };
     }
     (output as Record<string, unknown>)[key] = value;
+  }
+  if (output.tone === 'custom' && !(typeof output.customToneInstruction === 'string' && output.customToneInstruction.trim())) {
+    return { ok: false, error: 'customToneInstruction is required (non-empty) when tone is custom' };
   }
   return { ok: true, value: output };
 }
@@ -121,6 +137,8 @@ const DEFAULT_PROFILE: Omit<PersonalPreferenceProfile, 'userId' | 'createdAt' | 
   translationLanguage: null,
   translationMode: 'never',
   tone: 'default',
+  customToneName: null,
+  customToneInstruction: null,
   verbosity: 'balanced',
   complexity: 'standard',
   preferredFormat: 'auto',
@@ -131,7 +149,8 @@ const DEFAULT_PROFILE: Omit<PersonalPreferenceProfile, 'userId' | 'createdAt' | 
   source: 'user_set',
   sources: {
     preferredLanguage: 'inferred', translationLanguage: 'inferred', translationMode: 'inferred',
-    tone: 'inferred', verbosity: 'inferred', complexity: 'inferred', preferredFormat: 'inferred',
+    tone: 'inferred', customToneName: 'user_set', customToneInstruction: 'user_set',
+    verbosity: 'inferred', complexity: 'inferred', preferredFormat: 'inferred',
     preferredDiagramFormat: 'inferred', preferredDocumentFormat: 'inferred',
     includeExamples: 'inferred', includeCitations: 'inferred',
   },
@@ -145,6 +164,8 @@ function mapProfile(row: Selectable<PersonalPreferenceProfilesTable>): PersonalP
     translationLanguage: row.translation_language,
     translationMode: row.translation_mode,
     tone: row.tone,
+    customToneName: row.custom_tone_name,
+    customToneInstruction: row.custom_tone_instruction,
     verbosity: row.verbosity,
     complexity: row.complexity,
     preferredFormat: row.preferred_format,
@@ -158,6 +179,8 @@ function mapProfile(row: Selectable<PersonalPreferenceProfilesTable>): PersonalP
       translationLanguage: row.translation_language_source,
       translationMode: row.translation_mode_source,
       tone: row.tone_source,
+      customToneName: 'user_set',
+      customToneInstruction: 'user_set',
       verbosity: row.verbosity_source,
       complexity: row.complexity_source,
       preferredFormat: row.preferred_format_source,
@@ -241,6 +264,8 @@ function toDbPatch(patch: PersonalPreferencePatch): Updateable<PersonalPreferenc
   if ('translationLanguage' in patch) values.translation_language = patch.translationLanguage ?? null;
   if (patch.translationMode !== undefined) values.translation_mode = patch.translationMode;
   if (patch.tone !== undefined) values.tone = patch.tone;
+  if ('customToneName' in patch) values.custom_tone_name = patch.customToneName ?? null;
+  if ('customToneInstruction' in patch) values.custom_tone_instruction = patch.customToneInstruction ?? null;
   if (patch.verbosity !== undefined) values.verbosity = patch.verbosity;
   if (patch.complexity !== undefined) values.complexity = patch.complexity;
   if (patch.preferredFormat !== undefined) values.preferred_format = patch.preferredFormat;
@@ -251,7 +276,9 @@ function toDbPatch(patch: PersonalPreferencePatch): Updateable<PersonalPreferenc
   return values;
 }
 
-const SOURCE_COLUMN_BY_FIELD: Record<keyof PersonalPreferencePatch, keyof Updateable<PersonalPreferenceProfilesTable>> = {
+// Custom persona fields are deliberately absent: they are user-set only and have
+// no `*_source` columns in the schema.
+const SOURCE_COLUMN_BY_FIELD: Partial<Record<PersonalPreferenceField, keyof Updateable<PersonalPreferenceProfilesTable>>> = {
   preferredLanguage: 'preferred_language_source', translationLanguage: 'translation_language_source',
   translationMode: 'translation_mode_source', tone: 'tone_source', verbosity: 'verbosity_source',
   complexity: 'complexity_source', preferredFormat: 'preferred_format_source',
@@ -266,7 +293,8 @@ function addSourceColumns(
 ): Updateable<PersonalPreferenceProfilesTable> {
   for (const field of Object.keys(patch) as Array<keyof PersonalPreferencePatch>) {
     if (patch[field] !== undefined || Object.prototype.hasOwnProperty.call(patch, field)) {
-      (values as Record<string, unknown>)[SOURCE_COLUMN_BY_FIELD[field]] = source;
+      const sourceColumn = SOURCE_COLUMN_BY_FIELD[field];
+      if (sourceColumn) (values as Record<string, unknown>)[sourceColumn] = source;
     }
   }
   return values;
@@ -300,6 +328,7 @@ export async function updateInferredPersonalPreferences(
   if (!profile.learningEnabled) return profile;
   const safePatch: PersonalPreferencePatch = {};
   for (const field of Object.keys(patch) as Array<keyof PersonalPreferencePatch>) {
+    if (CUSTOM_PERSONA_FIELDS.has(field)) continue; // user-authored only; never inferred
     if (profile.sources[field] !== 'user_set') (safePatch as Record<string, unknown>)[field] = patch[field];
   }
   const values = addSourceColumns(toDbPatch(safePatch), safePatch, 'inferred');
@@ -325,11 +354,12 @@ export async function upsertPendingPersonalPreferenceCandidates(
   if (!profile.learningEnabled) return [];
   const db = await getDb();
   for (const field of Object.keys(validated.value) as PersonalPreferenceField[]) {
+    if (CUSTOM_PERSONA_FIELDS.has(field)) continue; // user-authored only; never a candidate
     // Explicit fields remain authoritative and do not need confirmation prompts.
     if (profile.sources[field] === 'user_set') continue;
     await db.insertInto('pending_personal_preference_candidates').values({
       user_id: userId,
-      field,
+      field: field as PendingPersonalPreferenceCandidatesTable['field'],
       value: sql`${JSON.stringify(validated.value[field])}::jsonb`,
       confidence: Math.max(0, Math.min(1, confidence)),
     }).onConflict((oc) => oc.columns(['user_id', 'field']).doUpdateSet({
@@ -441,6 +471,8 @@ export async function resetPersonalPreferences(userId: number): Promise<Personal
       translation_language: DEFAULT_PROFILE.translationLanguage,
       translation_mode: DEFAULT_PROFILE.translationMode,
       tone: DEFAULT_PROFILE.tone,
+      custom_tone_name: DEFAULT_PROFILE.customToneName,
+      custom_tone_instruction: DEFAULT_PROFILE.customToneInstruction,
       verbosity: DEFAULT_PROFILE.verbosity,
       complexity: DEFAULT_PROFILE.complexity,
       preferred_format: DEFAULT_PROFILE.preferredFormat,

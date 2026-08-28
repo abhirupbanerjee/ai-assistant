@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   formatPersonalPreferences,
+  resolveChatToneSignal,
   selectRelevantPersonalInterests,
 } from './memory';
 import type { PersonalInterest, PersonalPreferenceProfile } from './db/compat';
@@ -39,6 +40,8 @@ test('personal preference context labels defaults and explicit precedence', () =
     translationLanguage: null,
     translationMode: 'never',
     tone: 'professional',
+    customToneName: null,
+    customToneInstruction: null,
     verbosity: 'brief',
     complexity: 'technical',
     preferredFormat: 'bullets',
@@ -49,7 +52,8 @@ test('personal preference context labels defaults and explicit precedence', () =
     source: 'user_set',
     sources: {
       preferredLanguage: 'user_set', translationLanguage: 'inferred', translationMode: 'inferred',
-      tone: 'user_set', verbosity: 'user_set', complexity: 'user_set', preferredFormat: 'user_set',
+      tone: 'user_set', customToneName: 'user_set', customToneInstruction: 'user_set',
+      verbosity: 'user_set', complexity: 'user_set', preferredFormat: 'user_set',
       preferredDiagramFormat: 'user_set', preferredDocumentFormat: 'user_set',
       includeExamples: 'user_set', includeCitations: 'inferred',
     },
@@ -98,6 +102,8 @@ test('personal preference save projection strips loaded profile metadata', () =>
     translationLanguage: null,
     translationMode: 'never' as const,
     tone: 'professional' as const,
+    customToneName: null,
+    customToneInstruction: null,
     verbosity: 'balanced' as const,
     complexity: 'technical' as const,
     preferredFormat: 'bullets' as const,
@@ -119,6 +125,8 @@ test('personal preference save projection strips loaded profile metadata', () =>
     'translationLanguage',
     'translationMode',
     'tone',
+    'customToneName',
+    'customToneInstruction',
     'verbosity',
     'complexity',
     'preferredFormat',
@@ -128,4 +136,27 @@ test('personal preference save projection strips loaded profile metadata', () =>
     'includeCitations',
   ]);
   assert.deepEqual(validatePersonalPreferencePatch(patch), { ok: true, value: patch });
+});
+
+test('custom persona requires a non-empty instruction and enforces length limits', () => {
+  assert.equal(validatePersonalPreferencePatch({ tone: 'custom' }).ok, false);
+  assert.equal(validatePersonalPreferencePatch({ tone: 'custom', customToneInstruction: '   ' }).ok, false);
+  assert.deepEqual(validatePersonalPreferencePatch({ tone: 'custom', customToneName: '  Advisor  ', customToneInstruction: '  Be warm.  ' }), {
+    ok: true,
+    value: { tone: 'custom', customToneName: 'Advisor', customToneInstruction: 'Be warm.' },
+  });
+  assert.equal(validatePersonalPreferencePatch({ customToneName: 'x'.repeat(61) }).ok, false);
+  assert.equal(validatePersonalPreferencePatch({ customToneInstruction: 'x'.repeat(501) }).ok, false);
+  assert.deepEqual(validatePersonalPreferencePatch({ customToneName: '  ' }), { ok: true, value: { customToneName: null } });
+});
+
+test('chat tone signal admits only canonical preset tones and never custom', () => {
+  assert.equal(resolveChatToneSignal(undefined), undefined);
+  assert.equal(resolveChatToneSignal('default'), undefined);
+  assert.equal(resolveChatToneSignal('custom'), undefined);
+  assert.equal(resolveChatToneSignal('concise'), undefined);
+  assert.equal(resolveChatToneSignal('friendly'), 'friendly');
+  assert.equal(resolveChatToneSignal('formal'), 'formal');
+  assert.equal(resolveChatToneSignal('direct'), 'direct');
+  assert.equal(resolveChatToneSignal('professional'), 'professional');
 });

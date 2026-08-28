@@ -1,0 +1,65 @@
+[
+  {
+    "id": "style-formal-01",
+    "input": "Explain what a VPN is and why someone would use one.",
+    "style": {
+      "tone": "formal",
+      "verbosity": "balanced",
+      "customName": null,
+      "customInstruction": null
+    },
+    "turnInstruction": null,
+    "expectedBlockLines": ["Tone: formal", "Length: balanced"],
+    "expectedNotBlockLines": ["Custom:"],
+    "liveAssertions": { "kind": "formal" },
+    "notes": "Preset formal tone should produce formal prose."
+  },
+  {
+    "id": "style-brief-01",
+    "input": "Summarize the main idea of photosynthesis.",
+    "style": {
+      "tone": "default",
+      "verbosity": "brief",
+      "customName": null,
+      "customInstruction": null
+    },
+    "turnInstruction": null,
+    "expectedBlockLines": ["Tone: default", "Length: brief"],
+    "expectedNotBlockLines": ["Custom:"],
+    "liveAssertions": { "kind": "brief", "maxWords": 80 },
+    "notes": "Verbosity brief is independent of persona tone."
+  },
+  {
+    "id": "style-custom-01",
+    "input": "Tell me about the city of Paris.",
+    "style": {
+      "tone": "custom",
+      "verbosity": "balanced",
+      "customName": "Government Advisor",
+      "customInstruction": "Answer like a warm but concise civil servant; never use jargon."
+    },
+    "turnInstruction": null,
+    "expectedBlockLines": [
+      "Tone: custom",
+      "Custom: Answer like a warm but concise civil servant; never use jargon."
+    ],
+    "expectedNotBlockLines": [],
+    "liveAssertions": { "kind": "custom", "contains": "civil servant" },
+    "notes": "Custom persona instruction must be honored."
+  },
+  {
+    "id": "style-turn-override-01",
+    "input": "Describe the process of making coffee.",
+    "style": {
+      "tone": "formal",
+      "verbosity": "detailed",
+      "customName": null,
+      "customInstruction": null
+    },
+    "turnInstruction": "Keep this very brief — no more than two short sentences.",
+    "expectedBlockLines": ["Tone: formal", "Length: detailed"],
+    "expectedNotBlockLines": [],
+    "liveAssertions": { "kind": "override", "maxWords": 45 },
+    "notes": "A current-turn instruction overrides the stored/selected detailed style."
+  }
+]

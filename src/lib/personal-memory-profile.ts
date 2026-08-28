@@ -1,8 +1,12 @@
+import type { PersonaTone } from '@/lib/response-style';
+
 export interface EditablePersonalPreferenceProfile {
   preferredLanguage: string | null;
   translationLanguage: string | null;
   translationMode: 'never' | 'when_requested' | 'always';
-  tone: 'default' | 'friendly' | 'formal' | 'direct' | 'professional';
+  tone: PersonaTone;
+  customToneName: string | null;
+  customToneInstruction: string | null;
   verbosity: 'brief' | 'balanced' | 'detailed';
   complexity: 'simple' | 'standard' | 'technical' | 'executive';
   preferredFormat: 'auto' | 'bullets' | 'steps' | 'prose' | 'table';
@@ -21,6 +25,8 @@ export function toPersonalPreferencePatch(
     translationLanguage: profile.translationLanguage,
     translationMode: profile.translationMode,
     tone: profile.tone,
+    customToneName: profile.customToneName,
+    customToneInstruction: profile.customToneInstruction,
     verbosity: profile.verbosity,
     complexity: profile.complexity,
     preferredFormat: profile.preferredFormat,

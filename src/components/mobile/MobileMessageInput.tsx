@@ -10,8 +10,11 @@ import ModeToggle, { ChatMode } from '@/components/chat/ModeToggle';
 import WebSearchToggle from '@/components/chat/WebSearchToggle';
 import LanguageSelector from '@/components/chat/LanguageSelector';
 import ToneSelector from '@/components/chat/ToneSelector';
+import VerbositySelector from '@/components/chat/VerbositySelector';
+import SaveToneToProfileButton from '@/components/chat/SaveToneToProfileButton';
 import ModelSelector from '@/components/chat/ModelSelector';
 import type { ChatPreferences } from '@/types/stream';
+import type { Verbosity } from '@/lib/response-style';
 import { buildSubmitPayload } from '@/lib/message-input-parser';
 import { type TriggerSpan } from '@/lib/trigger-span';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
@@ -265,6 +268,18 @@ export default function MobileMessageInput({
 
   const handleToneChange = (tone: string) => {
     onPreferencesChange({ ...preferences, responseTone: tone });
+  };
+
+  const handleVerbosityChange = (verbosity: Verbosity) => {
+    onPreferencesChange({ ...preferences, verbosity });
+  };
+
+  const handleCustomToneChange = (custom: { name: string | null; instruction: string | null }) => {
+    onPreferencesChange({
+      ...preferences,
+      customToneName: custom.name ?? undefined,
+      customToneInstruction: custom.instruction ?? undefined,
+    });
   };
 
   // Count active features
@@ -532,6 +547,21 @@ export default function MobileMessageInput({
                   <ToneSelector
                     selectedTone={preferences.responseTone}
                     onToneChange={handleToneChange}
+                    customToneName={preferences.customToneName}
+                    customToneInstruction={preferences.customToneInstruction}
+                    onCustomToneChange={handleCustomToneChange}
+                    disabled={disabled}
+                  />
+                  <VerbositySelector
+                    selectedVerbosity={preferences.verbosity}
+                    onVerbosityChange={handleVerbosityChange}
+                    disabled={disabled}
+                  />
+                  <SaveToneToProfileButton
+                    tone={preferences.responseTone}
+                    verbosity={preferences.verbosity}
+                    customToneName={preferences.customToneName}
+                    customToneInstruction={preferences.customToneInstruction}
                     disabled={disabled}
                   />
                 </div>

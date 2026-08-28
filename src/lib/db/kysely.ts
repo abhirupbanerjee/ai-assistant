@@ -199,6 +199,21 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE pending_personal_preference_candidates DROP CONSTRAINT IF EXISTS pending_personal_preference_candidates_field_check`.execute(database);
   await sql`ALTER TABLE pending_personal_preference_candidates ADD CONSTRAINT pending_personal_preference_candidates_field_check CHECK (field IN ('preferredLanguage', 'translationLanguage', 'translationMode', 'tone', 'verbosity', 'complexity', 'preferredFormat', 'preferredDiagramFormat', 'preferredDocumentFormat', 'includeExamples', 'includeCitations'))`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_pending_personal_preferences_user ON pending_personal_preference_candidates(user_id, updated_at DESC)`.execute(database);
+
+  // ── Phase 2: durable custom persona (additive-only) ──────────────────
+  // Extends the `tone` CHECK constraint with `custom` (never shrinks the
+  // existing `default, friendly, formal, direct, professional` values) and adds
+  // the user-authored custom persona columns. These columns are user-set only,
+  // so they deliberately have no `*_source` columns. Length limits (name ≤ 60,
+  // instruction ≤ 500) and the non-empty-when-`custom` rule are enforced at the
+  // compat validator / API boundary, matching the existing `preferred_language`
+  // pattern.
+  await runMigration(database, '2026-08-28_personal_tone_custom_persona', async (trx) => {
+    await sql`ALTER TABLE personal_preference_profiles ADD COLUMN IF NOT EXISTS custom_tone_name TEXT`.execute(trx);
+    await sql`ALTER TABLE personal_preference_profiles ADD COLUMN IF NOT EXISTS custom_tone_instruction TEXT`.execute(trx);
+    await sql`ALTER TABLE personal_preference_profiles DROP CONSTRAINT IF EXISTS personal_preference_profiles_tone_check`.execute(trx);
+    await sql`ALTER TABLE personal_preference_profiles ADD CONSTRAINT personal_preference_profiles_tone_check CHECK (tone IN ('default', 'friendly', 'formal', 'direct', 'professional', 'custom'))`.execute(trx);
+  });
   await sql`
     CREATE TABLE IF NOT EXISTS category_memories (
       id BIGSERIAL PRIMARY KEY,

@@ -43,6 +43,10 @@ The prompts system in AI Assistant allows administrators and superusers to custo
 └─────────────────────────┘
             ↓
 ┌─────────────────────────┐
+│   <response_style>      │  ← Tone / Length / Custom persona (appended after grounding)
+└─────────────────────────┘
+            ↓
+┌─────────────────────────┐
 │   Final Prompt to AI    │  ← Combined prompt sent to the LLM
 └─────────────────────────┘
 ```
@@ -56,6 +60,38 @@ The prompts system in AI Assistant allows administrators and superusers to custo
 | Create starter prompts | ✅ | ✅ (managed categories only) | ❌ |
 | Manage acronyms | ✅ | ❌ | ❌ |
 | View prompts | ✅ | ✅ (managed categories only) | ❌ |
+
+---
+
+### Response Style Block
+
+Every main-chat turn ends with a single delimited `<response_style>` block assembled server-side and appended **after** the RAG system prompt, agent-usage rules, and category prompt — so it can never override grounding or safety instructions:
+
+```text
+<response_style>
+Tone: formal
+Length: brief
+Custom: <user-authored instruction, verbatim>
+Unless the user's current message explicitly overrides this, follow it.
+</response_style>
+```
+
+The block is built from the canonical response-style model ([`src/lib/response-style.ts`](../../src/lib/response-style.ts)):
+
+| Axis | Values |
+|------|--------|
+| **Persona / tone** | `default`, `friendly`, `formal`, `direct`, `professional`, `custom` |
+| **Verbosity** | `brief`, `balanced`, `detailed` |
+| **Custom persona** | User-authored `custom_tone_name` (≤ 60 chars) + `custom_tone_instruction` (≤ 500 chars); rendered as `Custom: <instruction>` |
+
+Resolution precedence for each turn:
+
+1. Explicit current-turn instruction ("keep this brief", "answer as a lawyer") — highest.
+2. Chat-input override (`responseTone`, plus optional `verbosity` / custom fields).
+3. Stored Personal Memory profile (tone / custom persona / verbosity).
+4. Application default (`default` + `balanced`).
+
+`custom` with an empty/whitespace instruction falls back to `default`, so an empty custom block is never injected. The resolved style is also included in the chat cache key and emitted to the per-turn operation log (`category: 'style'`).
 
 ---
 

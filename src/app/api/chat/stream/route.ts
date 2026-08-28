@@ -14,7 +14,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory, transferThreadCategory, deleteMessagesFromPoint } from '@/lib/db/compat';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
-import { assemblePersonalMemoryContext, processConversationForMemory } from '@/lib/memory';
+import { assemblePersonalMemoryContext, processConversationForMemory, resolveChatToneSignal } from '@/lib/memory';
 import { retrieveCategoryMemory } from '@/lib/category-memory';
 import { runCategoryMemoryCandidateLearning } from '@/lib/category-memory-learning';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
@@ -32,7 +32,7 @@ import {
 } from '@/lib/streaming';
 import { saveTrajectoryEntries } from '@/lib/db/citation-trajectory';
 import { translate } from '@/lib/translation';
-import { TONE_PRESETS } from '@/types/stream';
+import { formatResponseStyleBlock, serializeResponseStyle, type ResolvedResponseStyle } from '@/lib/response-style';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo, BrowserSessionInfo, ArtifactComment, ArtifactContext } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled, TAVILY_TOOL_NAMES } from '@/lib/tools';
@@ -140,6 +140,12 @@ export async function POST(request: NextRequest) {
         } = body;
         const hasExplicitTargetLanguage = Object.prototype.hasOwnProperty.call(body, 'targetLanguage');
         const hasExplicitResponseTone = Object.prototype.hasOwnProperty.call(body, 'responseTone');
+        const hasExplicitVerbosity = Object.prototype.hasOwnProperty.call(body, 'verbosity');
+        const hasExplicitCustomToneName = Object.prototype.hasOwnProperty.call(body, 'customToneName');
+        const hasExplicitCustomToneInstruction = Object.prototype.hasOwnProperty.call(body, 'customToneInstruction');
+        // Explicit chat-selected preset tone feeds preference inference; custom
+        // free-text personas are never inferred and `default` carries no signal.
+        const chatToneSignal = resolveChatToneSignal(body.responseTone);
 
         // `pipeline` is client-supplied (untrusted). Keep it mutable so it can
         // be re-validated against the server-side registry below.
@@ -214,10 +220,18 @@ export async function POST(request: NextRequest) {
           explicit: {
             ...(hasExplicitTargetLanguage ? { targetLanguage: body.targetLanguage } : {}),
             ...(hasExplicitResponseTone ? { responseTone: body.responseTone } : {}),
+            ...(hasExplicitVerbosity ? { verbosity: body.verbosity } : {}),
+            ...(hasExplicitCustomToneName ? { customToneName: body.customToneName } : {}),
+            ...(hasExplicitCustomToneInstruction ? { customToneInstruction: body.customToneInstruction } : {}),
           },
         });
         const targetLanguage = personalMemory.resolvedTargetLanguage;
-        const responseTone = personalMemory.resolvedResponseTone;
+        const responseStyle: ResolvedResponseStyle = {
+          tone: personalMemory.resolvedTone,
+          verbosity: personalMemory.resolvedVerbosity,
+          customName: personalMemory.resolvedCustomName,
+          customInstruction: personalMemory.resolvedCustomInstruction,
+        };
         // Category scope is derived only from the server-verified, owned thread.
         // The client-provided activeCategoryId is never sufficient for memory access.
         // When the client did not send an activeCategoryId, fall back to the thread's
@@ -573,7 +587,7 @@ export async function POST(request: NextRequest) {
                     role: m.role,
                     content: m.content,
                   }));
-                  await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
+                  await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages, chatToneSignal ? { responseTone: chatToneSignal } : undefined);
                 }
 
                 if (dbUser) {
@@ -674,6 +688,13 @@ export async function POST(request: NextRequest) {
         if (summaryContext) {
           send({ type: 'operation_log', category: 'memory', message: 'Loading conversation summary' });
         }
+        send({
+          type: 'operation_log',
+          category: 'style',
+          message: `Resolved response style: tone=${responseStyle.tone}, verbosity=${responseStyle.verbosity}` +
+            (responseStyle.customName ? `, customName=${responseStyle.customName}` : '') +
+            (responseStyle.customInstruction ? `, customInstruction=${responseStyle.customInstruction}` : ''),
+        });
 
         // Check image processing capabilities for the actual model being used
         const llmSettings = await getLlmSettings();
@@ -878,12 +899,10 @@ export async function POST(request: NextRequest) {
             const podcasts: PodcastHint[] = [];
             const webSources: Source[] = [];
 
-            // Prepare system prompt with tone injection if needed
+            // Prepare system prompt. The <response_style> block is appended after
+            // the grounding sections below so it can never override RAG/agent/category
+            // guidance (see §6.3).
             let effectiveSystemPrompt = ragResult.systemPrompt;
-            if (responseTone && responseTone !== 'default' && TONE_PRESETS[responseTone]) {
-              const tonePrompt = TONE_PRESETS[responseTone].prompt;
-              effectiveSystemPrompt = `${tonePrompt}\n\n${ragResult.systemPrompt}`;
-            }
 
             // Phase 6 (Fix 6): Inject agent usage rules into the system prompt.
             // These teach the main LLM how to use agent__* tools correctly —
@@ -1041,6 +1060,12 @@ export async function POST(request: NextRequest) {
 
               effectiveSystemPrompt += lines.join('\n');
             }
+
+            // Append the unified <response_style> block AFTER the RAG system
+            // prompt, agent-usage rules, and category prompt so it can never
+            // override grounding. The block carries the "current-turn
+            // instruction overrides" clause for turn-level precedence.
+            effectiveSystemPrompt += '\n\n' + formatResponseStyleBlock(responseStyle);
 
             // Determine which tools to exclude based on user preferences.
             // Disabling web search is a category-wide kill switch for every
@@ -1218,6 +1243,7 @@ export async function POST(request: NextRequest) {
                   dbUser?.id?.toString(), // userId for cache isolation
                   threadId,   // threadId for cache isolation
                   thinkingEnabled,
+                  serializeResponseStyle(responseStyle), // Resolved style for cache-key isolation
                 ),
                 onSwitch: (event: ModelSwitchEvent) => {
                   // Signal client to discard any partial streamed content from the failed model
@@ -1510,7 +1536,7 @@ export async function POST(request: NextRequest) {
                   role: m.role,
                   content: m.content,
                 }));
-                await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages);
+                await processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages, chatToneSignal ? { responseTone: chatToneSignal } : undefined);
               }
 
               // Explicit awaited post-response assisted-learning hook. Use the

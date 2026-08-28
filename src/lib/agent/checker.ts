@@ -307,7 +307,12 @@ export async function checkTaskQuality(
     // Get checker model
     const checkerModel = await resolveModelForRole('checker', modelConfig);
 
-    // Load configurable checker system prompt (falls back to default)
+    // Load configurable checker system prompt (falls back to default).
+    //
+    // Response-style scoping: the checker is agent synthesis and intentionally
+    // receives NO `<response_style>` block. Its job is artifact quality
+    // verification against subtask criteria; personal tone/verbosity would
+    // only dilute those criteria. Tone is applied at the main-LLM layer.
     const checkerPrompt = await getCheckerSystemPrompt();
 
     // Generate evaluation

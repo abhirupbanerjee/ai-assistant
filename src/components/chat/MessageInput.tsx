@@ -16,6 +16,7 @@ import ArtifactContextChip from './ArtifactContextChip';
 import { ChatMode } from './ModeToggle';
 import { useToast } from '@/contexts/ToastContext';
 import type { ChatPreferences, PipelineMode } from '@/types/stream';
+import type { Verbosity } from '@/lib/response-style';
 import type { ArtifactComment, ThreadUploadItem } from '@/types';
 import { parsePipelinePrompt } from '@/lib/pipeline-parser';
 import { buildSubmitPayload } from '@/lib/message-input-parser';
@@ -290,6 +291,18 @@ const MessageInput = memo(function MessageInput({
 
   const handleToneChange = useCallback((tone: string) => {
     onPreferencesChange({ ...preferences, responseTone: tone });
+  }, [preferences, onPreferencesChange]);
+
+  const handleVerbosityChange = useCallback((verbosity: Verbosity) => {
+    onPreferencesChange({ ...preferences, verbosity });
+  }, [preferences, onPreferencesChange]);
+
+  const handleCustomToneChange = useCallback((custom: { name: string | null; instruction: string | null }) => {
+    onPreferencesChange({
+      ...preferences,
+      customToneName: custom.name ?? undefined,
+      customToneInstruction: custom.instruction ?? undefined,
+    });
   }, [preferences, onPreferencesChange]);
 
   const handleCitationTrajectoryToggle = useCallback((enabled: boolean) => {
@@ -567,6 +580,11 @@ const MessageInput = memo(function MessageInput({
                     onLanguageChange={handleLanguageChange}
                     selectedTone={preferences.responseTone}
                     onToneChange={handleToneChange}
+                    selectedVerbosity={preferences.verbosity}
+                    onVerbosityChange={handleVerbosityChange}
+                    customToneName={preferences.customToneName}
+                    customToneInstruction={preferences.customToneInstruction}
+                    onCustomToneChange={handleCustomToneChange}
                     disabled={disabled}
                   />
                 }
@@ -733,6 +751,11 @@ const MessageInput = memo(function MessageInput({
               onLanguageChange={handleLanguageChange}
               selectedTone={preferences.responseTone}
               onToneChange={handleToneChange}
+              selectedVerbosity={preferences.verbosity}
+              onVerbosityChange={handleVerbosityChange}
+              customToneName={preferences.customToneName}
+              customToneInstruction={preferences.customToneInstruction}
+              onCustomToneChange={handleCustomToneChange}
               showCitationTrajectory={preferences.showCitationTrajectory}
               onCitationTrajectoryToggle={handleCitationTrajectoryToggle}
               showSources={preferences.showSources}

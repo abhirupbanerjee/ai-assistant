@@ -234,7 +234,9 @@ export interface PersonalPreferenceProfilesTable {
   preferred_language: string | null;
   translation_language: string | null;
   translation_mode: Generated<'never' | 'when_requested' | 'always'>;
-  tone: Generated<'default' | 'friendly' | 'formal' | 'direct' | 'professional'>;
+  tone: Generated<'default' | 'friendly' | 'formal' | 'direct' | 'professional' | 'custom'>;
+  custom_tone_name: string | null;
+  custom_tone_instruction: string | null;
   verbosity: Generated<'brief' | 'balanced' | 'detailed'>;
   complexity: Generated<'simple' | 'standard' | 'technical' | 'executive'>;
   preferred_format: Generated<'auto' | 'bullets' | 'steps' | 'prose' | 'table'>;

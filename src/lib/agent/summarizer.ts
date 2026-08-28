@@ -27,7 +27,13 @@ export async function generateSummary(
     // Get summarizer model
     const summarizerModel = await resolveModelForRole('summarizer', modelConfig);
 
-    // Load configurable system prompt (falls back to default)
+    // Load configurable system prompt (falls back to default).
+    //
+    // Response-style scoping: the resolved `<response_style>` block is
+    // intentionally NOT threaded into the summarizer. The summarizer must stay
+    // a pure content-consolidation agent (no task IDs, no execution internals);
+    // personal tone/verbosity is applied by the main LLM on the final
+    // user-facing turn.
     const systemPrompt = await getSummarizerSystemPrompt();
 
     // Generate summary
@@ -151,6 +157,11 @@ function generateFallbackSummary(plan: AgentPlan): string {
 
 // ============ Progressive Streaming Summarizer ============
 
+// Response-style scoping: the progressive summarizer is part of agent
+// synthesis, so it also intentionally receives NO `<response_style>` block.
+// It writes the streamed autonomous-mode answer, but personal tone/verbosity
+// is applied by the main LLM on the final user-facing turn rather than here,
+// keeping the progressive summarizer deterministic and free of per-user state.
 const PROGRESSIVE_SYSTEM_PROMPT = `You are writing a progressive response to the user. Write naturally in first person as if you are the assistant directly answering the user. Use markdown formatting. Do NOT mention tasks, task IDs, confidence scores, or execution internals.`;
 
 /**

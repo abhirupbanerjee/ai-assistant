@@ -103,6 +103,8 @@ Detection functions live in [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallba
 | **Autonomous Agent** | [`src/lib/agent/llm-router.ts`](../../src/lib/agent/llm-router.ts) | All providers (per-role model selection with Auto) |
 | **Subagent** | [`src/lib/agent/executor.ts`](../../src/lib/agent/executor.ts) | Configurable per agent bot version |
 
+> **Response style parity:** the resolved `<response_style>` block (tone / length / optional custom persona) is appended to the system prompt in [`src/app/api/chat/stream/route.ts`](../../src/app/api/chat/stream/route.ts) and flows identically to every Route 2/3/5 provider through `generateResponseWithTools()`. See [`docs/features/PROMPTS.md`](PROMPTS.md) for the block and its precedence.
+
 ### Internal Services
 
 | Service | Dispatch | Purpose |

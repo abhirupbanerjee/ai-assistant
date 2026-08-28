@@ -644,7 +644,14 @@ async function performTaskExecution(
   // Resolve skills for this plan's category context
   const skillPrompt = await resolveSkillsForTask(plan, task, callbacks);
 
-  // Load configurable system prompt (falls back to default)
+  // Load configurable system prompt (falls back to default).
+  //
+  // Response-style scoping: the resolved `<response_style>` block is
+  // intentionally NOT threaded into the executor. Executor outputs are
+  // intermediate artifacts that the summarizer/main LLM later consolidates;
+  // injecting personal tone/verbosity here would override DOMAIN-SPECIFIC
+  // GUIDELINES, RAG grounding, and the executor's task contract. Tone is
+  // applied at the main-LLM layer.
   const basePrompt = await getExecutorSystemPrompt();
 
   // Build system prompt with skills injected

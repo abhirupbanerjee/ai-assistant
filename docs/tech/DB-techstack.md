@@ -83,6 +83,8 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 | Store user memory | `user_memories` | `compat/memory.ts` |
 | Get user memories | `user_memories` | `compat/memory.ts` |
 | Delete memory | `user_memories` | `compat/memory.ts` |
+| Get/store preference profile (tone, verbosity, custom persona, formats) | `personal_preference_profiles` | `compat/personal-memory.ts` |
+| Get/store interests | `personal_interests` | `compat/personal-memory.ts` |
 
 ### Settings & Configuration
 

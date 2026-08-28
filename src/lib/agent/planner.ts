@@ -63,7 +63,14 @@ export async function createPlan(
       userMessage: userRequest,
     });
 
-    // Load configurable system prompt (falls back to default)
+    // Load configurable system prompt (falls back to default).
+    //
+    // Response-style scoping: the resolved `<response_style>` block is
+    // intentionally NOT threaded into the planner. The planner's contract is to
+    // emit valid plan JSON, not user-facing prose, so injecting tone/verbosity
+    // here could only corrupt the JSON output or override the planner's
+    // grounding/routing rules. Tone is applied at the main-LLM layer (see
+    // src/app/api/chat/stream/route.ts).
     const systemPrompt = await getPlannerSystemPrompt();
 
     // Generate plan

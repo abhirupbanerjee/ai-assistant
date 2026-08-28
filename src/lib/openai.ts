@@ -1730,7 +1730,8 @@ export async function generateResponseWithTools(
   enableClarification?: boolean,  // Inject request_clarification meta-tool when preflight skill is active
   userId?: string,   // For cache isolation — prevents cross-user cache collisions
   threadId?: string,  // For cache isolation — prevents cross-thread cache collisions
-  thinkingEnabled: boolean = false
+  thinkingEnabled: boolean = false,
+  styleContext?: string  // Resolved response style for cache-key isolation
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -1802,6 +1803,7 @@ export async function generateResponseWithTools(
     summaryContext,
     memoryContext,
     categorySlugs,
+    styleContext,
     userId,
     threadId,
   });

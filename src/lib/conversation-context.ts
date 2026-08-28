@@ -90,6 +90,8 @@ export interface ContextOptions {
   memoryContext?: string;
   /** Category slugs for cache key */
   categorySlugs?: string[];
+  /** Resolved response style (serialized) for cache key — prevents style collisions */
+  styleContext?: string;
   /** User ID for cache isolation (security-critical: prevents cross-user cache collisions) */
   userId?: string;
   /** Thread ID for cache isolation (security-critical: prevents cross-thread cache collisions) */
@@ -271,6 +273,7 @@ export function buildHistory(
  * @param historyFingerprint - Hash of recent conversation
  * @param summaryFingerprint - Hash of summary (if exists)
  * @param memoryFingerprint - Hash of memory context (if exists)
+ * @param styleFingerprint - Hash of the resolved response style (if present)
  * @param categorySlugs - Category slugs for the thread
  * @param userId - User ID for cache isolation (security-critical)
  * @param threadId - Thread ID for cache isolation (security-critical)
@@ -282,6 +285,7 @@ export function buildCacheKey(
   historyFingerprint: string,
   summaryFingerprint: string | null,
   memoryFingerprint: string | null,
+  styleFingerprint: string | null,
   categorySlugs: string[],
   userId?: string,
   threadId?: string
@@ -316,6 +320,12 @@ export function buildCacheKey(
   // Add memory fingerprint if present
   if (memoryFingerprint) {
     parts.push(`mem:${memoryFingerprint}`);
+  }
+
+  // Add resolved response-style fingerprint so differently-styled responses
+  // are never served from cache.
+  if (styleFingerprint) {
+    parts.push(`style:${styleFingerprint}`);
   }
 
   return hashQuery(parts.join(':'));
@@ -365,6 +375,7 @@ export function buildConversationContext(
     summaryContext,
     memoryContext,
     categorySlugs = [],
+    styleContext,
     userId,
     threadId,
   } = options;
@@ -422,6 +433,10 @@ The current message appears to be a follow-up. Consider the above context when r
     ? hashQuery(memoryContext.substring(0, 100))
     : null;
 
+  const styleFingerprint = styleContext
+    ? hashQuery(styleContext)
+    : null;
+
   // 7. Build cache key (userId + threadId required to prevent cross-user cache collisions)
   const cacheKey = buildCacheKey(
     currentMessage,
@@ -429,6 +444,7 @@ The current message appears to be a follow-up. Consider the above context when r
     historyFingerprint,
     summaryFingerprint,
     memoryFingerprint,
+    styleFingerprint,
     categorySlugs,
     userId,
     threadId,

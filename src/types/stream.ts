@@ -22,6 +22,7 @@ import type {
   PreflightClarificationEvent,
 } from './compliance';
 import type { FallbackReason } from '@/lib/llm-fallback';
+import type { Verbosity } from '@/lib/response-style';
 
 // ============ Stream Phases ============
 
@@ -84,7 +85,8 @@ export type OperationCategory =
   | 'system'
   | 'compliance'
   | 'plan'
-  | 'agent';
+  | 'agent'
+  | 'style';
 
 /**
  * Human-readable labels for operation categories
@@ -99,6 +101,7 @@ export const OPERATION_CATEGORY_LABELS: Record<OperationCategory, string> = {
   compliance: 'Compliance',
   plan: 'Planning',
   agent: 'Agent',
+  style: 'Response Style',
 };
 
 /**
@@ -388,51 +391,10 @@ export type StreamErrorCode =
   | 'CAPABILITY_UNAVAILABLE';
 
 // ============ Chat Preferences ============
-
-/**
- * Tone preset definition for response style control
- */
-export interface TonePreset {
-  label: string;
-  icon: string;
-  prompt: string;
-}
-
-/**
- * Available tone presets for response style
- */
-export const TONE_PRESETS: Record<string, TonePreset> = {
-  default: {
-    label: 'Default',
-    icon: 'MessageSquare',
-    prompt: '', // No modification
-  },
-  concise: {
-    label: 'Concise',
-    icon: 'Minimize2',
-    prompt: 'Be brief and to the point. Provide only essential information without unnecessary elaboration.',
-  },
-  detailed: {
-    label: 'Detailed',
-    icon: 'FileText',
-    prompt: 'Provide comprehensive information covering all relevant aspects thoroughly with examples where helpful.',
-  },
-  explanatory: {
-    label: 'Explanatory',
-    icon: 'HelpCircle',
-    prompt: 'Explain concepts clearly with context and background. Break down complex topics into understandable parts.',
-  },
-  formal: {
-    label: 'Formal',
-    icon: 'Briefcase',
-    prompt: 'Use formal, professional language appropriate for official communications and documentation.',
-  },
-  creative: {
-    label: 'Creative',
-    icon: 'Sparkles',
-    prompt: 'Use engaging, creative language while maintaining accuracy. Make the response interesting and memorable.',
-  },
-};
+// Persona/tone and verbosity now live in the canonical model at
+// `@/lib/response-style` (PERSONA_TONES / VERBOSITY_LEVELS). The legacy
+// TONE_PRESETS vocabulary was removed in Phase 2 — legacy selector values are
+// mapped server-side via LEGACY_TONE_MAP.
 
 /**
  * A single step in an inline multi-agent pipeline.
@@ -459,6 +421,11 @@ export interface ChatPreferences {
   webSearchEnabled: boolean;
   targetLanguage: string;
   responseTone: string;
+  verbosity: Verbosity;
+  /** Transient custom persona name for `responseTone: 'custom'` (never persisted to the profile). */
+  customToneName?: string;
+  /** Transient custom persona instruction for `responseTone: 'custom'` (never persisted to the profile). */
+  customToneInstruction?: string;
   showSources: boolean;
   showCitationTrajectory: boolean;
   thinkingEnabled: boolean;
@@ -479,6 +446,7 @@ export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   webSearchEnabled: true,
   targetLanguage: 'en',
   responseTone: 'default',
+  verbosity: 'balanced',
   showSources: true,
   showCitationTrajectory: true,
   thinkingEnabled: false,
@@ -509,7 +477,13 @@ export interface StreamChatRequest {
   // Chat preferences
   webSearchEnabled?: boolean; // default: true (follows admin setting)
   targetLanguage?: string; // e.g., 'es', 'fr', defaults to 'en'
-  responseTone?: string; // e.g., 'concise', 'formal', defaults to 'default'
+  responseTone?: string; // canonical persona tone or a legacy selector value, defaults to 'default'
+  /** Explicit chat-input verbosity override (never persisted). */
+  verbosity?: Verbosity;
+  /** Transient custom persona name for `responseTone: 'custom'` (never persisted). */
+  customToneName?: string;
+  /** Transient custom persona instruction for `responseTone: 'custom'` (never persisted). */
+  customToneInstruction?: string;
   showCitationTrajectory?: boolean; // default: true
   thinkingEnabled?: boolean; // default: false unless model-specific UI default enables it
   toolHints?: string[]; // Transient slash command hints for this message only

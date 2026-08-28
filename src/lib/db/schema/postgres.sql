@@ -287,7 +287,11 @@ CREATE TABLE IF NOT EXISTS personal_preference_profiles (
   translation_mode TEXT NOT NULL DEFAULT 'never'
     CHECK (translation_mode IN ('never', 'when_requested', 'always')),
   tone TEXT NOT NULL DEFAULT 'default'
-    CHECK (tone IN ('default', 'friendly', 'formal', 'direct', 'professional')),
+    CHECK (tone IN ('default', 'friendly', 'formal', 'direct', 'professional', 'custom')),
+  -- User-authored custom persona (only meaningful when tone = 'custom').
+  -- Never inferred: no `_source` columns accompany these fields.
+  custom_tone_name TEXT,
+  custom_tone_instruction TEXT,
   verbosity TEXT NOT NULL DEFAULT 'balanced'
     CHECK (verbosity IN ('brief', 'balanced', 'detailed')),
   complexity TEXT NOT NULL DEFAULT 'standard'

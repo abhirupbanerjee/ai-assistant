@@ -30,6 +30,10 @@ All three routes can run simultaneously for maximum availability, or any can be 
 - **Route 4 (Ollama Cloud)** was folded into Route 5 as an aggregator gateway alongside Fireworks AI and Azure AI Foundry.
 - The system retains backward compatibility with older `RoutesSettings` DB rows; legacy `route1Enabled` fields are stripped on read.
 
+### Response Style Across Routes
+
+Personal response style (tone / verbosity / custom persona) is resolved once per turn and appended to the system prompt as a single `<response_style>` block after RAG grounding. Because the block is part of the system prompt handed to `generateResponseWithTools()`, it applies identically regardless of which route the selected model uses — Route 2, Route 3, or Route 5. See [`docs/features/PROMPTS.md`](PROMPTS.md).
+
 ---
 
 ## Route Classification

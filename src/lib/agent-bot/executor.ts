@@ -110,6 +110,11 @@ export async function resolveVersion(
  * Build system prompt from version config and skills
  */
 export async function buildSystemPrompt(version: AgentBotVersionWithRelations): Promise<string> {
+  // Surface scoping: Agent Bots (like workspaces) receive NO personal style
+  // context. The `<response_style>` block is intentionally not assembled here
+  // because this is a workspace/agent-bot surface, not main-chat, and the
+  // system prompt below comes exclusively from the bot version's own
+  // system_prompt + linked skill prompts. See plans/user-tone-updates.md §11.
   const parts: string[] = [];
 
   // Add version's custom system prompt if set

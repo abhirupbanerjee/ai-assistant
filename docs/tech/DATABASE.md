@@ -1459,6 +1459,36 @@ Extracted facts for user memory across sessions.
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
 
+### personal_preference_profiles
+
+Per-user communication and artifact preferences for Personal Memory. One row per user.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| user_id | INTEGER | Primary key, FK to users.id |
+| preferred_language | TEXT | Preferred response language (NULL = unset) |
+| translation_language | TEXT | Translation target language (NULL = unset) |
+| translation_mode | TEXT | `never` / `when_requested` / `always` |
+| tone | TEXT | Persona/tone: `default`, `friendly`, `formal`, `direct`, `professional`, `custom` |
+| custom_tone_name | TEXT | User-authored custom persona name (≤ 60 chars; NULL unless `tone = 'custom'`) |
+| custom_tone_instruction | TEXT | User-authored custom persona instruction (≤ 500 chars; non-empty when `tone = 'custom'`) |
+| verbosity | TEXT | `brief` / `balanced` / `detailed` |
+| complexity | TEXT | `simple` / `standard` / `technical` / `executive` |
+| preferred_format | TEXT | `auto` / `bullets` / `steps` / `prose` / `table` |
+| preferred_diagram_format | TEXT | `auto` / `mermaid` / `ascii` / `infographic` |
+| preferred_document_format | TEXT | `auto` / `markdown` / `docx` / `pdf` |
+| include_examples | BOOLEAN | Include examples when useful (NULL = unset) |
+| include_citations | BOOLEAN | Include citations when available (NULL = unset) |
+| source | TEXT | `user_set` / `inferred` |
+| *_source | TEXT | Per-field provenance (`user_set` / `inferred`) |
+| learning_enabled | BOOLEAN | Personal Memory learning on/off |
+| created_at / updated_at | TIMESTAMPTZ | Row timestamps |
+
+**Notes:**
+- `tone` was extended additively with `custom`; the enum check accepts `default, friendly, formal, direct, professional, custom`.
+- The custom persona fields are user-authored only and are never inferred, so they have no `_source` columns.
+- `custom` with an empty/whitespace `custom_tone_instruction` falls back to `default` at resolution time.
+
 ### thread_summaries
 
 Summary records when threads are summarized to reduce token usage.

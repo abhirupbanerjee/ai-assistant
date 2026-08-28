@@ -8,6 +8,7 @@ import {
   toPersonalPreferencePatch,
   type EditablePersonalPreferenceProfile,
 } from '@/lib/personal-memory-profile';
+import { PERSONA_TONES, PERSONA_TONE_LABELS, type PersonaTone } from '@/lib/response-style';
 
 interface Profile extends EditablePersonalPreferenceProfile {
   source: 'user_set' | 'inferred';
@@ -125,6 +126,25 @@ export default function PersonalMemorySection() {
 
   const update = <K extends keyof Profile>(key: K, value: Profile[K]) => setDraft({ ...draft, [key]: value });
 
+  const personaDescriptions: Record<PersonaTone, string> = {
+    default: 'No persona override — use the standard assistant voice.',
+    friendly: 'Warm and approachable.',
+    formal: 'Reserved and official.',
+    direct: 'Concise and to the point.',
+    professional: 'Polished and businesslike.',
+    custom: 'Define your own persona with a name and instruction.',
+  };
+
+  const selectPersona = (tone: PersonaTone) => update('tone', tone);
+
+  const savePreferences = () => {
+    if (draft.tone === 'custom' && !draft.customToneInstruction?.trim()) {
+      setError('A custom persona requires a non-empty instruction.');
+      return;
+    }
+    void run('save', () => request('PATCH', { action: 'update_preferences', preferences: toPersonalPreferencePatch(draft) }));
+  };
+
   function displayCandidateValue(value: PendingPreference['value']) {
     if (value === null) return 'Default / unset';
     if (typeof value === 'boolean') return value ? 'Include' : 'Avoid';
@@ -157,8 +177,38 @@ export default function PersonalMemorySection() {
             <label className="text-sm">Preferred language<input className={selectClass} value={draft.preferredLanguage ?? ''} onChange={(e) => update('preferredLanguage', e.target.value || null)} placeholder="English or en" /><span className="text-xs text-gray-500">Use a supported language name or code.</span></label>
             <label className="text-sm">Translation target<input className={selectClass} value={draft.translationLanguage ?? ''} onChange={(e) => update('translationLanguage', e.target.value || null)} placeholder="French or fr" /><span className="text-xs text-gray-500">Used when translation behavior is Always.</span></label>
             <label className="text-sm">Translation behavior<select className={selectClass} value={draft.translationMode} onChange={(e) => update('translationMode', e.target.value as Profile['translationMode'])}><option value="never">Never</option><option value="when_requested">When requested</option><option value="always">Always</option></select></label>
-            <label className="text-sm">Tone<select className={selectClass} value={draft.tone} onChange={(e) => update('tone', e.target.value as Profile['tone'])}><option value="default">Default</option><option value="friendly">Friendly</option><option value="formal">Formal</option><option value="direct">Direct</option><option value="professional">Professional</option></select></label>
-            <label className="text-sm">Answer length<select className={selectClass} value={draft.verbosity} onChange={(e) => update('verbosity', e.target.value as Profile['verbosity'])}><option value="brief">Brief</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
+            <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div>
+                <span className="text-sm font-medium text-gray-900">Persona</span>
+                <p className="text-xs text-gray-500">Choose the default response style. A custom persona is authored by you and is never learned automatically.</p>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2">
+                {PERSONA_TONES.map((tone) => (
+                  <label key={tone} className={`flex items-start gap-2 rounded-lg border p-3 cursor-pointer transition-colors ${draft.tone === tone ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                    <input type="radio" name="persona" className="mt-0.5" checked={draft.tone === tone} onChange={() => selectPersona(tone)} />
+                    <span>
+                      <span className="block text-sm font-medium text-gray-900">{tone === 'custom' ? 'Custom persona' : PERSONA_TONE_LABELS[tone]}</span>
+                      <span className="block text-xs text-gray-500">{personaDescriptions[tone]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {draft.tone === 'custom' && (
+                <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <label className="block text-sm">
+                    Persona name
+                    <input className={selectClass} maxLength={60} value={draft.customToneName ?? ''} onChange={(e) => update('customToneName', e.target.value || null)} placeholder="e.g. Government Advisor" />
+                    <span className="text-xs text-gray-500">A short display label (60 characters max).</span>
+                  </label>
+                  <label className="block text-sm">
+                    Persona instruction
+                    <textarea className={`${selectClass} min-h-[90px]`} maxLength={500} value={draft.customToneInstruction ?? ''} onChange={(e) => update('customToneInstruction', e.target.value || null)} placeholder="Describe how you want the assistant to respond…" />
+                    <span className="text-xs text-gray-500">Required when using a custom persona. {draft.customToneInstruction?.length ?? 0}/500</span>
+                  </label>
+                </div>
+              )}
+              <label className="text-sm">Answer length<select className={selectClass} value={draft.verbosity} onChange={(e) => update('verbosity', e.target.value as Profile['verbosity'])}><option value="brief">Brief</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></select></label>
+            </div>
             <label className="text-sm">Complexity<select className={selectClass} value={draft.complexity} onChange={(e) => update('complexity', e.target.value as Profile['complexity'])}><option value="simple">Simple</option><option value="standard">Standard</option><option value="technical">Technical</option><option value="executive">Executive</option></select></label>
             <label className="text-sm">Preferred format<select className={selectClass} value={draft.preferredFormat} onChange={(e) => update('preferredFormat', e.target.value as Profile['preferredFormat'])}><option value="auto">Automatic</option><option value="bullets">Bullets</option><option value="steps">Steps</option><option value="prose">Prose</option><option value="table">Table</option></select></label>
             <label className="text-sm">Diagram format<select className={selectClass} value={draft.preferredDiagramFormat} onChange={(e) => update('preferredDiagramFormat', e.target.value as Profile['preferredDiagramFormat'])}><option value="auto">Automatic</option><option value="mermaid">Mermaid</option><option value="ascii">ASCII</option><option value="infographic">Infographic</option></select><span className="text-xs text-gray-500">Used when a diagram or visual explanation is appropriate.</span></label>
@@ -168,7 +218,7 @@ export default function PersonalMemorySection() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
             <span className="text-xs text-gray-500">Stored as <strong>{data.profile.source === 'user_set' ? 'configured by you' : 'learned'}</strong>. Explicit instructions in your current message always win for that turn.</span>
-            <Button onClick={() => run('save', () => request('PATCH', { action: 'update_preferences', preferences: toPersonalPreferencePatch(draft) }))} disabled={busy !== null}>{busy === 'save' ? <Loader2 className="mr-2 animate-spin" size={16} /> : <Save className="mr-2" size={16} />}Save preferences</Button>
+            <Button onClick={savePreferences} disabled={busy !== null}>{busy === 'save' ? <Loader2 className="mr-2 animate-spin" size={16} /> : <Save className="mr-2" size={16} />}Save preferences</Button>
           </div>
         </div>
       </section>

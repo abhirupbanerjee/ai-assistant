@@ -286,6 +286,11 @@ export async function runSubagentTaskLoop(
   const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
   const originalRequest = plan.original_request || (plan as any).originalRequest || '';
 
+  // Response-style scoping: the ReAct subagent system prompt is assembled
+  // without the resolved `<response_style>` block. The subagent executes a
+  // single tool-using task and its output is intermediate; injecting personal
+  // tone/verbosity here would override the skill/domain guidelines below and
+  // the tool-calling instructions. Tone is applied at the main-LLM layer.
   let systemPrompt = `You are a focused subagent executing a single task. You have access to tools. ` +
     `Think step by step. Use tools when needed. After each tool result, decide if you need ` +
     `more tools or if you can provide the final answer.\n\n` +

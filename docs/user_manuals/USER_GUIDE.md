@@ -676,6 +676,39 @@ Depending on your organization's configuration:
 - **Dark Mode** - Eye-friendly dark theme
 - **System** - Follows your device preference
 
+### Response Style (Tone & Verbosity)
+
+In the chat input you can set a per-thread **response style** that applies to that conversation without changing your saved profile:
+
+- **Response tone** — click the tone icon in the message input and choose **Default**, **Friendly**, **Formal**, **Direct**, **Professional**, or **Custom**.
+- **Length (verbosity)** — the length chip beside the tone icon lets you choose **Brief**, **Balanced**, or **Detailed**.
+
+These are thread-level overrides and apply to every response in that thread, regardless of which model or route generates it.
+
+### Custom Persona
+
+**Custom** lets you define your own persona:
+
+- **Persona name** — a short display label (up to 60 characters).
+- **Persona instruction** — a free-text description of how the assistant should respond (up to 500 characters). This is required when using a custom persona.
+
+The instruction is injected verbatim into the prompt. A custom persona with no instruction falls back to **Default**.
+
+### Saving a Style to Your Profile
+
+A **Save to profile** button appears when you've chosen a style in the chat input. Selecting a style never changes your saved profile automatically — click **Save to profile** to make the current tone, verbosity, and custom persona your durable default.
+
+### Profile → Personal Memory: Persona Section
+
+Your durable default response style lives under your profile's **Personal Memory**:
+
+1. Open your profile and select **Personal Memory**.
+2. Under **Persona**, pick **Default**, **Friendly**, **Formal**, **Direct**, or **Professional** (shown as radio cards), or choose **Custom persona** to enter a name and instruction.
+3. Set **Answer length** (verbosity) beside it.
+4. Click **Save preferences**.
+
+The profile is your default. Explicit instructions in your current message always win for that turn, and a chat-input selection overrides the profile for that thread.
+
 ---
 
 ## 12. Tips & Best Practices

@@ -105,6 +105,8 @@ Guides for different user roles and workflows.
 - Thread management
 - Sources and citations
 - Artifacts panel
+- Response style (tone, verbosity, custom persona)
+- Personal Memory persona editor
 - PWA installation (desktop and mobile)
 - Personalization and settings
 
@@ -318,6 +320,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.10** | August 2026 | **Unified Response-Style System** — Persona/tone (`default\|friendly\|formal\|direct\|professional\|custom`) and verbosity (`brief\|balanced\|detailed`) unified across the chat input and Personal Memory. Single `<response_style>` block appended after RAG grounding; chat tone/verbosity selectors, custom persona, and opt-in "Save to profile"; Profile → Personal Memory Persona section; `custom_tone_name`/`custom_tone_instruction` columns; `responseTone`/`verbosity`/`customToneName`/`customToneInstruction` chat stream request fields. |
 | **3.8** | June 2026 | **Auto Model Selection** — Per-message intelligent model picker across all chat surfaces. Main chat: "⚡ Auto" option in model selector evaluates query context, tool routing, image presence, and token budget to pick the best enabled model. Workspace Auto: same intelligence scoped to workspace categories. Agent/Autonomous per-role Auto: planner, executor, checker, and summarizer can each be set to Auto with role-specific dimension scoring (reasoning, function_calling, etc.). Agent Bot Auto: per-version model override supports Auto. All paths fall back to global default on failure. Deterministic core with data-driven scoring (latency P50, capability scores, weighted ranking). |
 | **3.7** | May 2026 | **Slash Commands** — 16 predefined `/` commands for fast terminal tool invocation (`/image`, `/chart`, `/diagram`, `/pdf`, `/docx`, `/html`, `/slide`, `/sheet`, `/flowchart`, `/sequence`, `/c4`, `/gantt`, `/bar-chart`, `/line-chart`, `/infographic`, `/photo`). Inline autocomplete menu with keyboard navigation, active command chip, PlusMenu Create grid. Strong-hint philosophy: `[SUGGESTED APPROACH: ...]` injected into system prompt; LLM can override. Admin registry for editing labels, hints, aliases, icons, enable states, sort order. `slash_command_configs` DB table with seeding and migrations. Public API: `GET /api/chat/slash-commands`. |
 | **3.6** | May 2026 | **Autonomous Mode Hardening** — Context trimming (drops oldest assistant+tool pairs), tool result truncation (4000 chars), CoT preservation with 2000-char reasoning truncation, retryable error classification with exponential backoff (`retry_after`, `retry_count`), per-task-type timeouts (deep_analysis: 20min, image/doc: 15min), provider-aware context limits via `enabled_models.max_input_tokens`, wave budget reservations (`reserveBudget`/`commitReservation`/`releaseReservation`) to fix race conditions, subagent tool call deduplication via hash cache, empty-wave backoff without burning `maxWaves`, max subagent iterations increased from 5 to 15. **Working Memory (beta)** — new `plan_memories` table with GIN keyword index, heuristic keyword extraction (no LLM, no embeddings), deterministic wave summary injection into executor prompts, feature flag `agent_working_memory_enabled` (default false). |
@@ -374,4 +377,4 @@ When updating documentation:
 
 ---
 
-*Last updated: June 2026 (v3.9)*
+*Last updated: August 2026 (v3.10)*

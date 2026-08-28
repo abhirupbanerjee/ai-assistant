@@ -8,6 +8,9 @@ import ModeToggle, { ChatMode } from './ModeToggle';
 import WebSearchToggle from './WebSearchToggle';
 import CitationTrajectoryToggle from './CitationTrajectoryToggle';
 import SourcesToggle from './SourcesToggle';
+import VerbositySelector from './VerbositySelector';
+import SaveToneToProfileButton from './SaveToneToProfileButton';
+import type { Verbosity } from '@/lib/response-style';
 
 // Lazy-load LanguageSelector and ToneSelector (rarely used on first interaction)
 const DynamicLanguageSelector = dynamic(() => import('./LanguageSelector'), { ssr: false });
@@ -40,6 +43,13 @@ interface PlusMenuProps {
   // ToneSelector props
   selectedTone: string;
   onToneChange: (tone: string) => void;
+  // VerbositySelector props
+  selectedVerbosity: string;
+  onVerbosityChange: (verbosity: Verbosity) => void;
+  // Transient custom persona props
+  customToneName?: string | null;
+  customToneInstruction?: string | null;
+  onCustomToneChange?: (custom: { name: string | null; instruction: string | null }) => void;
   // CitationTrajectoryToggle props
   showCitationTrajectory: boolean;
   onCitationTrajectoryToggle: (enabled: boolean) => void;
@@ -67,6 +77,11 @@ export default function PlusMenu({
   onLanguageChange,
   selectedTone,
   onToneChange,
+  selectedVerbosity,
+  onVerbosityChange,
+  customToneName,
+  customToneInstruction,
+  onCustomToneChange,
   showCitationTrajectory,
   onCitationTrajectoryToggle,
   showSources,
@@ -196,6 +211,24 @@ export default function PlusMenu({
                <DynamicToneSelector
                  selectedTone={selectedTone}
                  onToneChange={onToneChange}
+                 customToneName={customToneName}
+                 customToneInstruction={customToneInstruction}
+                 onCustomToneChange={onCustomToneChange}
+                 disabled={disabled}
+               />
+               <div className="flex items-center justify-between pt-1">
+                 <span className="text-sm text-gray-700">Length</span>
+                 <VerbositySelector
+                   selectedVerbosity={selectedVerbosity}
+                   onVerbosityChange={onVerbosityChange}
+                   disabled={disabled}
+                 />
+               </div>
+               <SaveToneToProfileButton
+                 tone={selectedTone}
+                 verbosity={selectedVerbosity}
+                 customToneName={customToneName}
+                 customToneInstruction={customToneInstruction}
                  disabled={disabled}
                />
              </div>

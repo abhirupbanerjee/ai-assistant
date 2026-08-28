@@ -4,12 +4,23 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import LanguageSelector from './LanguageSelector';
 import ToneSelector from './ToneSelector';
+import VerbositySelector from './VerbositySelector';
+import {
+  PERSONA_TONE_LABELS,
+  isPersonaTone,
+  type Verbosity,
+} from '@/lib/response-style';
 
 interface InlineLanguageToneChipsProps {
   selectedLanguage: string;
   onLanguageChange: (languageCode: string) => void;
   selectedTone: string;
   onToneChange: (tone: string) => void;
+  selectedVerbosity: string;
+  onVerbosityChange: (verbosity: Verbosity) => void;
+  customToneName?: string | null;
+  customToneInstruction?: string | null;
+  onCustomToneChange?: (custom: { name: string | null; instruction: string | null }) => void;
   disabled?: boolean;
 }
 
@@ -18,6 +29,11 @@ export default function InlineLanguageToneChips({
   onLanguageChange,
   selectedTone,
   onToneChange,
+  selectedVerbosity,
+  onVerbosityChange,
+  customToneName = null,
+  customToneInstruction = null,
+  onCustomToneChange,
   disabled = false,
 }: InlineLanguageToneChipsProps) {
   const [openDropdown, setOpenDropdown] = useState<'language' | 'tone' | null>(null);
@@ -55,16 +71,8 @@ export default function InlineLanguageToneChips({
     return labels[selectedLanguage] || selectedLanguage;
   };
 
-  const getToneLabel = () => {
-    const labels: Record<string, string> = {
-      default: 'Default',
-      formal: 'Formal',
-      casual: 'Casual',
-      technical: 'Technical',
-      friendly: 'Friendly',
-    };
-    return labels[selectedTone] || selectedTone;
-  };
+  // Labels derive from the canonical persona enum (no stale hard-coded map).
+  const getToneLabel = () => (isPersonaTone(selectedTone) ? PERSONA_TONE_LABELS[selectedTone] : PERSONA_TONE_LABELS.default);
 
   return (
     <div ref={containerRef} className="flex items-center gap-2">
@@ -125,10 +133,20 @@ export default function InlineLanguageToneChips({
                 onToneChange(tone);
                 setOpenDropdown(null);
               }}
+              customToneName={customToneName}
+              customToneInstruction={customToneInstruction}
+              onCustomToneChange={onCustomToneChange}
             />
           </div>
         )}
       </div>
+
+      {/* Verbosity Selector (independent of persona tone) */}
+      <VerbositySelector
+        selectedVerbosity={selectedVerbosity}
+        onVerbosityChange={onVerbosityChange}
+        disabled={disabled}
+      />
     </div>
   );
 }

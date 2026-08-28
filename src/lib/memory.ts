@@ -14,6 +14,17 @@ import {
 } from '@/lib/db/compat';
 import { getMemorySettings } from '@/lib/db/compat';
 import { SUPPORTED_LANGUAGES } from '@/lib/translation/provider-factory';
+import {
+  type PersonaTone,
+  type PresetPersonaTone,
+  type ResolvedResponseStyle,
+  type Verbosity,
+  isPersonaTone,
+  isPresetPersonaTone,
+  isVerbosity,
+  mapLegacyResponseTone,
+  trimToNull,
+} from '@/lib/response-style';
 
 export interface FactEntry {
   text: string;
@@ -120,12 +131,32 @@ export async function getMemoryContext(
   return context.promptContext;
 }
 
+/**
+ * Explicit chat-input signals that feed preference inference. Only canonical
+ * preset persona tones are eligible; `custom` free-text personas are never
+ * inferred (they are user-authored only) and `default` carries no signal.
+ */
+export interface PersonalMemorySignals {
+  responseTone?: PresetPersonaTone;
+}
+
+/**
+ * Map a chat-selected tone to an inference signal. Returns a value only for
+ * canonical preset tones (`friendly`/`formal`/`direct`/`professional`);
+ * `custom`, legacy selector values, and `default` are always excluded.
+ */
+export function resolveChatToneSignal(responseTone: string | undefined): PresetPersonaTone | undefined {
+  if (!responseTone) return undefined;
+  return isPresetPersonaTone(responseTone) ? responseTone : undefined;
+}
+
 export async function processConversationForMemory(
   userId: number,
   _categoryId: number | null,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  signals?: PersonalMemorySignals,
 ): Promise<void> {
-  await extractAndPersistPersonalMemory(userId, messages);
+  await extractAndPersistPersonalMemory(userId, messages, signals);
 }
 
 export type MemorySurface = 'main-chat' | 'workspace' | 'agent-bot';
@@ -133,6 +164,9 @@ export type MemorySurface = 'main-chat' | 'workspace' | 'agent-bot';
 export interface ExplicitPersonalControls {
   targetLanguage?: string;
   responseTone?: string;
+  verbosity?: string;
+  customToneName?: string;
+  customToneInstruction?: string;
 }
 
 export interface PersonalMemoryContext {
@@ -140,7 +174,10 @@ export interface PersonalMemoryContext {
   relevantInterests: PersonalInterest[];
   promptContext: string;
   resolvedTargetLanguage: string;
-  resolvedResponseTone: string;
+  resolvedTone: PersonaTone;
+  resolvedVerbosity: Verbosity;
+  resolvedCustomName: string | null;
+  resolvedCustomInstruction: string | null;
 }
 
 function resolveLanguageCode(value: string | null): string | null {
@@ -191,7 +228,12 @@ export function formatPersonalPreferences(profile: PersonalPreferenceProfile): s
   if (profile.translationMode === 'always' && profile.translationLanguage) {
     entries.push(`Always deliver the final answer in ${profile.translationLanguage}.`);
   }
-  if (profile.tone !== 'default') entries.push(`Tone: ${profile.tone}.`);
+  if (profile.tone === 'custom') {
+    const customName = profile.customToneName?.trim();
+    entries.push(customName ? `Tone: Custom persona — ${customName}.` : 'Tone: Custom persona.');
+  } else if (profile.tone !== 'default') {
+    entries.push(`Tone: ${profile.tone}.`);
+  }
   if (profile.verbosity !== 'balanced') entries.push(`Answer length: ${profile.verbosity}.`);
   if (profile.complexity !== 'standard') entries.push(`Complexity: ${profile.complexity}.`);
   if (profile.preferredFormat !== 'auto') entries.push(`Preferred format: ${profile.preferredFormat}.`);
@@ -203,18 +245,92 @@ export function formatPersonalPreferences(profile: PersonalPreferenceProfile): s
   return `[Personal Response Preferences]\n${entries.join('\n')}\nCurrent-turn explicit instructions and controls override these defaults.`;
 }
 
+/**
+ * Resolve the persona/tone + verbosity for this turn, applying the canonical
+ * precedence (§6.1):
+ *   1. Explicit current-turn instruction — highest, lives in the assembled
+ *      block text ("Unless the user's current message explicitly overrides..."),
+ *      not here.
+ *   2. Chat-input override (non-`default` `responseTone`, incl. transient `custom`).
+ *   3. Stored profile tone / custom persona / verbosity.
+ *   4. Application default.
+ *
+ * The legacy selector vocabulary (`concise`, `detailed`, `explanatory`,
+ * `creative`) is mapped here through the server-side single source of truth in
+ * `@/lib/response-style`.
+ */
+function resolveResponseStyle(
+  profile: PersonalPreferenceProfile | null,
+  explicit: ExplicitPersonalControls | undefined,
+): ResolvedResponseStyle {
+  const hasTone = explicit !== undefined && Object.prototype.hasOwnProperty.call(explicit, 'responseTone');
+  const explicitTone = hasTone ? explicit!.responseTone : undefined;
+
+  let tone: PersonaTone = profile?.tone ?? 'default';
+  let verbosity: Verbosity = profile?.verbosity ?? 'balanced';
+  let customName: string | null = null;
+  let customInstruction: string | null = null;
+
+  if (explicitTone) {
+    const legacy = mapLegacyResponseTone(explicitTone);
+    if (legacy) {
+      tone = legacy.tone;
+      if (legacy.verbosity) verbosity = legacy.verbosity;
+      customName = legacy.customName ?? null;
+      customInstruction = legacy.customInstruction ?? null;
+    } else if (explicitTone !== 'default' && isPersonaTone(explicitTone)) {
+      tone = explicitTone;
+    }
+  }
+
+  // Chat-input verbosity override (independent of persona tone).
+  if (explicit?.verbosity && isVerbosity(explicit.verbosity)) {
+    verbosity = explicit.verbosity;
+  }
+
+  if (tone === 'custom') {
+    // Precedence: transient chat override > legacy seed > stored profile persona.
+    if (!customName) customName = trimToNull(profile?.customToneName ?? null);
+    if (!customInstruction) customInstruction = trimToNull(profile?.customToneInstruction ?? null);
+
+    const transientName = trimToNull(explicit?.customToneName);
+    const transientInstruction = trimToNull(explicit?.customToneInstruction);
+    if (transientName) customName = transientName;
+    if (transientInstruction) customInstruction = transientInstruction;
+
+    // Never produce an empty custom block (requirements 10/11).
+    if (!customInstruction) {
+      tone = 'default';
+      customName = null;
+      customInstruction = null;
+    }
+  } else {
+    // Tone is not custom: never carry a stale custom persona into the block.
+    customName = null;
+    customInstruction = null;
+  }
+
+  return { tone, verbosity, customName, customInstruction };
+}
+
 export async function assemblePersonalMemoryContext(input: {
   surface: MemorySurface;
   userId: number | null;
   query: string;
   explicit?: ExplicitPersonalControls;
 }): Promise<PersonalMemoryContext> {
+  // Resolve with a null profile so the chat-input override still applies even
+  // when personal memory is disabled or unavailable for this surface.
+  const fallbackStyle = resolveResponseStyle(null, input.explicit);
   const empty: PersonalMemoryContext = {
     profile: null,
     relevantInterests: [],
     promptContext: '',
     resolvedTargetLanguage: input.explicit?.targetLanguage ?? 'en',
-    resolvedResponseTone: input.explicit?.responseTone ?? 'default',
+    resolvedTone: fallbackStyle.tone,
+    resolvedVerbosity: fallbackStyle.verbosity,
+    resolvedCustomName: fallbackStyle.customName,
+    resolvedCustomInstruction: fallbackStyle.customInstruction,
   };
   if (input.surface !== 'main-chat' || input.userId === null) return empty;
   const settings = await getMemorySettings();
@@ -235,10 +351,10 @@ export async function assemblePersonalMemoryContext(input: {
 
   // Presence, not value, determines whether the current request is explicit.
   const explicitLanguage = input.explicit && Object.prototype.hasOwnProperty.call(input.explicit, 'targetLanguage');
-  const explicitTone = input.explicit && Object.prototype.hasOwnProperty.call(input.explicit, 'responseTone');
   const storedLanguage = profile.translationMode === 'always' && profile.translationLanguage
     ? profile.translationLanguage
     : profile.preferredLanguage;
+  const style = resolveResponseStyle(profile, input.explicit);
   return {
     profile,
     relevantInterests,
@@ -246,7 +362,10 @@ export async function assemblePersonalMemoryContext(input: {
     resolvedTargetLanguage: explicitLanguage
       ? input.explicit!.targetLanguage!
       : (resolveLanguageCode(storedLanguage) || 'en'),
-    resolvedResponseTone: explicitTone ? input.explicit!.responseTone! : profile.tone,
+    resolvedTone: style.tone,
+    resolvedVerbosity: style.verbosity,
+    resolvedCustomName: style.customName,
+    resolvedCustomInstruction: style.customInstruction,
   };
 }
 
@@ -270,6 +389,7 @@ function parseExtraction(raw: string): ExtractedPersonalMemory | null {
 export async function extractAndPersistPersonalMemory(
   userId: number,
   messages: Array<{ role: string; content: string }>,
+  signals?: PersonalMemorySignals,
 ): Promise<void> {
   const settings = await getMemorySettings();
   if (!settings.enabled || (!settings.automaticPreferenceExtractionEnabled && !settings.automaticInterestExtractionEnabled)) return;
@@ -289,19 +409,39 @@ export async function extractAndPersistPersonalMemory(
     responseFormat: { type: 'json_object' },
   });
   const extracted = parseExtraction(raw);
-  if (!extracted) return;
-  if (settings.automaticPreferenceExtractionEnabled && extracted.preferences) {
-    const preferences = validatePersonalPreferencePatch(extracted.preferences);
-    if (preferences.ok) {
-      if (settings.inferredPreferencesRequireConfirmation) {
-        await upsertPendingPersonalPreferenceCandidates(userId, preferences.value);
-      } else {
-        await updateInferredPersonalPreferences(userId, preferences.value);
+  const chatToneSignal = signals?.responseTone;
+
+  if (settings.automaticPreferenceExtractionEnabled) {
+    if (extracted?.preferences) {
+      const preferences = validatePersonalPreferencePatch(extracted.preferences);
+      if (preferences.ok) {
+        if (settings.inferredPreferencesRequireConfirmation) {
+          await upsertPendingPersonalPreferenceCandidates(userId, preferences.value);
+        } else {
+          await updateInferredPersonalPreferences(userId, preferences.value);
+        }
+      }
+    }
+
+    // Feed the explicit chat-input preset tone as a high-confidence usage
+    // signal so inferred preset tone candidates reflect real usage. Custom
+    // free-text personas are never inferred; `default`/`custom` are excluded
+    // upstream by `resolveChatToneSignal` and re-guarded here. The existing
+    // inferred pipeline refuses to overwrite `user_set` fields.
+    if (chatToneSignal && isPresetPersonaTone(chatToneSignal)) {
+      const validatedTone = validatePersonalPreferencePatch({ tone: chatToneSignal });
+      if (validatedTone.ok) {
+        if (settings.inferredPreferencesRequireConfirmation) {
+          await upsertPendingPersonalPreferenceCandidates(userId, validatedTone.value, 1);
+        } else {
+          await updateInferredPersonalPreferences(userId, validatedTone.value);
+        }
       }
     }
   }
+
   if (settings.automaticInterestExtractionEnabled) {
-    for (const interest of extracted.interests ?? []) {
+    for (const interest of extracted?.interests ?? []) {
       await addPersonalInterest(userId, interest.topic, 'inferred', interest.confidence ?? 0.75, settings.maxInterestsPerUser);
     }
   }

@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-08-28T00:00:00.000Z",
+  "mode": "mock",
+  "summary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0
+  },
+  "cases": [
+    { "id": "style-formal-01", "passed": true },
+    { "id": "style-brief-01", "passed": true },
+    { "id": "style-custom-01", "passed": true },
+    { "id": "style-turn-override-01", "passed": true }
+  ]
+}
