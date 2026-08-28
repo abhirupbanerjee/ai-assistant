@@ -104,9 +104,12 @@ export async function POST(request: NextRequest) {
     console.log('[Chat API] Thread categories:', { threadId, categorySlugs });
 
     // Thread category IDs are server-derived. Never retrieve category memory
-    // from an unverified client activeCategoryId.
+    // from an unverified client activeCategoryId. Fall back to the thread's
+    // first category when the client did not send one.
     const categoryIds = thread.categories?.map(c => c.id) || [];
-    const verifiedCategoryId = activeCategoryId && categoryIds.includes(activeCategoryId) ? activeCategoryId : null;
+    const verifiedCategoryId = activeCategoryId && categoryIds.includes(activeCategoryId)
+      ? activeCategoryId
+      : (categoryIds[0] ?? null);
 
     const personalMemory = await assemblePersonalMemoryContext({
       surface: 'main-chat',

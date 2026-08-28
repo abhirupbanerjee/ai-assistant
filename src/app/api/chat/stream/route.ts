@@ -220,14 +220,17 @@ export async function POST(request: NextRequest) {
         const responseTone = personalMemory.resolvedResponseTone;
         // Category scope is derived only from the server-verified, owned thread.
         // The client-provided activeCategoryId is never sufficient for memory access.
+        // When the client did not send an activeCategoryId, fall back to the thread's
+        // first category so retrieval still runs for existing category threads.
         const verifiedThreadCategory = activeCategoryId
           ? thread.categories?.find((category) => category.id === activeCategoryId)
           : undefined;
-        const categoryMemory = verifiedThreadCategory && dbUser
+        const memoryCategoryId = verifiedThreadCategory?.id ?? thread.categories?.[0]?.id ?? null;
+        const categoryMemory = dbUser && memoryCategoryId !== null
           ? await retrieveCategoryMemory({
               userId: dbUser.id,
               role: dbUser.role,
-              categoryId: verifiedThreadCategory.id,
+              categoryId: memoryCategoryId,
               query: message,
             })
           : { items: [], promptContext: '', diagnostics: { source: 'category' as const, ids: [], tokens: 0, strategy: 'disabled' as const } };
