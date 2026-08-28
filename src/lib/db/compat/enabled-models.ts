@@ -519,7 +519,8 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
   const enabled = input.enabled !== false;
   const caps = buildCapabilitiesJson(input);
 
-  await transaction(async (trx) => {
+  try {
+    await transaction(async (trx) => {
     // 1. Legacy write (always — keeps flag-off path working)
     await trx
       .insertInto('enabled_models')
@@ -585,25 +586,42 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
       `.execute(trx);
     }
 
-    await sql`
-      INSERT INTO organization_deployment (catalog_id, org_id, capability_id, enabled, is_default_for_capability, sort_order, created_at, updated_at)
-      VALUES (
-        ${input.id},
-        NULL,
-        'llm',
-        ${enabled},
-        ${isDefault},
-        ${sortOrder},
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT (catalog_id, org_id, capability_id) DO UPDATE SET
-        enabled = EXCLUDED.enabled,
-        is_default_for_capability = EXCLUDED.is_default_for_capability,
-        sort_order = EXCLUDED.sort_order,
-        updated_at = NOW()
-    `.execute(trx);
-  });
+    const depResult = await trx
+      .updateTable('organization_deployment')
+      .set({
+        enabled,
+        is_default_for_capability: isDefault,
+        sort_order: sortOrder,
+        updated_at: new Date().toISOString(),
+      })
+      .where('org_id', 'is', null)
+      .where('capability_id', '=', 'llm')
+      .where('catalog_id', '=', input.id)
+      .executeTakeFirst();
+    if (Number(depResult.numUpdatedRows ?? 0) === 0) {
+      await trx
+        .insertInto('organization_deployment')
+        .values({
+          org_id: null,
+          catalog_id: input.id,
+          capability_id: 'llm',
+          enabled,
+          is_default_for_capability: isDefault,
+          sort_order: sortOrder,
+        })
+        .execute();
+    }
+    });
+  } catch (error) {
+    console.error('[createEnabledModel] FAILED', {
+      id: input.id,
+      providerId: input.providerId,
+      message: error instanceof Error ? error.message : String(error),
+      code: (error as { code?: string }).code,
+      detail: (error as { detail?: string }).detail,
+    });
+    throw error;
+  }
 
   // Invalidate quality score cache so next auto-selection uses fresh data
   import('@/lib/model-quality').then(m => m.invalidateQualityCache()).catch(() => {});
@@ -742,7 +760,8 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
 
   const isDefault = input.isDefault ?? false;
 
-  await transaction(async (trx) => {
+  try {
+    await transaction(async (trx) => {
     // 1. Legacy update (always)
     if (isDefault) {
       await trx
@@ -812,21 +831,34 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
       // removes the organization_deployment row). A plain UPDATE would
       // silently affect 0 rows, so we use an UPSERT to re-create it.
       if (input.enabled === true) {
-        await sql`
-          INSERT INTO organization_deployment (catalog_id, org_id, capability_id, enabled, is_default_for_capability, sort_order, created_at, updated_at)
-          VALUES (
-            ${id}, NULL, 'llm',
-            ${odUpdate.enabled ?? existing.enabled ?? true},
-            ${odUpdate.is_default_for_capability ?? existing.isDefault ?? false},
-            ${odUpdate.sort_order ?? existing.sortOrder ?? 9900},
-            NOW(), NOW()
-          )
-          ON CONFLICT (catalog_id, org_id, capability_id) DO UPDATE SET
-            enabled = EXCLUDED.enabled,
-            is_default_for_capability = EXCLUDED.is_default_for_capability,
-            sort_order = EXCLUDED.sort_order,
-            updated_at = NOW()
-        `.execute(trx);
+        // The deployment row may not exist (e.g. it was deleted by
+        // deleteEnabledModel). Try UPDATE first; if 0 rows affected, insert.
+        const depResult = await trx
+          .updateTable('organization_deployment')
+          .set({
+            ...odUpdate,
+            updated_at: new Date().toISOString(),
+          })
+          .where('org_id', 'is', null)
+          .where('capability_id', '=', 'llm')
+          .where('catalog_id', '=', id)
+          .executeTakeFirst();
+        if (Number(depResult.numUpdatedRows ?? 0) === 0) {
+          await trx
+            .insertInto('organization_deployment')
+            .values({
+              org_id: null,
+              catalog_id: id,
+              capability_id: 'llm',
+              enabled: (odUpdate.enabled as boolean | undefined) ?? existing.enabled ?? true,
+              is_default_for_capability:
+                (odUpdate.is_default_for_capability as boolean | undefined) ??
+                existing.isDefault ??
+                false,
+              sort_order: (odUpdate.sort_order as number | undefined) ?? existing.sortOrder ?? 9900,
+            })
+            .execute();
+        }
       } else {
         await trx
           .updateTable('organization_deployment')
@@ -837,7 +869,17 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
           .execute();
       }
     }
-  });
+    });
+  } catch (error) {
+    console.error('[updateEnabledModel] FAILED', {
+      id,
+      input,
+      message: error instanceof Error ? error.message : String(error),
+      code: (error as { code?: string }).code,
+      detail: (error as { detail?: string }).detail,
+    });
+    throw error;
+  }
 
   // Invalidate quality score cache when model enabled/disabled status changes
   if (input.enabled !== undefined) {
