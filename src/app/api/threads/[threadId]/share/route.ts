@@ -1,22 +1,23 @@
 /**
  * Thread Share API
- * POST - Create a new share
- * GET - List shares for a thread
+ *
+ * POST - Create a direct, recipient-owned copy of a thread (organization-scoped).
+ * GET  - List legacy public-link shares and direct-share history for a thread.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, getThreadById, userOwnsThread } from '@/lib/db/compat';
 import {
-  createShare,
-  getSharesForThread,
-  canRoleShare,
-  isSendEmailAvailable,
-  getShareThreadConfig,
-} from '@/lib/tools/share-thread';
-import { sendShareNotificationEmail } from '@/lib/tools/send-email';
+  getUserByEmail,
+  getThreadById,
+  userOwnsThread,
+  evaluateDirectThreadShareEligibility,
+  createDirectShareCopy,
+  getDirectSharesForThread,
+} from '@/lib/db/compat';
+import { canRoleShare } from '@/lib/tools/share-thread';
 import { isToolEnabled } from '@/lib/tools';
-import type { ApiError, CreateShareRequest, ThreadShare } from '@/types';
+import type { ApiError } from '@/types';
 
 interface RouteParams {
   params: Promise<{ threadId: string }>;
@@ -24,7 +25,7 @@ interface RouteParams {
 
 /**
  * GET /api/threads/[threadId]/share
- * List all shares for a thread (owner only)
+ * List all shares for a thread (owner only), plus direct-share history.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -38,7 +39,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { threadId } = await params;
 
-    // Check if share_thread tool is enabled
     if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is disabled', code: 'NOT_CONFIGURED' },
@@ -46,7 +46,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Get user from database
     const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
@@ -55,7 +54,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Check thread exists
     const thread = await getThreadById(threadId);
     if (!thread) {
       return NextResponse.json<ApiError>(
@@ -64,7 +62,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only owner can view shares (admin/super_admin can also view)
     if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
@@ -72,25 +69,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const shares = await getSharesForThread(threadId);
-    const { config } = await getShareThreadConfig();
-
-    // Build share URLs
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    const sharesWithUrls = shares.map((share) => ({
-      ...share,
-      shareUrl: `${baseUrl}/shared/${share.shareToken}`,
-    }));
+    const directShares = await getDirectSharesForThread(threadId);
 
     return NextResponse.json({
-      shares: sharesWithUrls,
+      directShares,
       canShare: await canRoleShare(dbUser.role),
-      sendEmailAvailable: await isSendEmailAvailable(),
-      config: {
-        defaultExpiryDays: config.defaultExpiryDays,
-        allowDownloadsByDefault: config.allowDownloadsByDefault,
-        maxSharesPerThread: config.maxSharesPerThread,
-      },
     });
   } catch (error) {
     console.error('Get shares error:', error);
@@ -103,7 +86,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 /**
  * POST /api/threads/[threadId]/share
- * Create a new share
+ *
+ * Create a direct share: the recipient receives their own fully independent copy
+ * of the thread (messages, attachments, artifacts, and latest summary). The copy
+ * is created only after the recipient is proven eligible.
+ *
+ * Body: { recipientEmail: string }
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
@@ -117,7 +105,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { threadId } = await params;
 
-    // Check if share_thread tool is enabled
     if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is disabled', code: 'NOT_CONFIGURED' },
@@ -125,7 +112,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Get user from database
     const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
@@ -134,15 +120,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Check if user's role can share
-    if (!canRoleShare(dbUser.role)) {
+    // Role gate — awaited so the async check is actually enforced.
+    if (!(await canRoleShare(dbUser.role))) {
       return NextResponse.json<ApiError>(
         { error: 'Your role is not permitted to share threads', code: 'AUTH_REQUIRED' },
         { status: 403 }
       );
     }
 
-    // Check thread exists
     const thread = await getThreadById(threadId);
     if (!thread) {
       return NextResponse.json<ApiError>(
@@ -151,7 +136,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only owner can share (admin/super_admin can also share)
     if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
@@ -159,76 +143,80 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Parse request body
-    const body = (await request.json()) as CreateShareRequest;
-    const { allowDownload, expiresInDays, sendEmail, recipientEmail } = body;
+    let body: { recipientEmail?: string };
+    try {
+      body = (await request.json()) as { recipientEmail?: string };
+    } catch {
+      body = {};
+    }
 
-    // Create share
-    const result = await createShare({
-      threadId,
-      createdBy: dbUser.id,
-      allowDownload,
-      expiresInDays,
-    });
-
-    if (!result.success || !result.share) {
+    const recipientEmail = typeof body.recipientEmail === 'string' ? body.recipientEmail.trim() : '';
+    if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
       return NextResponse.json<ApiError>(
-        { error: result.error || 'Failed to create share', code: 'SERVICE_ERROR' },
+        { error: 'A valid recipient email is required', code: 'VALIDATION_ERROR' },
         { status: 400 }
       );
     }
 
-    const share = result.share;
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    const shareUrl = `${baseUrl}/shared/${share.shareToken}`;
-
-    // Send email notification if requested
-    let emailSent = false;
-    let emailError: string | undefined;
-
-    const sendEmailAvailable = await isSendEmailAvailable();
-    console.log('[Share] Email notification request:', {
-      sendEmail,
+    // Server-side eligibility (shareability pre-check + recipient eligibility).
+    const eligibility = await evaluateDirectThreadShareEligibility({
+      sourceThreadId: threadId,
+      sharedByUserId: dbUser.id,
       recipientEmail,
-      sendEmailAvailable,
     });
 
-    if (sendEmail && recipientEmail && sendEmailAvailable) {
-      console.log('[Share] Sending email notification to:', recipientEmail);
-      const emailResult = await sendShareNotificationEmail({
-        recipientEmail,
-        sharedByName: dbUser.name || user.name || user.email,
-        threadTitle: thread.title || 'Untitled conversation',
-        shareUrl,
-        expiresAt: share.expiresAt,
-        allowDownload: share.allowDownload,
-      });
-
-      emailSent = emailResult.success;
-      if (!emailResult.success) {
-        emailError = emailResult.error;
-        console.error('[Share] Email notification failed:', emailError);
-      } else {
-        console.log('[Share] Email notification sent successfully');
-      }
-    } else if (sendEmail && recipientEmail && !sendEmailAvailable) {
-      console.log('[Share] Email requested but send_email tool is not available');
-      emailError = 'Email notifications are not configured';
+    if (!eligibility.ok) {
+      // Source-thread shareability failures are safe to reveal to the owner;
+      // recipient eligibility failures are generic for privacy.
+      return NextResponse.json<ApiError>(
+        { error: eligibility.message, code: eligibility.code },
+        { status: 422 }
+      );
     }
 
-    return NextResponse.json({
-      success: true,
-      share: {
-        ...share,
-        shareUrl,
-      },
-      emailSent,
-      emailError,
+    // Idempotency: return the existing copy rather than silently duplicating.
+    const existing = (await getDirectSharesForThread(threadId)).find(
+      (s) => s.sharedWithUserId === eligibility.recipient.id
+    );
+    if (existing) {
+      return NextResponse.json({
+        share: {
+          id: existing.id,
+          recipientThreadId: existing.recipientThreadId,
+          recipientEmail,
+          status: 'active',
+          sharedAt: existing.createdAt,
+        },
+      });
+    }
+
+    const { recipientThreadId, shareId } = await createDirectShareCopy({
+      sourceThreadId: threadId,
+      sharedByUserId: dbUser.id,
+      sharedByName: dbUser.name || user.name || user.email,
+      recipientUserId: eligibility.recipient.id,
+      recipientEmail: eligibility.recipient.email,
+      organizationId: eligibility.organizationId,
+      categoryIds: eligibility.categoryIds,
+      selectedModel: eligibility.selectedModel,
     });
+
+    return NextResponse.json(
+      {
+        share: {
+          id: shareId,
+          recipientThreadId,
+          recipientEmail,
+          status: 'active',
+          sharedAt: new Date().toISOString(),
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
-    console.error('Create share error:', error);
+    console.error('Create direct share error:', error);
     return NextResponse.json<ApiError>(
-      { error: 'Failed to create share', code: 'SERVICE_ERROR' },
+      { error: 'Failed to share thread', code: 'SERVICE_ERROR' },
       { status: 500 }
     );
   }

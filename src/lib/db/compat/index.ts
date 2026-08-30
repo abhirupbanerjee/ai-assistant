@@ -399,6 +399,25 @@ export {
   getSharingStats,
 } from './sharing';
 
+// ============ Direct Thread Sharing (recipient-owned copy) ============
+export {
+  type ShareabilityErrorCode,
+  type ShareabilityFailure,
+  type ShareabilitySuccess,
+  type DirectShareEligibilityResult,
+  type DirectShareRecord,
+  type CreateDirectShareCopyInput,
+  getThreadOrganizationId,
+  getThreadCategoriesWithOrg,
+  getUserActiveOrganizationIds,
+  userHasCategoryAccess,
+  isModelEntitledForOrg,
+  evaluateDirectThreadShareEligibility,
+  createDirectShareCopy,
+  getDirectSharesForThread,
+  getDirectSharesForRecipient,
+} from './direct-share';
+
 // ============ Compliance ============
 export {
   type ComplianceStats,

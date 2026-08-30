@@ -159,6 +159,13 @@ export interface ThreadsTable {
   is_pinned: Generated<number>;
   is_summarized: Generated<number>;
   total_tokens: Generated<number>;
+  /** Tenant org for category-scoped direct sharing. Nullable until backfilled. */
+  organization_id: number | null;
+  /** Display provenance: 'owned' | 'shared_copy'. */
+  thread_kind: Generated<string>;
+  /** Sharer user id for the "Shared by …" badge (display only). */
+  shared_by_user_id: number | null;
+  shared_at: string | null;
 }
 
 export type Thread = Selectable<ThreadsTable>;
@@ -713,6 +720,19 @@ export interface ShareAccessLogTable {
   resource_type: string | null;
   resource_id: string | null;
   accessed_at: Generated<string>;
+}
+
+// ============ Direct Thread Shares (immutable audit) ============
+
+export interface ThreadUserSharesTable {
+  id: string;
+  source_thread_id: string;
+  recipient_thread_id: string;
+  shared_by_user_id: number;
+  shared_with_user_id: number;
+  organization_id: number | null;
+  category_ids_snapshot: unknown | null;
+  created_at: Generated<string>;
 }
 
 // ============ Workspaces ============
@@ -1418,6 +1438,7 @@ export interface DB {
   rag_test_queries: RagTestQueriesTable;
   rag_test_results: RagTestResultsTable;
   thread_shares: ThreadSharesTable;
+  thread_user_shares: ThreadUserSharesTable;
   share_access_log: ShareAccessLogTable;
   workspaces: WorkspacesTable;
   workspace_categories: WorkspaceCategoriesTable;

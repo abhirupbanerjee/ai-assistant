@@ -211,6 +211,7 @@ export async function getThread(
     categories,
     messages,
     uploads,
+    threadKind: threadDetails.thread_kind || 'owned',
   };
 }
 
@@ -241,6 +242,7 @@ export async function listThreads(userId: string, limit = 50, offset = 0): Promi
     isSummarized: Boolean(t.is_summarized),
     totalTokens: t.total_tokens || 0,
     isPinned: Boolean(t.is_pinned),
+    threadKind: t.thread_kind || 'owned',
   })));
 }
 

@@ -174,6 +174,10 @@ CREATE TABLE IF NOT EXISTS threads (
   is_pinned INTEGER DEFAULT 0,
   is_summarized INTEGER DEFAULT 0,
   total_tokens INTEGER DEFAULT 0,
+  organization_id INTEGER REFERENCES organizations(id),
+  thread_kind TEXT NOT NULL DEFAULT 'owned',
+  shared_by_user_id INTEGER REFERENCES users(id),
+  shared_at TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -181,6 +185,21 @@ CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);
+
+-- Direct thread sharing audit record (immutable, informational only).
+CREATE TABLE IF NOT EXISTS thread_user_shares (
+  id TEXT PRIMARY KEY,
+  source_thread_id TEXT NOT NULL,
+  recipient_thread_id TEXT NOT NULL UNIQUE,
+  shared_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  shared_with_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  organization_id INTEGER REFERENCES organizations(id),
+  category_ids_snapshot JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_thread_user_shares_recipient ON thread_user_shares(shared_with_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_thread_user_shares_source ON thread_user_shares(source_thread_id, shared_by_user_id);
 
 -- Thread category selection (many-to-many)
 CREATE TABLE IF NOT EXISTS thread_categories (

@@ -77,6 +77,7 @@ export interface Thread {
   isSummarized?: boolean;
   totalTokens?: number;
   isPinned?: boolean;
+  threadKind?: string;
 }
 
 export interface ThreadCategory {
@@ -406,7 +407,12 @@ export type ErrorCode =
   | 'NO_MODELS_AVAILABLE'
   | 'ALL_MODELS_FAILED'
   | 'CAPABILITY_UNAVAILABLE'
-  | 'ORG_DEPLOY_NOT_SUPPORTED';
+  | 'ORG_DEPLOY_NOT_SUPPORTED'
+  // Direct thread sharing
+  | 'THREAD_NOT_ORG_SCOPED'
+  | 'THREAD_NOT_CATEGORIZED'
+  | 'THREAD_CATEGORY_ORG_MISMATCH'
+  | 'RECIPIENT_NOT_ELIGIBLE';
 
 // ============ Storage Types ============
 

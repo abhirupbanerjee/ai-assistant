@@ -20,6 +20,11 @@ export interface DbThread {
   is_summarized: number;
   total_tokens: number;
   is_pinned: number;
+  /** Display provenance: 'owned' | 'shared_copy'. Optional for legacy rows. */
+  thread_kind?: string;
+  shared_by_user_id?: number | null;
+  shared_at?: string | null;
+  organization_id?: number | null;
 }
 
 export interface DbMessage {

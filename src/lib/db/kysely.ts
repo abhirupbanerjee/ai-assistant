@@ -1814,6 +1814,46 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_organization_memberships_user ON organization_memberships(user_id)`.execute(database);
   console.log('[Kysely] Ensured organization_memberships table exists (Phase A)');
 
+  // Direct thread sharing — organization scope on threads + immutable audit table.
+  // Additive: existing threads stay shareable once their organization_id is
+  // backfilled from their categories (see scripts/backfill-org-tenancy.ts).
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`.execute(database);
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS thread_kind TEXT NOT NULL DEFAULT 'owned'`.execute(database);
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS shared_by_user_id INTEGER REFERENCES users(id)`.execute(database);
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ`.execute(database);
+  // Backfill threads.organization_id from their categories when every category
+  // shares a single non-null organization. Uncategorized and multi-org threads
+  // remain NULL (non-shareable), which is the intended policy.
+  await sql`
+    UPDATE threads t
+    SET organization_id = (
+      SELECT c.organization_id
+      FROM thread_categories tc
+      JOIN categories c ON c.id = tc.category_id
+      WHERE tc.thread_id = t.id
+      GROUP BY c.organization_id
+      HAVING COUNT(DISTINCT c.organization_id) = 1
+      LIMIT 1
+    )
+    WHERE t.organization_id IS NULL
+  `.execute(database);
+  console.log('[Kysely] Backfilled threads.organization_id from categories');
+  await sql`
+    CREATE TABLE IF NOT EXISTS thread_user_shares (
+      id                   TEXT PRIMARY KEY,
+      source_thread_id     TEXT NOT NULL,
+      recipient_thread_id  TEXT NOT NULL UNIQUE,
+      shared_by_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      shared_with_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      organization_id      INTEGER REFERENCES organizations(id),
+      category_ids_snapshot JSONB,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_thread_user_shares_recipient ON thread_user_shares(shared_with_user_id, created_at DESC)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_thread_user_shares_source ON thread_user_shares(source_thread_id, shared_by_user_id)`.execute(database);
+  console.log('[Kysely] Ensured direct thread sharing columns + thread_user_shares table exist');
+
   // Server-side provider capability registry (Decision 4) — single source of truth.
   await sql`
     CREATE TABLE IF NOT EXISTS providers (

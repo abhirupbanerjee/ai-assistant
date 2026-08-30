@@ -21,7 +21,7 @@ import {
   validateShareAccess,
 } from '@/lib/db/compat';
 import type { ToolDefinition, ValidationResult } from '../tools';
-import { numInRange } from '../tools';
+import { numInRange } from './validation';
 import type { ShareThreadToolConfig, ThreadShare } from '@/types';
 
 // ============ Tool Configuration ============

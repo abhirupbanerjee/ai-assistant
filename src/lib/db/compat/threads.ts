@@ -57,11 +57,33 @@ export async function createThread(
   userId: number,
   title: string = 'New Conversation',
   categoryIds: number[] = [],
-  selectedModel: string | null = null
+  selectedModel: string | null = null,
+  organizationId: number | null = null
 ): Promise<DbThread> {
   const threadId = uuidv4();
 
   return transaction(async (trx) => {
+    // Derive the organization from the thread's categories when not explicit.
+    // A thread spanning multiple organizations (or uncategorized) stays NULL.
+    let resolvedOrgId = organizationId ?? null;
+    if (resolvedOrgId === null && categoryIds.length > 0) {
+      const categoryOrgs = await trx
+        .selectFrom('categories')
+        .select('organization_id')
+        .where('id', 'in', categoryIds)
+        .execute();
+      const distinctOrgs = [
+        ...new Set(
+          categoryOrgs
+            .map((r) => r.organization_id)
+            .filter((v): v is number => v !== null)
+        ),
+      ];
+      if (distinctOrgs.length === 1) {
+        resolvedOrgId = distinctOrgs[0];
+      }
+    }
+
     await trx
       .insertInto('threads')
       .values({
@@ -69,6 +91,7 @@ export async function createThread(
         user_id: userId,
         title,
         selected_model: selectedModel,
+        organization_id: resolvedOrgId,
       })
       .execute();
 
@@ -93,7 +116,7 @@ export async function getThreadById(threadId: string): Promise<DbThread | undefi
   const db = await getDb();
   return db
     .selectFrom('threads')
-    .select(['id', 'user_id', 'title', 'selected_model', 'created_at', 'updated_at', 'is_summarized', 'total_tokens', 'is_pinned'])
+    .select(['id', 'user_id', 'title', 'selected_model', 'created_at', 'updated_at', 'is_summarized', 'total_tokens', 'is_pinned', 'thread_kind', 'shared_by_user_id', 'shared_at', 'organization_id'])
     .where('id', '=', threadId)
     .executeTakeFirst() as Promise<DbThread | undefined>;
 }
@@ -140,7 +163,7 @@ export async function getThreadsForUser(
   const db = await getDb();
   const threads = await db
     .selectFrom('threads')
-    .select(['id', 'user_id', 'title', 'selected_model', 'created_at', 'updated_at', 'is_summarized', 'total_tokens', 'is_pinned'])
+    .select(['id', 'user_id', 'title', 'selected_model', 'created_at', 'updated_at', 'is_summarized', 'total_tokens', 'is_pinned', 'thread_kind', 'shared_by_user_id', 'shared_at', 'organization_id'])
     .where('user_id', '=', userId)
     .orderBy('is_pinned', 'desc')
     .orderBy('updated_at', 'desc')

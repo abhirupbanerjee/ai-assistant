@@ -151,6 +151,25 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Added selected_model column to threads');
   }
 
+  // Direct thread sharing: organization scope + display provenance on threads.
+  // SQLite parity only — the feature executes on PostgreSQL (see kysely.ts).
+  if (!threadColumnNames.includes('organization_id')) {
+    database.exec('ALTER TABLE threads ADD COLUMN organization_id INTEGER');
+    console.log('[DB Migration] Added organization_id column to threads');
+  }
+  if (!threadColumnNames.includes('thread_kind')) {
+    database.exec("ALTER TABLE threads ADD COLUMN thread_kind TEXT NOT NULL DEFAULT 'owned'");
+    console.log('[DB Migration] Added thread_kind column to threads');
+  }
+  if (!threadColumnNames.includes('shared_by_user_id')) {
+    database.exec('ALTER TABLE threads ADD COLUMN shared_by_user_id INTEGER REFERENCES users(id)');
+    console.log('[DB Migration] Added shared_by_user_id column to threads');
+  }
+  if (!threadColumnNames.includes('shared_at')) {
+    database.exec('ALTER TABLE threads ADD COLUMN shared_at DATETIME');
+    console.log('[DB Migration] Added shared_at column to threads');
+  }
+
   // Check and add token_count column to messages
   const messagesColumns = database.pragma('table_info(messages)') as { name: string }[];
   const messageColumnNames = messagesColumns.map((c) => c.name);
@@ -1022,6 +1041,30 @@ function runMigrations(database: Database.Database): void {
 
       CREATE INDEX IF NOT EXISTS idx_share_access_log_share ON share_access_log(share_id);
       CREATE INDEX IF NOT EXISTS idx_share_access_log_accessed ON share_access_log(accessed_at DESC);
+    `);
+  }
+
+  // Migration: Create thread_user_shares audit table for direct thread sharing.
+  const threadUserSharesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_user_shares'"
+  ).get();
+
+  if (!threadUserSharesTableExists) {
+    database.exec(`
+      -- Direct thread sharing audit record (immutable, informational only).
+      CREATE TABLE IF NOT EXISTS thread_user_shares (
+        id TEXT PRIMARY KEY,
+        source_thread_id TEXT NOT NULL,
+        recipient_thread_id TEXT NOT NULL UNIQUE,
+        shared_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        shared_with_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        organization_id INTEGER,
+        category_ids_snapshot TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_thread_user_shares_recipient ON thread_user_shares(shared_with_user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_thread_user_shares_source ON thread_user_shares(source_thread_id, shared_by_user_id);
     `);
   }
 

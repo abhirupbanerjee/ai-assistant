@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Settings, LogOut, User, BookOpen, Star,
+  Plus, MessageSquare, Trash2, Settings, LogOut, User, Users, BookOpen, Star,
   PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X, FolderOpen,
   HelpCircle
 } from 'lucide-react';
@@ -600,6 +600,12 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
                           <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
                             <BookOpen size={10} />
                             <span>Summarized</span>
+                          </span>
+                        )}
+                        {thread.threadKind === 'shared_copy' && (
+                          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-violet-50 text-violet-600 rounded text-[9px] font-medium" title="This is your independent copy of a shared thread">
+                            <Users size={10} />
+                            <span>Shared</span>
                           </span>
                         )}
                       </div>
