@@ -19,6 +19,7 @@ import ZipViewer from './viewers/ZipViewer';
 import SkeletonArtifact from './SkeletonArtifact';
 import CommentSidebar from './CommentSidebar';
 import CommentInputBox from './CommentInputBox';
+import MobileArtifactComments from '@/components/mobile/MobileArtifactComments';
 import { useDriveUpload } from '@/hooks/useDriveUpload';
 
 interface ArtifactCanvasProps {
@@ -174,10 +175,20 @@ export default function ArtifactCanvas({
     useArtifactComments(artifact);
 
   const isMobile = useIsMobile();
+  const [mobileScreen, setMobileScreen] = useState<'document' | 'comments'>('document');
   const [commentInputOpen, setCommentInputOpen] = useState(false);
   const [commentInputPosition, setCommentInputPosition] = useState<{ x: number; y: number } | undefined>(undefined);
   const [flipCommentInput, setFlipCommentInput] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(isMobile);
+
+  // Sibling navigation replaces the displayed artifact without remounting this
+  // canvas. Always return mobile users to the reader so a comments page from
+  // the prior artifact cannot be shown for the newly selected artifact.
+  useEffect(() => {
+    setMobileScreen('document');
+    setCommentInputOpen(false);
+    setPendingSelection(null);
+  }, [artifact.artifactId]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isTextSelectable = TEXT_SELECTABLE_TYPES.includes(artifact.artifactType);
@@ -255,9 +266,9 @@ export default function ArtifactCanvas({
       setPendingSelection(null);
       clearSelection();
       setCommentInputOpen(false);
-      setSidebarCollapsed(false);
+      if (!isMobile) setSidebarCollapsed(false);
     },
-    [pendingSelection, selection, addTextComment, clearSelection]
+    [pendingSelection, selection, addTextComment, clearSelection, isMobile]
   );
 
 
@@ -265,9 +276,9 @@ export default function ArtifactCanvas({
     (commentText: string) => {
       addImageComment({ commentText });
       setCommentInputOpen(false);
-      setSidebarCollapsed(false);
+      if (!isMobile) setSidebarCollapsed(false);
     },
-    [addImageComment]
+    [addImageComment, isMobile]
   );
 
   const handleCancelComment = useCallback(() => {
@@ -282,64 +293,89 @@ export default function ArtifactCanvas({
     onClose();
   }, [comments, onSendComments, clearComments, onClose]);
 
-  return (
-    <div className="flex flex-col h-full bg-white">
-      <CanvasToolbar
-        title={artifact.title}
-        downloadUrl={artifact.downloadUrl || undefined}
-        onClose={onClose}
+  // A text selection cannot be captured from Drive's iframe previews, so offer
+  // an explicit mobile comment action for spreadsheet and presentation files.
+  const needsGeneralCommentAction = isMobile && ['xlsx', 'pptx'].includes(artifact.artifactType);
+
+  const reader = (
+    <div ref={containerRef} className="flex-1 min-w-0 min-h-0 relative">
+      <ArtifactViewer
         artifact={artifact}
-        hasPrev={hasPrev}
-        hasNext={hasNext}
-        indexText={indexText}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        commentCount={commentCount}
-        onAddImageComment={artifact.artifactType === 'image' ? handleAddImageComment : undefined}
-        showImageCommentButton={artifact.artifactType === 'image'}
+        threadId={threadId}
+        containerRef={containerRef}
+        onAddImageComment={handleAddImageComment}
       />
-      <div className="flex-1 min-h-0 overflow-hidden flex">
-        <div ref={containerRef} className="flex-1 min-w-0 min-h-0 relative">
-          <ArtifactViewer
-            artifact={artifact}
-            threadId={threadId}
-            containerRef={containerRef}
-            onAddImageComment={handleAddImageComment}
-          />
 
-          {showButton && selection && (isTextSelectable || isDiagram) && !commentInputOpen && (
-            <button
-              onClick={handleAddTextCommentClick}
-              className="absolute z-40 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-full shadow-lg transition-colors"
-              style={{
-                left: selection.position.x,
-                top: selection.position.y,
-                transform: 'translate(-50%, -100%)',
-              }}
-            >
-              Add comment
-            </button>
-          )}
+      {showButton && selection && (isTextSelectable || isDiagram) && !commentInputOpen && (
+        <button
+          onClick={handleAddTextCommentClick}
+          className="absolute z-40 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-full shadow-lg transition-colors"
+          style={{
+            left: selection.position.x,
+            top: selection.position.y,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          Add comment
+        </button>
+      )}
 
-          {commentInputOpen && (
-            <CommentInputBox
-              position={commentInputPosition}
-              flipBelow={commentInputPosition ? flipCommentInput : false}
-              onSave={commentInputPosition ? handleSaveTextComment : handleSaveImageComment}
-              onCancel={handleCancelComment}
-              placeholder={commentInputPosition ? 'Comment on selected text…' : 'Comment on image…'}
-            />
-          )}
-        </div>
+      {commentInputOpen && (
+        <CommentInputBox
+          position={commentInputPosition}
+          flipBelow={commentInputPosition ? flipCommentInput : false}
+          onSave={commentInputPosition ? handleSaveTextComment : handleSaveImageComment}
+          onCancel={handleCancelComment}
+          placeholder={commentInputPosition ? 'Comment on selected text…' : 'Add a comment…'}
+          mobile={isMobile}
+        />
+      )}
+    </div>
+  );
 
-        <CommentSidebar
+  return (
+    <div className="flex flex-col h-full min-h-0 bg-white">
+      {isMobile && mobileScreen === 'comments' ? (
+        <MobileArtifactComments
           comments={comments}
           onRemove={removeComment}
+          onBackToDocument={() => setMobileScreen('document')}
           onSendAll={handleSendAll}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(v => !v)}
         />
-      </div>
+      ) : (
+        <>
+          <CanvasToolbar
+            title={artifact.title}
+            downloadUrl={artifact.downloadUrl || undefined}
+            onClose={onClose}
+            artifact={artifact}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
+            indexText={indexText}
+            onPrev={handlePrev}
+            onNext={handleNext}
+            commentCount={commentCount}
+            onOpenComments={isMobile ? () => setMobileScreen('comments') : undefined}
+            showCommentsButton={isMobile}
+            onAddComment={needsGeneralCommentAction ? handleAddImageComment : undefined}
+            showAddCommentButton={needsGeneralCommentAction}
+            onAddImageComment={artifact.artifactType === 'image' ? handleAddImageComment : undefined}
+            showImageCommentButton={artifact.artifactType === 'image'}
+          />
+          <div className="flex-1 min-h-0 overflow-hidden flex">
+            {reader}
+            {!isMobile && (
+              <CommentSidebar
+                comments={comments}
+                onRemove={removeComment}
+                onSendAll={handleSendAll}
+                collapsed={sidebarCollapsed}
+                onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+              />
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

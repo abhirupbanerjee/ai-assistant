@@ -574,6 +574,7 @@ function HomeContent() {
             <MobileArtifactCanvas
               artifact={canvasState.artifact}
               onClose={canvasState.closeCanvas}
+              threadId={artifactsData.threadId}
               siblings={canvasState.siblings}
               onNavigate={canvasState.navigateTo}
               onSendComments={handleSendComments}

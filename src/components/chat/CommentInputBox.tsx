@@ -9,6 +9,8 @@ interface CommentInputBoxProps {
   onSave: (text: string) => void;
   onCancel: () => void;
   placeholder?: string;
+  /** Mobile composition pins the composer above browser chrome and the keyboard. */
+  mobile?: boolean;
 }
 
 export default function CommentInputBox({
@@ -17,6 +19,7 @@ export default function CommentInputBox({
   onSave,
   onCancel,
   placeholder = 'Add a comment…',
+  mobile = false,
 }: CommentInputBoxProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -37,7 +40,9 @@ export default function CommentInputBox({
     }
   };
 
-  const containerClasses = position
+  const containerClasses = mobile
+    ? 'fixed z-50 left-3 right-3'
+    : position
     ? 'absolute z-50 w-72'
     : 'absolute z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-80';
 
@@ -45,7 +50,12 @@ export default function CommentInputBox({
     <div
       className={containerClasses}
       style={
-        position
+        mobile
+          // Fixed controls are already anchored to the visual viewport by
+          // mobile browsers when the software keyboard opens. Adding a manual
+          // visualViewport inset moves the composer a second time.
+          ? { bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }
+          : position
           ? {
               left: position.x,
               top: position.y,

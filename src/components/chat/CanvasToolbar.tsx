@@ -15,6 +15,10 @@ interface CanvasToolbarProps {
   onPrev?: () => void;
   onNext?: () => void;
   commentCount?: number;
+  onOpenComments?: () => void;
+  showCommentsButton?: boolean;
+  onAddComment?: () => void;
+  showAddCommentButton?: boolean;
   onAddImageComment?: () => void;
   showImageCommentButton?: boolean;
 }
@@ -35,6 +39,10 @@ export default function CanvasToolbar({
   onPrev,
   onNext,
   commentCount = 0,
+  onOpenComments,
+  showCommentsButton = false,
+  onAddComment,
+  showAddCommentButton = false,
   onAddImageComment,
   showImageCommentButton = false,
 }: CanvasToolbarProps) {
@@ -130,6 +138,18 @@ export default function CanvasToolbar({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {showAddCommentButton && onAddComment && (
+          <button
+            type="button"
+            onClick={onAddComment}
+            className="flex min-h-11 items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
+            title="Add comment"
+            aria-label="Add comment"
+          >
+            <MessageSquarePlus size={15} />
+            <span className="hidden sm:inline">Comment</span>
+          </button>
+        )}
         {showImageCommentButton && onAddImageComment && (
           <button
             onClick={onAddImageComment}
@@ -142,7 +162,18 @@ export default function CanvasToolbar({
           </button>
         )}
 
-        {commentCount > 0 && (
+        {showCommentsButton && onOpenComments ? (
+          <button
+            type="button"
+            onClick={onOpenComments}
+            className="flex min-h-11 items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1.5 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
+            aria-label={`Open comments, ${commentCount} pending`}
+          >
+            <MessageSquare size={15} />
+            <span className="hidden min-[390px]:inline">Comments</span>
+            <span aria-live="polite">{commentCount}</span>
+          </button>
+        ) : commentCount > 0 && (
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg">
             <MessageSquare size={15} />
             <span>{commentCount}</span>
