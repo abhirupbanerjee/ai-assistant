@@ -129,9 +129,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/readyz || exit 1"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -168,7 +168,7 @@ services:
     container_name: policy-bot-redis
     volumes:
       - ./data/redis:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -258,6 +258,10 @@ services:
       - GITHUB_TIMEOUT_MS=30000
       - CORS_ORIGINS=*
       - LOG_LEVEL=${LOG_LEVEL:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     networks:
       - policy-bot-network
     restart: unless-stopped
@@ -279,6 +283,10 @@ services:
       - NOTION_TIMEOUT_MS=30000
       - CORS_ORIGINS=*
       - LOG_LEVEL=${LOG_LEVEL:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     networks:
       - policy-bot-network
     restart: unless-stopped
@@ -300,6 +308,10 @@ services:
       - SLACK_TIMEOUT_MS=30000
       - CORS_ORIGINS=*
       - LOG_LEVEL=${LOG_LEVEL:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     networks:
       - policy-bot-network
     restart: unless-stopped
