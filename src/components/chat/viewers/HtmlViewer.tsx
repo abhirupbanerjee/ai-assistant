@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import hljs from 'highlight.js';
 import { Columns2, Eye, Code2, Copy, Check } from 'lucide-react';
 import type { ArtifactCanvasItem } from '@/types';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 
 interface HtmlViewerProps {
   artifact: ArtifactCanvasItem;
@@ -44,13 +45,59 @@ const BASE_CSS = `
   img { max-width: 100%; height: auto; }
 `;
 
+const MOBILE_CONTAINMENT_CSS = `
+  @media (max-width: 767px) {
+    html, body { max-width: 100%; overflow-x: hidden; }
+    body { margin: 12px; }
+    img, svg, video, canvas { max-width: 100% !important; height: auto !important; }
+    table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    pre { max-width: 100%; overflow-x: auto; }
+  }
+`;
+
+const OVERFLOW_REPORT_SCRIPT = `
+  <script>
+    (() => {
+      const report = () => {
+        parent.postMessage({
+          type: 'artifact-html-overflow',
+          scrollWidth: document.documentElement.scrollWidth,
+          scrollHeight: document.documentElement.scrollHeight,
+          viewportWidth: window.innerWidth,
+        }, '*');
+      };
+      addEventListener('load', report);
+      if ('ResizeObserver' in window) {
+        new ResizeObserver(report).observe(document.documentElement);
+      }
+    })();
+  </script>
+`;
+
+function injectIntoHead(html: string, content: string): string {
+  if (/<head[\s>]/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1>${content}`);
+  }
+  if (/<html[\s>]/i.test(html)) {
+    return html.replace(/<html([^>]*)>/i, `<html$1><head>${content}</head>`);
+  }
+  return `<!DOCTYPE html><html><head>${content}</head><body>${html}</body></html>`;
+}
+
+function prepareHtmlPreview(html: string): string {
+  const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1">';
+  return injectIntoHead(html, `${viewportMeta}<style>${MOBILE_CONTAINMENT_CSS}</style>${OVERFLOW_REPORT_SCRIPT}`);
+}
+
 export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) {
+  const isMobile = useIsMobile();
   const [rawHtml, setRawHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [copied, setCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
   const localContainerRef = useRef<HTMLDivElement>(null);
+  const previewFrameRef = useRef<HTMLIFrameElement>(null);
   // Prefer the parent-supplied ref (so useTextSelection in ArtifactCanvas can
   // detect selections inside this viewer), falling back to a local ref when
   // rendered standalone. Cast to HTMLDivElement for the wrapping <div> refs.
@@ -81,21 +128,33 @@ export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) 
     }
   }, [rawHtml, viewMode]);
 
-  // Inject base CSS only if the document has no internal styling
+  // Normalize every iframe document for a phone viewport. Base styling is only
+  // needed for unstyled documents; containment protects both styled and plain
+  // artifacts from pushing the preview beyond the reader width.
   const srcDoc = useMemo(() => {
     if (rawHtml === null) return '';
     const hasStyle = /<style[\s>]/i.test(rawHtml) || /<link[^>]+stylesheet/i.test(rawHtml);
-    if (hasStyle) return rawHtml;
-    // Inject a <style> block right after <head> (or prepend if no head)
-    if (/<head[\s>]/i.test(rawHtml)) {
-      return rawHtml.replace(/<head([^>]*)>/i, `<head$1><style>${BASE_CSS}</style>`);
-    }
-    if (/<html[\s>]/i.test(rawHtml)) {
-      return rawHtml.replace(/<html([^>]*)>/i, `<html$1><head><style>${BASE_CSS}</style></head>`);
-    }
-    // No html/head tags — wrap entirely
-    return `<!DOCTYPE html><html><head><style>${BASE_CSS}</style></head><body>${rawHtml}</body></html>`;
+    const normalizedBase = hasStyle ? rawHtml : injectIntoHead(rawHtml, `<style>${BASE_CSS}</style>`);
+    return prepareHtmlPreview(normalizedBase);
   }, [rawHtml]);
+
+  useEffect(() => {
+    if (!isMobile || process.env.NODE_ENV !== 'development') return;
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== previewFrameRef.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
+      const data = event.data as { type?: string; scrollWidth?: number; viewportWidth?: number };
+      if (data.type !== 'artifact-html-overflow' || data.scrollWidth === undefined || data.viewportWidth === undefined) return;
+      if (data.scrollWidth > data.viewportWidth + 1) {
+        console.debug('[ArtifactCanvas][HTML] Preview overflow detected', {
+          artifactId: artifact.artifactId,
+          viewportWidth: data.viewportWidth,
+          contentWidth: data.scrollWidth,
+        });
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [artifact.artifactId, isMobile]);
 
   const handleCopy = async () => {
     if (rawHtml === null) return;
@@ -142,7 +201,7 @@ export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) 
               <button
                 key={tab.id}
                 onClick={() => setViewMode(tab.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                className={`flex min-h-9 items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                   active
                     ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
@@ -150,19 +209,19 @@ export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) 
                 aria-pressed={active}
               >
                 <Icon size={14} />
-                {tab.label}
+                <span className={isMobile ? 'hidden min-[390px]:inline' : undefined}>{tab.label}</span>
               </button>
             );
           })}
         </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+          className="flex min-h-9 items-center gap-1 px-2 py-1 rounded-md text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
           title="Copy HTML source"
           aria-label="Copy HTML source"
         >
           {copied ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
-          {copied ? 'Copied' : 'Copy'}
+          <span className="hidden min-[390px]:inline">{copied ? 'Copied' : 'Copy'}</span>
         </button>
       </div>
 
@@ -171,6 +230,7 @@ export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) 
         <div ref={activeContainerRef} className="flex-1 min-h-0 flex flex-col md:flex-row">
           <div className="w-full md:w-1/2 h-1/2 md:h-full border-b md:border-b-0 md:border-r min-h-0">
             <iframe
+              ref={previewFrameRef}
               title={`${artifact.title} — preview`}
               sandbox="allow-scripts"
               srcDoc={srcDoc}
@@ -193,8 +253,9 @@ export default function HtmlViewer({ artifact, containerRef }: HtmlViewerProps) 
         </div>
       ) : (
         <div ref={activeContainerRef} className="flex-1 min-h-0 w-full">
-          <iframe
-            title={artifact.title}
+            <iframe
+              ref={previewFrameRef}
+              title={artifact.title}
             sandbox="allow-scripts"
             srcDoc={srcDoc}
             className="w-full h-full border-0 bg-white"

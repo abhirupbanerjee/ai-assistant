@@ -273,8 +273,9 @@ body {
 
 .markdown-content table {
   border-collapse: collapse;
-  width: 100%;
-  margin: 1em 0;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
   border: 1px solid #d1d5db;
   border-radius: 0.375em;
   overflow: hidden;
@@ -285,6 +286,14 @@ body {
   border: 1px solid #d1d5db;
   padding: 0.75em;
   text-align: left;
+}
+
+.markdown-content img,
+.markdown-content svg,
+.markdown-content video,
+.markdown-content canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 .markdown-content th {
