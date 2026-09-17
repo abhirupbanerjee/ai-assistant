@@ -191,8 +191,8 @@ export async function createAgent(
     category_id: input.categoryId ?? null,
     model_id: input.modelId ?? null,
     system_prompt: input.systemPrompt ?? '',
-    tool_allowlist: input.toolAllowlist ?? [],
-    config: input.config ?? {},
+    tool_allowlist: JSON.stringify(input.toolAllowlist ?? []),
+    config: JSON.stringify(input.config ?? {}),
     enabled: input.enabled ?? true,
   };
   const row = await db
@@ -217,17 +217,26 @@ export async function updateAgent(
   if (input.categoryId !== undefined) patch.category_id = input.categoryId;
   if (input.modelId !== undefined) patch.model_id = input.modelId;
   if (input.systemPrompt !== undefined) patch.system_prompt = input.systemPrompt;
-  if (input.toolAllowlist !== undefined) patch.tool_allowlist = input.toolAllowlist;
-  if (input.config !== undefined) patch.config = input.config;
+  if (input.toolAllowlist !== undefined) patch.tool_allowlist = JSON.stringify(input.toolAllowlist);
+  if (input.config !== undefined) patch.config = JSON.stringify(input.config);
   if (input.enabled !== undefined) patch.enabled = input.enabled;
 
-  const row = await db
-    .updateTable('agent')
-    .set(patch)
-    .where('id', '=', id)
-    .returningAll()
-    .executeTakeFirst();
-  return row ? mapRowToAgent(row) : null;
+  try {
+    const row = await db
+      .updateTable('agent')
+      .set(patch)
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? mapRowToAgent(row) : null;
+  } catch (err) {
+    console.error('[AgentRegistry] updateAgent DB error:', {
+      id,
+      patch,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 /**

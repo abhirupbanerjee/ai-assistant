@@ -71,6 +71,41 @@ export function isAgentTool(name: string): boolean {
 // ============ Tool-definition generation ============
 
 /**
+ * Select which agents to expose as tools within the `MAX_AGENT_TOOLS` cap.
+ *
+ * Naively slicing `agents.slice(0, cap)` can starve a whole role family when
+ * many same-family templates exist (e.g. `researcher` sorts last and was
+ * dropped once 13 templates exceeded the 12-tool cap). This selection first
+ * guarantees one agent per role family, then back-fills the remaining slots
+ * in registry order so no role (planner/researcher/presenter/critic/executor)
+ * silently disappears from the main chat's tool list.
+ */
+function selectAgentsForTools(agents: AgentRecord[], cap: number): AgentRecord[] {
+  const selected: AgentRecord[] = [];
+  const selectedIds = new Set<string>();
+  const coveredFamilies = new Set<AgentRoleFamily>();
+
+  // Pass 1: guarantee one agent per role family (preserving DB ordering).
+  for (const agent of agents) {
+    if (selected.length >= cap) break;
+    if (coveredFamilies.has(agent.roleFamily)) continue;
+    coveredFamilies.add(agent.roleFamily);
+    selectedIds.add(agent.id);
+    selected.push(agent);
+  }
+
+  // Pass 2: back-fill remaining slots with the rest, in registry order.
+  for (const agent of agents) {
+    if (selected.length >= cap) break;
+    if (selectedIds.has(agent.id)) continue;
+    selectedIds.add(agent.id);
+    selected.push(agent);
+  }
+
+  return selected;
+}
+
+/**
  * Build OpenAI function-tool definitions for enabled registry agents.
  *
  * @param categoryId  When provided, only agents scoped to this category (or
@@ -100,11 +135,20 @@ export async function getAgentToolDefinitions(
     return [];
   }
 
-  const tools: OpenAI.Chat.ChatCompletionFunctionTool[] = [];
-  for (const agent of agents.slice(0, MAX_AGENT_TOOLS)) {
-    tools.push(buildToolDefinition(agent));
-  }
-  return tools;
+  const selected = selectAgentsForTools(agents, MAX_AGENT_TOOLS);
+  const selectedIdSet = new Set(selected.map((a) => a.id));
+  const truncatedIds = agents
+    .filter((a) => !selectedIdSet.has(a.id))
+    .map((a) => a.id);
+  logger.info('[AgentTools] Agent tool list build', {
+    categoryId: categoryId ?? null,
+    total: agents.length,
+    cap: MAX_AGENT_TOOLS,
+    selectedIds: selected.map((a) => a.id),
+    truncatedIds,
+  });
+
+  return selected.map((agent) => buildToolDefinition(agent));
 }
 
 /**
@@ -255,7 +299,7 @@ export async function getAgentToolMetadata(
   } catch {
     return [];
   }
-  return agents.slice(0, MAX_AGENT_TOOLS).map((agent) => ({
+  return selectAgentsForTools(agents, MAX_AGENT_TOOLS).map((agent) => ({
     agent,
     toolName: agentIdToToolName(agent.id),
   }));

@@ -164,7 +164,7 @@ export async function isModelEntitledForOrg(
     .where('mc.capability_id', '=', 'llm')
     .where('mc.status', '=', 'active')
     .where('od.enabled', '=', true)
-    .where((eb) => eb.or([eb('od.org_id', 'is', organizationId), eb('od.org_id', 'is', null)]))
+    .where((eb) => eb.or([eb('od.org_id', '=', organizationId), eb('od.org_id', 'is', null)]))
     .executeTakeFirst();
 
   if (catalogRow) return true;

@@ -123,22 +123,26 @@ export async function createCategory(input: CreateCategoryInput): Promise<DbCate
 
   // Name/slug uniqueness is scoped to the organization so different tenants can
   // each create a category with the same name.
-  const existingName = await db
+  let existingNameQuery = db
     .selectFrom('categories')
     .select('id')
-    .where('name', '=', input.name)
-    .where('organization_id', 'is', organizationId)
-    .executeTakeFirst();
+    .where('name', '=', input.name);
+  existingNameQuery = organizationId === null
+    ? existingNameQuery.where('organization_id', 'is', null)
+    : existingNameQuery.where('organization_id', '=', organizationId);
+  const existingName = await existingNameQuery.executeTakeFirst();
   if (existingName) {
     throw new Error(`Category with name "${input.name}" already exists in this organization`);
   }
 
-  const existingSlug = await db
+  let existingSlugQuery = db
     .selectFrom('categories')
     .select('id')
-    .where('slug', '=', slug)
-    .where('organization_id', 'is', organizationId)
-    .executeTakeFirst();
+    .where('slug', '=', slug);
+  existingSlugQuery = organizationId === null
+    ? existingSlugQuery.where('organization_id', 'is', null)
+    : existingSlugQuery.where('organization_id', '=', organizationId);
+  const existingSlug = await existingSlugQuery.executeTakeFirst();
   if (existingSlug) {
     throw new Error(`Category with slug "${slug}" already exists in this organization`);
   }
@@ -171,12 +175,14 @@ export async function updateCategory(
 
   if (input.name !== undefined && input.name !== current.name) {
     // Name/slug uniqueness is scoped to the organization.
-    const existing = await db
+    let existingQuery = db
       .selectFrom('categories')
       .select('id')
-      .where('name', '=', input.name)
-      .where('organization_id', 'is', orgId)
-      .executeTakeFirst();
+      .where('name', '=', input.name);
+    existingQuery = orgId === null
+      ? existingQuery.where('organization_id', 'is', null)
+      : existingQuery.where('organization_id', '=', orgId);
+    const existing = await existingQuery.executeTakeFirst();
     if (existing && existing.id !== id) {
       throw new Error(`Category with name "${input.name}" already exists in this organization`);
     }
@@ -184,12 +190,14 @@ export async function updateCategory(
     updates.name = input.name;
 
     const newSlug = generateSlug(input.name);
-    const existingSlug = await db
+    let existingSlugQuery = db
       .selectFrom('categories')
       .select('id')
-      .where('slug', '=', newSlug)
-      .where('organization_id', 'is', orgId)
-      .executeTakeFirst();
+      .where('slug', '=', newSlug);
+    existingSlugQuery = orgId === null
+      ? existingSlugQuery.where('organization_id', 'is', null)
+      : existingSlugQuery.where('organization_id', '=', orgId);
+    const existingSlug = await existingSlugQuery.executeTakeFirst();
     if (existingSlug && existingSlug.id !== id) {
       throw new Error(`Category with slug "${newSlug}" already exists in this organization`);
     }
