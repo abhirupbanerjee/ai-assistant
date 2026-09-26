@@ -9,6 +9,7 @@ import { getEnabledModel, getDeployedModelIds } from '../db/compat/enabled-model
 import { isLikelyThinkingCapableModel, isClaudeAdaptiveThinkingModel } from '@/lib/llm-thinking';
 import { generateDisplayName, getProviderFromModelPath } from '../llm-utils';
 import { getMoonshotBaseUrl } from '../moonshot-config';
+import { applyModelMetadataSpecifications, getKnownModelMetadata } from '../model-metadata-compatibility';
 
 // ============ Types ============
 
@@ -19,6 +20,8 @@ export interface DiscoveredModel {
   toolCapable: boolean;
   visionCapable: boolean;
   forcedToolCapable: boolean;
+  parallelToolCapable?: boolean;
+  thinkingCapable?: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number;  // Provider-based default or API value
   isEnabled: boolean;     // Already enabled in AI Assistant
@@ -394,23 +397,31 @@ export function isThinkTagModel(modelId: string): boolean {
 }
 
 function isToolCapable(modelId: string): boolean {
+  const known = getKnownModelMetadata(modelId);
+  if (known) return known.toolCapable;
   // Strip ollama- prefix so "ollama-qwen2.5" matches /^qwen/ patterns
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
 function isVisionCapable(modelId: string): boolean {
+  const known = getKnownModelMetadata(modelId);
+  if (known) return known.visionCapable;
   // Strip ollama- prefix for consistent pattern matching
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return VISION_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
 function isParallelToolCapable(modelId: string): boolean {
+  const known = getKnownModelMetadata(modelId);
+  if (known) return known.parallelToolCapable;
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return PARALLEL_TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
 function isForcedToolCapable(modelId: string): boolean {
+  const known = getKnownModelMetadata(modelId);
+  if (known) return known.forcedToolCapable;
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   // Reasoning / tag models and Ollama generally don't support forced tool choice reliably.
   // EXCEPTION: Kimi K3 and DeepSeek V4 Pro are newer reasoning models that DO support
@@ -439,11 +450,15 @@ function isForcedToolCapable(modelId: string): boolean {
 }
 
 function isThinkingCapable(modelId: string): boolean {
+  const known = getKnownModelMetadata(modelId);
+  if (known) return known.thinkingCapable;
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return THINKING_CAPABLE_PATTERNS.some(pattern => pattern.test(id)) || isLikelyThinkingCapableModel(modelId);
 }
 
 function getContextWindow(modelId: string): number | null {
+  const known = getKnownModelMetadata(modelId);
+  if (known) return known.maxInputTokens;
   // Try exact match first
   if (CONTEXT_WINDOWS[modelId]) {
     return CONTEXT_WINDOWS[modelId];
@@ -564,10 +579,12 @@ async function discoverOpenAIModels(apiKey: string): Promise<DiscoveredModel[]> 
     name: generateDisplayName(m.id),
     provider: 'openai',
     toolCapable: isToolCapable(m.id),
+    parallelToolCapable: isParallelToolCapable(m.id),
+    thinkingCapable: isThinkingCapable(m.id),
     visionCapable: isVisionCapable(m.id),
     forcedToolCapable: isForcedToolCapable(m.id),
     maxInputTokens: getContextWindow(m.id),
-    maxOutputTokens: getDefaultOutputTokens('openai'),
+    maxOutputTokens: getKnownModelMetadata(m.id)?.maxOutputTokens ?? getDefaultOutputTokens('openai'),
     isEnabled: !!(await getEnabledModel(m.id)),
   })));
   return models.sort((a, b) => a.name.localeCompare(b.name));
@@ -760,19 +777,30 @@ async function discoverAnthropicModels(apiKey: string): Promise<DiscoveredModel[
   }
 
   const data = await response.json() as {
-    data: Array<{ id: string; display_name: string; created_at: string; type: string }>;
+    data: Array<{
+      id: string;
+      display_name?: string;
+      max_input_tokens?: number | null;
+      max_tokens?: number | null;
+      capabilities?: {
+        image_input?: { supported?: boolean };
+        thinking?: { supported?: boolean };
+      } | null;
+    }>;
   };
 
   const filtered = data.data.filter(m => isChatModel(m.id));
-  const models = await Promise.all(filtered.map(async m => ({
+  const models = await Promise.all(filtered.map(async m => applyModelMetadataSpecifications(m.id, {
     id: m.id,
     name: generateDisplayName(m.id),
     provider: 'anthropic',
     toolCapable: isToolCapable(m.id),
-    visionCapable: isVisionCapable(m.id),
+    visionCapable: m.capabilities?.image_input?.supported ?? isVisionCapable(m.id),
+    thinkingCapable: m.capabilities?.thinking?.supported ?? isThinkingCapable(m.id),
+    parallelToolCapable: isParallelToolCapable(m.id),
     forcedToolCapable: isForcedToolCapable(m.id),
-    maxInputTokens: getContextWindow(m.id),
-    maxOutputTokens: getDefaultOutputTokens('anthropic'),
+    maxInputTokens: validTokenLimit(m.max_input_tokens) ?? getContextWindow(m.id),
+    maxOutputTokens: validTokenLimit(m.max_tokens) ?? getDefaultOutputTokens('anthropic'),
     isEnabled: !!(await getEnabledModel(m.id)),
   })));
   return models.sort((a, b) => a.name.localeCompare(b.name));
@@ -1191,7 +1219,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       models = models.map(m => ({ ...m, isEnabled: deployedIds.has(m.id) }));
     }
 
-    return { success: true, provider, models };
+    return { success: true, provider, models: models.map(m => applyModelMetadataSpecifications(m.id, m)) };
 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1336,6 +1364,10 @@ export async function discoverAllModels(): Promise<{
 }
 
 // ============ Exported Capability Functions ============
+function validTokenLimit(value: number | null | undefined): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
 // Used by enabled-models.ts to refresh model capabilities
 
 export { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, isForcedToolCapable, getContextWindow };

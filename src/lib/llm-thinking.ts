@@ -1,3 +1,5 @@
+import { getModelCompatibility, normalizeModelId } from './model-compatibility';
+
 export type ThinkingStreamField = 'reasoning_content' | 'thinking' | 'think_tags';
 
 export interface ThinkingRequestProfile {
@@ -7,14 +9,6 @@ export interface ThinkingRequestProfile {
   requestParams: Record<string, unknown>;
   streamFields: ThinkingStreamField[];
   requiresThinkingStatePreservation: boolean;
-}
-
-function normalizeModelId(modelId: string): string {
-  let id = modelId.toLowerCase().trim();
-  id = id.replace(/^(ollama-cloud\/|ollama[-/]|openai\/|anthropic\/|deepseek\/|moonshot\/|mistral\/|gemini\/|google\/)/, '');
-  const lastSlash = id.lastIndexOf('/');
-  if (lastSlash !== -1) id = id.slice(lastSlash + 1);
-  return id.replace(/:.*$/, '');
 }
 
 export function isOpenAIOFamilyModel(modelId: string): boolean {
@@ -58,6 +52,7 @@ export function isTemperatureLockedModel(modelId: string): boolean {
 }
 
 export function isClaudeAdaptiveThinkingModel(modelId: string): boolean {
+  if (getModelCompatibility(modelId)?.reasoningMode === 'adaptive') return true;
   const id = normalizeModelId(modelId);
   return (
     id.startsWith('claude-opus-4-7') ||
@@ -80,6 +75,7 @@ function isClaudeLegacyThinkingModel(modelId: string): boolean {
 }
 
 export function isTemperatureUnsupportedModel(modelId: string): boolean {
+  if (getModelCompatibility(modelId)?.omitSampling) return true;
   const id = normalizeModelId(modelId);
   // OpenAI o-series does not accept temperature at all.
   // Temperature-locked models (kimi-k2, gpt-5, etc.) also reject custom temps.
@@ -103,6 +99,7 @@ export function getEffectiveTemperature(modelId: string, requestedTemperature: n
  * Use this instead of the isTemperatureUnsupportedModel + getEffectiveTemperature pair.
  */
 export function getTemperatureForModel(modelId: string, requestedTemperature: number | undefined): number | undefined {
+  if (getModelCompatibility(modelId)?.omitSampling) return undefined;
   const id = normalizeModelId(modelId);
   if (isOpenAIOFamilyModel(id) || isClaudeAdaptiveThinkingModel(id) || isKimiThinkingModel(id)) {
     return undefined; // Strip entirely — o-series and Claude adaptive-thinking models reject temperature
@@ -114,6 +111,7 @@ export function getTemperatureForModel(modelId: string, requestedTemperature: nu
 }
 
 export function isDefaultThinkingEnabledModel(modelId: string): boolean {
+  if (getModelCompatibility(modelId)) return true;
   const id = normalizeModelId(modelId);
   return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6') || id.startsWith('claude-sonnet-5');
 }
@@ -124,6 +122,7 @@ export function isKimiK26Model(modelId: string): boolean {
 }
 
 export function isLikelyThinkingCapableModel(modelId: string): boolean {
+  if (getModelCompatibility(modelId)) return true;
   const id = normalizeModelId(modelId);
   if (isOpenAIOFamilyModel(id)) return false;
 
@@ -176,9 +175,12 @@ export function buildThinkingRequestProfile(options: {
   toolsEnabled?: boolean;
   forcePlain?: boolean;
 }): ThinkingRequestProfile {
-  const capable = Boolean(options.thinkingCapable) && isLikelyThinkingCapableModel(options.modelId) && !isOpenAIOFamilyModel(options.modelId);
+  const compatibility = getModelCompatibility(options.modelId);
+  // Explicit capabilities supersede stale discovery flags. Legacy models keep their old gates.
+  const capable = Boolean(compatibility) || (Boolean(options.thinkingCapable) && isLikelyThinkingCapableModel(options.modelId) && !isOpenAIOFamilyModel(options.modelId));
   const defaultEnabled = capable && isDefaultThinkingEnabledModel(options.modelId);
-  const enabled = capable && Boolean(options.thinkingEnabled) && !options.forcePlain;
+  const enabled = capable && (Boolean(compatibility?.alwaysThinking)
+    || ((options.thinkingEnabled ?? Boolean(compatibility)) && !options.forcePlain));
   const requestParams: Record<string, unknown> = {};
   const streamFields = new Set<ThinkingStreamField>();
   let requiresThinkingStatePreservation = false;
@@ -188,6 +190,13 @@ export function buildThinkingRequestProfile(options: {
   }
 
   streamFields.add('think_tags');
+
+  if (compatibility?.reasoningMode === 'effort') {
+    // Tool turns use Responses (see toolEndpoint); never downgrade mandatory reasoning.
+    requestParams.reasoning_effort = enabled ? compatibility.defaultEffort : 'none';
+    if (enabled) streamFields.add('reasoning_content');
+    return { capable, enabled, defaultEnabled, requestParams, streamFields: Array.from(streamFields), requiresThinkingStatePreservation };
+  }
 
   if (!enabled) {
     if (isKimiK26Model(options.modelId)) {
@@ -211,7 +220,7 @@ export function buildThinkingRequestProfile(options: {
     requiresThinkingStatePreservation = true;
     if (isClaudeAdaptiveThinkingModel(options.modelId)) {
       requestParams.thinking = { type: 'adaptive', display: 'summarized' };
-      requestParams.output_config = { effort: 'high' };
+      requestParams.output_config = { effort: compatibility?.defaultEffort ?? 'high' };
     } else {
       const maxTokens = Math.max(options.maxTokens ?? 4096, 2048);
       const budgetTokens = Math.max(1024, Math.min(4096, maxTokens - 1024));

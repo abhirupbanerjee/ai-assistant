@@ -14,6 +14,7 @@
 
 import { getDb, sql, transaction } from '../kysely';
 import { getProvider } from './llm-providers';
+import { applyPersistedModelMetadata, applyModelMetadataUpdate, getKnownModelMetadata } from '../../model-metadata-compatibility';
 
 /**
  * Convert an alias-style model ID to its transport form.
@@ -79,7 +80,7 @@ interface EnabledModelRow {
 }
 
 function mapRowToModel(row: EnabledModelRow): EnabledModel {
-  return {
+  return applyPersistedModelMetadata(row.id, {
     id: row.id,
     providerId: row.provider_id,
     displayName: row.display_name,
@@ -100,7 +101,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     capabilityScores: row.capability_scores as CapabilityScores | null ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-  };
+  });
 }
 
 // ============ Catalog Row Mapper (model_catalog + organization_deployment) ============
@@ -138,7 +139,7 @@ interface CatalogJoinRow {
  */
 function mapCatalogRowToModel(row: CatalogJoinRow): EnabledModel {
   const caps = (row.mc_capabilities ?? {}) as Record<string, boolean>;
-  return {
+  return applyPersistedModelMetadata(row.mc_id, {
     id: row.mc_id,
     providerId: row.mc_provider_id,
     displayName: row.mc_id, // catalog has no display_name column; use id (legacy display_name is derived from model name)
@@ -159,7 +160,7 @@ function mapCatalogRowToModel(row: CatalogJoinRow): EnabledModel {
     capabilityScores: row.mc_capability_scores as CapabilityScores | null ?? null,
     createdAt: row.mc_created_at,
     updatedAt: row.mc_updated_at,
-  };
+  });
 }
 
 // ============ CRUD Operations ============
@@ -501,6 +502,7 @@ function buildCapabilitiesJson(input: {
  * AND model_catalog + organization_deployment (catalog path).
  */
 export async function createEnabledModel(input: CreateEnabledModelInput): Promise<EnabledModel> {
+  input = applyPersistedModelMetadata(input.id, input);
   // Validate provider exists
   const provider = await getProvider(input.providerId);
   if (!provider) {
@@ -652,6 +654,7 @@ export async function createEnabledModelsBatch(inputs: CreateEnabledModelInput[]
  * AND model_catalog + organization_deployment (catalog path).
  */
 export async function updateEnabledModel(id: string, input: UpdateEnabledModelInput): Promise<EnabledModel | null> {
+  input = applyModelMetadataUpdate(id, input);
   const existing = await getEnabledModel(id);
   if (!existing) return null;
 
@@ -718,7 +721,8 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
       thinkingCapable: input.thinkingCapable ?? existing.thinkingCapable,
       forcedToolCapable: input.forcedToolCapable ?? existing.forcedToolCapable,
     });
-    catalogUpdate.capabilities = JSON.stringify(mergedCaps);
+    // Merge only the known capability keys; preserve provider/API extensions.
+    catalogUpdate.capabilities = sql`COALESCE(capabilities, '{}'::jsonb) || ${JSON.stringify(mergedCaps)}::jsonb`;
   }
   if (input.maxInputTokens !== undefined) {
     catalogUpdate.max_input_tokens = input.maxInputTokens || null;
@@ -797,6 +801,7 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
             is_default: isDefault ? 1 : 0,
             enabled: 1,
             sort_order: existing.sortOrder,
+            ...updateObj,
           })
           .execute();
       }
@@ -1017,6 +1022,7 @@ export async function isModelThinkingCapable(id: string): Promise<boolean> {
  * Check if a model supports forced tool choice (required / specific function)
  */
 export async function isModelForcedToolCapable(id: string): Promise<boolean> {
+  if (getKnownModelMetadata(id)?.forcedToolCapable === false) return false;
   const model = await getEnabledModel(id);
   return model?.forcedToolCapable ?? true;
 }
@@ -1050,33 +1056,9 @@ export async function getDeployedModelIds(ids: string[]): Promise<Set<string>> {
  * Flag-off: reads from enabled_models (legacy).
  */
 export async function getToolCapableModelIds(): Promise<Set<string>> {
-  const db = await getDb();
-
-  if (isModelCatalogReads()) {
-    const rows = await sql`
-      SELECT mc.id
-      FROM model_catalog mc
-      INNER JOIN organization_deployment od
-        ON od.catalog_id = mc.id AND od.org_id IS NULL AND od.enabled = TRUE
-      INNER JOIN providers p ON p.id = mc.provider_id AND p.enabled = TRUE
-      WHERE mc.capability_id = 'llm'
-        AND mc.status = 'active'
-        AND mc.capabilities->>'tool_capable' = 'true'
-    `.execute(db);
-    return new Set(rows.rows.map((r: unknown) => (r as { id: string }).id));
-  }
-
-  // Legacy path (flag-off)
-  const rows = await db
-    .selectFrom('enabled_models as m')
-    .innerJoin('llm_providers as p', 'm.provider_id', 'p.id')
-    .select('m.id')
-    .where('m.tool_capable', '=', 1)
-    .where('m.enabled', '=', 1)
-    .where('p.enabled', '=', 1)
-    .execute();
-
-  return new Set(rows.map((r) => r.id));
+  // Filter after mapping so stale stored flags cannot exclude exact known models.
+  const models = await getActiveModels();
+  return new Set(models.filter(model => model.toolCapable).map(model => model.id));
 }
 
 /**
@@ -1177,6 +1159,14 @@ export async function findDeprecatedModels(availableModelIds: string[]): Promise
 export async function refreshModelCapabilities(modelId: string): Promise<EnabledModel | null> {
   const model = await getEnabledModel(modelId);
   if (!model) return null;
+
+  // For exact models refresh capabilities without resetting saved token budgets.
+  if (getKnownModelMetadata(modelId)) {
+    return updateEnabledModel(modelId, applyPersistedModelMetadata(modelId, {
+      maxInputTokens: model.maxInputTokens ?? undefined,
+      maxOutputTokens: model.maxOutputTokens ?? undefined,
+    }));
+  }
 
   // Import capability detection from model-discovery (dynamic to avoid circular deps)
   const { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, getContextWindow } = await import('../../services/model-discovery');

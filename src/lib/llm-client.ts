@@ -11,7 +11,7 @@
 
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { getLlmSettings, getRoutesSettings } from './db/compat/config';
+import { getLlmSettings } from './db/compat/config';
 import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from './provider-credential';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
 import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, stripAzureFoundryPrefix } from './llm/providers/azure-foundry';
@@ -20,6 +20,8 @@ import { isGeminiModel, stripGeminiPrefix, callGeminiChat } from './llm/provider
 import { isOpenAIModel, stripOpenAIPrefix, callOpenAIChat } from './llm/providers/openai';
 import { getTemperatureForModel, buildThinkingRequestProfile, isClaudeAdaptiveThinkingModel, isKimiK26Model } from './llm-thinking';
 import { getModelOutputLimit } from './agent/llm-router';
+import { getModelCompatibility } from './model-compatibility';
+import { applyAnthropicRequestPolicy, ANTHROPIC_REFUSAL_MESSAGE } from './anthropic-native-state';
 
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
@@ -46,7 +48,7 @@ export interface InternalCompletionOptions {
   maxTokens?: number;
   /** Optional callback invoked with token usage data after a successful completion. */
   onUsage?: (usage: { inputTokens: number; outputTokens: number; model: string }) => void;
-  /** Optional JSON schema for Gemini native responseSchema enforcement. Ignored by non-Gemini providers. */
+  /** Optional native structured-output schema for supported providers. */
   responseSchema?: object;
   /** Optional response_format for OpenAI-native structured output. Passed directly to the OpenAI API. */
   responseFormat?: { type: 'json_object' | 'text' } | { type: 'json_schema'; json_schema: { name: string; schema: object; strict?: boolean } };
@@ -135,7 +137,7 @@ async function getThinkingCompletionParams(
     // headroom needed). callFireworks streams when maxTokens > 4096
     // (mirroring generateFireworks), so no transport cap is needed here.
     return {
-      requestParams: {},
+      requestParams: profile.requestParams,
       maxTokens: requestedMax,
       enabled: false,
     };
@@ -388,18 +390,25 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
   const baseTemp = opts.temperature ?? 0.3;
   // Note: spreading thinking params makes the SDK infer a Stream|Message union,
   // so we type the response explicitly as a non-streaming Message.
-  const response = await client.messages.create({
+  const schema = opts.responseFormat?.type === 'json_schema'
+    ? opts.responseFormat.json_schema.schema : opts.responseSchema;
+  const response = await client.messages.create(applyAnthropicRequestPolicy({
     model: model.startsWith('anthropic/') ? model.slice('anthropic/'.length) : model,
     system: systemMsg || undefined,
     messages: conversationMsgs,
     max_tokens: maxTokens,
     temperature: getTemperatureForModel(model, baseTemp),
     ...requestParams,
-  } as Anthropic.Messages.MessageCreateParams) as Anthropic.Messages.Message;
+    ...(schema ? { output_config: {
+      ...(requestParams.output_config as Anthropic.OutputConfig | undefined),
+      format: { type: 'json_schema' as const, schema: schema as Record<string, unknown> },
+    } } : {}),
+  } as Anthropic.Messages.MessageCreateParamsNonStreaming)) as Anthropic.Messages.Message;
 
   emitUsage(opts, { input_tokens: response.usage?.input_tokens, output_tokens: response.usage?.output_tokens }, model);
-  const textBlock = response.content.find((b: Anthropic.Messages.ContentBlock) => b.type === 'text');
-  const visible = stripThinkTags(textBlock?.text?.trim() || '');
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  const visible = stripThinkTags(text.trim());
+  if (response.stop_reason === 'refusal') return visible || ANTHROPIC_REFUSAL_MESSAGE;
   if (visible) return visible;
   if (enabled) {
     const thinkingBlocks = response.content.filter((b: Anthropic.Messages.ContentBlock) => b.type === 'thinking');
@@ -596,7 +605,12 @@ function isDeepSeekModel(model: string): boolean {
  */
 export async function createInternalCompletion(opts: InternalCompletionOptions): Promise<string> {
   const model = opts.model || (await getLlmSettings()).model;
-  const routes = await getRoutesSettings();
+  // Internal utilities append an assistant prefix to steer JSON generation.
+  // Remove only that trailing prefix for incompatible models, never historical
+  // assistant turns followed by a user message. Do not mutate caller history.
+  if (getModelCompatibility(model)?.supportsPrefill === false && opts.messages.at(-1)?.role === 'assistant') {
+    opts = { ...opts, messages: opts.messages.slice(0, -1) };
+  }
 
   // Route 2 models → always direct, no LiteLLM involved
   if (isClaudeModel(model)) {
@@ -628,15 +642,14 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return result.content;
   }
   if (isOpenAIModel(model)) {
-    const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
+    const { requestParams, maxTokens } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000, opts.reasoningMode);
     const result = await callOpenAIChat(model, opts.messages, {
       temperature: opts.temperature,
       maxTokens,
       ...(opts.responseSchema && { responseSchema: opts.responseSchema }),
       ...(opts.responseFormat && { responseFormat: opts.responseFormat }),
-      // GPT-5/o-series use reasoning_effort. requestParams may also contain
-      // reasoning_effort: 'none' for non-thinking GPT-5.6 — only pass when enabled.
-      ...(enabled && typeof requestParams.reasoning_effort === 'string'
+      // Explicit optional 'none' is significant even when the profile is disabled.
+      ...(typeof requestParams.reasoning_effort === 'string'
         ? { reasoningEffort: requestParams.reasoning_effort as string }
         : {}),
     });

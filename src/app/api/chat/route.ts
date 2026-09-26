@@ -188,10 +188,12 @@ export async function POST(request: NextRequest) {
     // Run RAG query with context for autonomous tools and automatic fallback
     // Context allows tools like doc_gen to know the threadId/categoryId
     let ragResult: Awaited<ReturnType<typeof ragQuery>>;
+    let fallbackSafe = true;
 
     try {
       const fallbackResult = await withModelFallback({
         modelsToTry,
+        canFallback: () => fallbackSafe,
         execute: (model) =>
           runWithContextAsync(
             {
@@ -209,7 +211,8 @@ export async function POST(request: NextRequest) {
                 categorySlugs.length > 0 ? categorySlugs : undefined,
                 memoryContext,
                 summaryContext,
-                model // Pass model for fallback support
+                model, // Pass model for fallback support
+                () => { fallbackSafe = false; }
               )
           ),
         context: { threadId, userId: user.id },

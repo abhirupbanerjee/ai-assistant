@@ -24,6 +24,10 @@ import { getModelForRole, getModelContextLimit, estimateTokens } from './llm-rou
 import { resolveSkillsForTask, resolveExecutorModelForTask } from './executor';
 import { createSubagentApprovalResolver } from '@/lib/streaming/subagent-approval-resolver';
 import { generateToolCompletionWithFallback } from '@/lib/openai';
+import { copyToolCompletionState } from '@/lib/tool-completion-state';
+import { getAnthropicNativeContent } from '@/lib/anthropic-native-state';
+import { getOpenAIResponsesOutput } from '@/lib/llm/providers/openai-responses';
+import { getModelCompatibility } from '@/lib/model-compatibility';
 import { SubagentBudget, createSubagentBudget, checkBudget } from './subagent-budget';
 
 export interface SubagentCallbacks {
@@ -125,6 +129,35 @@ async function getEnabledToolsForPlan(plan: AgentPlan): Promise<string[]> {
 }
 
 /**
+ * Compaction is a new, tool-free history boundary, not partial native replay.
+ * Explicit field projection drops ALL opaque state and display reasoning; old
+ * tool calls/results are removed together. Never attach state to edited turns.
+ */
+function rebuildSubagentHistory(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+): OpenAI.Chat.ChatCompletionMessageParam[] {
+  return messages.flatMap((message): OpenAI.Chat.ChatCompletionMessageParam[] => {
+    if (message.role === 'tool' || message.role === 'function') return [];
+    if (message.role === 'assistant') {
+      if (message.tool_calls?.length || message.function_call) return [];
+      return [{ role: 'assistant', content: message.content, refusal: message.refusal }];
+    }
+    return [{ role: message.role, content: message.content } as OpenAI.Chat.ChatCompletionMessageParam];
+  });
+}
+
+/** Include native reasoning/signatures/encrypted output hidden from JSON history. */
+function estimateSubagentHistoryTokens(messages: OpenAI.Chat.ChatCompletionMessageParam[]): number {
+  return estimateTokens(JSON.stringify(messages))
+    + messages.reduce((total, message) => {
+      const native = getAnthropicNativeContent(message);
+      const responses = getOpenAIResponsesOutput(message);
+      return total + (native ? estimateTokens(JSON.stringify(native)) : 0)
+        + (responses ? estimateTokens(JSON.stringify(responses)) : 0);
+    }, 0);
+}
+
+/**
  * Trim messages array to stay within a model's context window.
  * Always preserves system prompt [0] and task definition [1].
  * Drops oldest complete assistant+tool turns first.
@@ -138,17 +171,21 @@ function trimMessagesForContext(
   }
 
   const preserved = messages.slice(0, 2);
+  const hasNativeState = messages.some(message => getAnthropicNativeContent(message) || getOpenAIResponsesOutput(message));
   let tail = messages.slice(2);
   let droppedTurns = 0;
 
   // Safety guard: if tail starts with a tool, drop it (shouldn't happen with proper turn tracking)
   while (tail.length > 0 && tail[0].role === 'tool') {
     tail = tail.slice(1);
+    droppedTurns++;
   }
 
-  let totalTokens = estimateTokens(JSON.stringify([...preserved, ...tail]));
+  let totalTokens = estimateSubagentHistoryTokens([...preserved, ...tail]);
   if (totalTokens <= maxTokens) {
-    return { trimmedMessages: messages, droppedTurns: 0 };
+    return droppedTurns
+      ? { trimmedMessages: hasNativeState ? rebuildSubagentHistory([...preserved, ...tail]) : [...preserved, ...tail], droppedTurns }
+      : { trimmedMessages: messages, droppedTurns: 0 };
   }
 
   while (tail.length > 0) {
@@ -166,15 +203,16 @@ function trimMessagesForContext(
       }
     }
 
-    tail = tail.slice(dropCount);
+    tail = [...tail.slice(0, firstAssistantIdx), ...tail.slice(firstAssistantIdx + dropCount)];
     droppedTurns++;
 
     // Re-check token count
-    totalTokens = estimateTokens(JSON.stringify([...preserved, ...tail]));
+    totalTokens = estimateSubagentHistoryTokens([...preserved, ...tail]);
     if (totalTokens <= maxTokens) break;
   }
 
-  return { trimmedMessages: [...preserved, ...tail], droppedTurns };
+  return { trimmedMessages: droppedTurns
+    ? (hasNativeState ? rebuildSubagentHistory([...preserved, ...tail]) : [...preserved, ...tail]) : messages, droppedTurns };
 }
 
 /**
@@ -297,9 +335,9 @@ export async function runSubagentTaskLoop(
     `Task: ${task.description}\n` +
     `Target: ${task.target || '(none)'}`;
 
-  // Prompt injection for non-thinking providers to preserve reasoning across turns
-  if (!executorSelection.model.thinking_enabled) {
-    systemPrompt += `\n\nIf you reason through multiple steps, include your reasoning in <thinking></thinking> tags before your final answer or tool calls. These tags will be preserved across turns.`;
+  // Visible progress is not native reasoning and has no replay guarantee.
+  if (!executorSelection.model.thinking_enabled && !getModelCompatibility(effectiveModel)?.alwaysThinking) {
+    systemPrompt += `\n\nWhen useful, provide a brief progress summary before your final answer or tool calls.`;
   }
 
   if (originalRequest) {
@@ -347,21 +385,25 @@ export async function runSubagentTaskLoop(
     }
 
     // Trim messages to fit within model context window before LLM call
-    const contextLimit = await getModelContextLimit(executorSelection.model.model);
+    const contextLimit = await getModelContextLimit(actualModelUsed);
     const safeLimit = Math.max(contextLimit - CONTEXT_SAFETY_MARGIN, 32000);
     const { trimmedMessages, droppedTurns } = trimMessagesForContext(messages, safeLimit);
     if (droppedTurns > 0) {
       console.warn(`[Subagent] Task ${task.id}: dropped ${droppedTurns} oldest turns to fit context limit (${safeLimit} tokens)`);
+      // Commit the rebuilt prefix. Otherwise the next turn resurrects discarded
+      // state and appends a response generated against a different history.
+      messages.splice(0, messages.length, ...trimmedMessages);
     }
 
     const response = await generateToolCompletionWithFallback(
-      executorSelection.model,
+      { ...executorSelection.model, model: actualModelUsed },
       trimmedMessages,
       tools,
       'auto',
       0.4,
       8000,
       subagentFirstChunkTimeout,
+      iterations === 0,
     );
 
     actualModelUsed = response.model_used;
@@ -418,7 +460,7 @@ export async function runSubagentTaskLoop(
         ? thinkingContent.slice(0, MAX_REASONING_CHARS) + '\n...[reasoning truncated]'
         : thinkingContent;
     }
-    messages.push(assistantMsg);
+    messages.push(copyToolCompletionState(response, assistantMsg));
 
     // One LLM response with tool calls = one ReAct iteration
     iterations++;
@@ -593,18 +635,20 @@ export async function runSubagentTaskLoop(
   });
 
   // Trim before final summarization call too
-  const finalContextLimit = await getModelContextLimit(executorSelection.model.model);
+  const finalContextLimit = await getModelContextLimit(actualModelUsed);
   const finalSafeLimit = Math.max(finalContextLimit - CONTEXT_SAFETY_MARGIN, 32000);
   const { trimmedMessages: finalTrimmedMessages } = trimMessagesForContext(messages, finalSafeLimit);
+  if (finalTrimmedMessages !== messages) messages.splice(0, messages.length, ...finalTrimmedMessages);
 
   const finalResponse = await generateToolCompletionWithFallback(
-    executorSelection.model,
+    { ...executorSelection.model, model: actualModelUsed },
     finalTrimmedMessages,
     undefined,
-    undefined,
+    'none',
     0.4,
     8000,
     subagentFirstChunkTimeout,
+    iterations === 0,
   );
 
   const finalContent = finalResponse.content || 'Max iterations reached.';

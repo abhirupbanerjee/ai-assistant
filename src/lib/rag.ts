@@ -1036,7 +1036,8 @@ export async function ragQuery(
   categorySlugs?: string[],
   memoryContext?: string,
   summaryContext?: string,
-  modelOverride?: string  // Optional model ID to override the default
+  modelOverride?: string,  // Optional model ID to override the default
+  onToolStart?: () => void // Lets the caller prevent replay after side effects
 ): Promise<RAGResponse> {
   // Input validation
   if (!userMessage?.trim()) {
@@ -1306,7 +1307,7 @@ export async function ragQuery(
     userMessage,
     true, // Enable tools
     categoryIds, // Pass category IDs for dynamic Function API tools
-    undefined, // callbacks (not used in non-streaming)
+    onToolStart ? { onToolStart } : undefined,
     undefined, // images (not used in non-streaming)
     summaryContext, // Summary context for dynamic positioning
     memoryContext, // Memory context for cache key

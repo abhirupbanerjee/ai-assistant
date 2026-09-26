@@ -1092,6 +1092,8 @@ export async function POST(request: NextRequest) {
             const completedAgents = new Set<string>();
             const agentCallCounts = new Map<string, number>();
 
+            // Never replay a turn after observable output or a tool side effect.
+            let fallbackSafe = true;
             // Define streaming callbacks
             const callbacks = {
               // For English responses: forward content tokens directly to the client as they
@@ -1099,9 +1101,16 @@ export async function POST(request: NextRequest) {
               // internally and can be translated before delivery.
               onChunk: (targetLanguage && targetLanguage !== 'en')
                 ? undefined
-                : (text: string) => send({ type: 'chunk', content: text }),
-              onThinkingChunk: (text: string) => send({ type: 'thinking_chunk', content: text }),
+                : (text: string) => {
+                  if (text) fallbackSafe = false;
+                  send({ type: 'chunk', content: text });
+                },
+              onThinkingChunk: (text: string) => {
+                if (text) fallbackSafe = false;
+                send({ type: 'thinking_chunk', content: text });
+              },
               onToolStart: (name: string, displayName: string) => {
+                fallbackSafe = false;
                 send({ type: 'tool_start', name, displayName });
               },
               onToolEnd: (name: string, success: boolean, duration: number, error?: string) => {
@@ -1114,6 +1123,7 @@ export async function POST(request: NextRequest) {
                 }
               },
               onArtifact: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast' | 'agent', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint | AgentResponseInfo) => {
+                fallbackSafe = false;
                 if (type === 'visualization') {
                   const viz = data as MessageVisualization;
                   visualizations.push(viz);
@@ -1224,6 +1234,7 @@ export async function POST(request: NextRequest) {
             try {
               const fallbackResult = await withModelFallback({
                 modelsToTry,
+                canFallback: () => fallbackSafe,
                 execute: (model) => generateResponseWithTools(
                   effectiveSystemPrompt,
                   conversationHistory.slice(0, -1), // Full history, context manager optimizes
@@ -1246,8 +1257,7 @@ export async function POST(request: NextRequest) {
                   serializeResponseStyle(responseStyle), // Resolved style for cache-key isolation
                 ),
                 onSwitch: (event: ModelSwitchEvent) => {
-                  // Signal client to discard any partial streamed content from the failed model
-                  send({ type: 'stream_reset' });
+                  // Switching is allowed only before output/tool execution.
                   send({
                     type: 'model_switch',
                     originalModel: event.originalModel,

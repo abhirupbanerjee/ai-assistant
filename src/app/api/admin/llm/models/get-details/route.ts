@@ -13,9 +13,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getEnabledModel } from '@/lib/db/compat/enabled-models';
+import { getEnabledModel, getWebSearchConfig } from '@/lib/db/compat';
 import { isTavilyConfigured } from '@/lib/tools/tavily';
-import { getWebSearchConfig } from '@/lib/db/compat/tool-config';
+import { applyModelMetadataSpecifications } from '@/lib/model-metadata-compatibility';
 import { callLLMForJson } from '@/lib/llm-utils';
 import { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, isForcedToolCapable, getContextWindow } from '@/lib/services/model-discovery';
 import type { ApiError } from '@/types';
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
             confidence?: string;
           };
 
-          return NextResponse.json({
+          return NextResponse.json(applyModelMetadataSpecifications(id, {
             found: true,
             toolCapable: Boolean(parsed.toolCapable),
             visionCapable: Boolean(parsed.visionCapable),
@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
             confidence: parsed.confidence || 'medium',
             source: 'web_search',
             sources,
-          });
+          }));
         }
       } catch (err) {
         console.warn('[GetDetails] AI/Tavily search failed, falling back to patterns:', err);
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
     const forcedToolCapable = isForcedToolCapable(id);
     const maxInputTokens = getContextWindow(id);
 
-    return NextResponse.json({
+    return NextResponse.json(applyModelMetadataSpecifications(id, {
       found: true,
       toolCapable,
       visionCapable,
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
       confidence: 'medium',
       source: 'pattern_match',
       sources: [],
-    });
+    }));
   } catch (error) {
     console.error('[GetDetails] POST error:', error);
     return NextResponse.json<ApiError>(

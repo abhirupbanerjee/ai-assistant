@@ -18,8 +18,12 @@ import {
   isTemperatureParamError,
   getTemperatureForModel,
 } from '@/lib/llm-thinking';
-import { requiresMaxCompletionTokens } from '@/lib/llm/providers/openai';
+import { requiresMaxCompletionTokens, stripOpenAIPrefix } from '@/lib/llm/providers/openai';
 import { isModelThinkingCapable } from '@/lib/db/compat/enabled-models';
+import { getModelCompatibility } from '@/lib/model-compatibility';
+import { callOpenAIResponses } from '@/lib/llm/providers/openai-responses';
+import { applyAnthropicRequestPolicy, anthropicCompletionFromFinalMessage } from '@/lib/anthropic-native-state';
+import { copyToolCompletionState, type ToolCompletionStateCarrier } from '@/lib/tool-completion-state';
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
@@ -125,7 +129,7 @@ function extractThinkTags(content: string): { visible: string; thinking: string 
   return { visible: content, thinking: '' };
 }
 
-export interface LLMResponse {
+export interface LLMResponse extends ToolCompletionStateCarrier {
   content: string;
   tokens_used: number;
   model: string;
@@ -169,12 +173,13 @@ async function prepareGenerationOptions(
   const thinkingEnabled = options.thinkingEnabled ?? modelSpec.thinking_enabled ?? false;
 
   let requestParams: Record<string, unknown> = {};
-  if (!options.forcePlain && thinkingEnabled) {
-    const thinkingCapable = await isModelThinkingCapable(modelSpec.model);
+  if (getModelCompatibility(modelSpec.model) || (!options.forcePlain && thinkingEnabled)) {
+    const thinkingCapable = Boolean(getModelCompatibility(modelSpec.model)) || await isModelThinkingCapable(modelSpec.model);
     const profile = buildThinkingRequestProfile({
       modelId: modelSpec.model,
       thinkingCapable,
       thinkingEnabled,
+      forcePlain: options.forcePlain,
       maxTokens,
     });
     requestParams = profile.requestParams;
@@ -210,7 +215,7 @@ export async function generateWithModel(
     });
     return response;
   } catch (error) {
-    if (!options.forcePlain && isRequestParamCompatibilityError(error, prepared.requestParams)) {
+    if (!getModelCompatibility(modelSpec.model) && !options.forcePlain && isRequestParamCompatibilityError(error, prepared.requestParams)) {
       console.warn('[LLM Router] Retrying model with safe/default request parameters', {
         model: modelSpec.model,
         error: error instanceof Error ? error.message : String(error),
@@ -300,6 +305,18 @@ async function generateOpenAI(
     messages.push({ role: 'system', content: systemPrompt });
   }
   messages.push({ role: 'user', content: prompt });
+
+  if (getModelCompatibility(model)?.toolEndpoint === 'responses') {
+    const result = await callOpenAIResponses(openaiClient, model, messages, {
+      maxTokens,
+      reasoningEffort: requestParams.reasoning_effort as string | undefined,
+    });
+    return copyToolCompletionState(result, {
+      content: result.content ?? '', tokens_used: result.totalTokens, model, provider: 'openai',
+      thinkingContent: result.thinkingContent ?? undefined,
+    });
+  }
+  model = stripOpenAIPrefix(model);
 
   // Fireworks models require stream=true for max_tokens > 4096
   const isFireworks = model.startsWith('fireworks/');
@@ -497,28 +514,23 @@ async function generateAnthropic(
   // Strip anthropic/ prefix if present
   const modelId = model.startsWith('anthropic/') ? model.slice('anthropic/'.length) : model;
 
-  const response = await anthropicClient.messages.create({
+  const response = await anthropicClient.messages.create(applyAnthropicRequestPolicy({
     model: modelId,
     system: systemPrompt || undefined,
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
     ...(temperature !== undefined && { temperature }),
-    ...(requestParams.thinking ? { thinking: requestParams.thinking as Anthropic.ThinkingConfigParam } : {}),
-  });
+    ...requestParams,
+  } as Anthropic.MessageCreateParamsNonStreaming));
 
-  const textBlock = response.content.find(b => b.type === 'text');
-  const content = (textBlock && 'text' in textBlock ? textBlock.text : '') || '';
-  const thinkingBlock = response.content.find(b => b.type === 'thinking');
-  const thinkingContent = (thinkingBlock && 'thinking' in thinkingBlock ? thinkingBlock.thinking : '') || '';
-  const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
-
-  return {
-    content,
-    tokens_used: tokensUsed,
+  const result = anthropicCompletionFromFinalMessage(response, model);
+  return copyToolCompletionState(result, {
+    content: result.content ?? '',
+    tokens_used: result.totalTokens,
     model: modelId,
     provider: 'anthropic',
-    thinkingContent: thinkingContent || undefined,
-  };
+    thinkingContent: result.thinkingContent ?? undefined,
+  });
 }
 
 /**
@@ -897,6 +909,8 @@ export function getModelForRole(role: 'planner' | 'executor' | 'checker' | 'summ
  * Estimate tokens for a string (rough approximation)
  */
 export async function getModelContextLimit(modelId: string): Promise<number> {
+  const compatibility = getModelCompatibility(modelId);
+  if (compatibility) return compatibility.contextWindow;
   const { getEnabledModel } = await import('../db/compat/enabled-models');
   const model = await getEnabledModel(modelId);
   if (model?.maxInputTokens) {
@@ -920,6 +934,8 @@ export async function getModelContextLimit(modelId: string): Promise<number> {
  * the model's real output ceiling instead of a hardcoded 8192.
  */
 export async function getModelOutputLimit(modelId: string): Promise<number> {
+  const compatibility = getModelCompatibility(modelId);
+  if (compatibility) return compatibility.maxOutputTokens;
   const { getEnabledModel } = await import('../db/compat/enabled-models');
   const model = await getEnabledModel(modelId);
   if (model?.maxOutputTokens) {

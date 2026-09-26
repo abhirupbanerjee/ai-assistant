@@ -9,8 +9,17 @@
  */
 
 import OpenAI from 'openai';
+import { guardFallbackAfterOutput } from '../../llm-fallback-policy';
 import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from '../../provider-credential';
 import { isUnsupportedThinkingParamError } from '@/lib/llm-thinking';
+import { getModelCompatibility } from '../../model-compatibility';
+import {
+  callOpenAIResponses, streamOpenAIResponses, shouldUseOpenAIResponses,
+  copyOpenAIResponsesState, openAIReasoningEffort,
+  type OpenAIResponsesStateCarrier,
+} from './openai-responses';
+// SDK callers may reuse the pure adapter without resolving provider credentials.
+export * from './openai-responses';
 
 // ============ Client (ProviderClientFactory, keyed by credential) ============
 
@@ -77,8 +86,9 @@ export function stripOpenAIPrefix(model: string): string {
  * See: https://platform.openai.com/docs/api-reference/chat/create
  */
 export function requiresMaxCompletionTokens(model: string): boolean {
-  const id = model.toLowerCase();
-  return id.startsWith('gpt-5')
+  const id = stripOpenAIPrefix(model.toLowerCase());
+  return getModelCompatibility(model)?.toolEndpoint === 'responses'
+    || id.startsWith('gpt-5')
     || id.startsWith('o1')
     || id.startsWith('o3')
     || id.startsWith('o4');
@@ -86,7 +96,7 @@ export function requiresMaxCompletionTokens(model: string): boolean {
 
 // ============ Non-Streaming Chat ============
 
-export interface OpenAIChatResult {
+export interface OpenAIChatResult extends OpenAIResponsesStateCarrier {
   content: string;
   totalTokens: number;
 }
@@ -107,10 +117,18 @@ export async function callOpenAIChat(
     systemPrompt?: string;
     /** Reasoning effort for GPT-5/o-series thinking models ('low'|'medium'|'high'|'max'). */
     reasoningEffort?: string;
+    signal?: AbortSignal;
   },
 ): Promise<OpenAIChatResult> {
   const client = await getOpenAIDirectClient();
   const cleanModel = stripOpenAIPrefix(model);
+
+  if (shouldUseOpenAIResponses(model, messages)) {
+    const result = await callOpenAIResponses(client, model, messages, options);
+    return copyOpenAIResponsesState(result, { content: result.content ?? '', totalTokens: result.totalTokens });
+  }
+  const compatibility = getModelCompatibility(model);
+  const reasoningEffort = openAIReasoningEffort(model, options?.reasoningEffort);
 
   // Build messages array with optional system prompt override
   const requestMessages: any[] = [];
@@ -130,9 +148,9 @@ export async function callOpenAIChat(
   const requestParams: Record<string, unknown> = {
     model: cleanModel,
     messages: requestMessages,
-    ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    ...(!compatibility?.omitSampling && options?.temperature !== undefined && { temperature: options.temperature }),
     ...maxTokensParam,
-    ...(options?.reasoningEffort && { reasoning_effort: options.reasoningEffort }),
+    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
   };
 
   // Native OpenAI structured output support
@@ -150,7 +168,7 @@ export async function callOpenAIChat(
     };
   }
 
-  const response = await client.chat.completions.create(requestParams as any);
+  const response = await client.chat.completions.create(requestParams as any, { signal: options?.signal });
 
   const content = response.choices?.[0]?.message?.content?.trim() || '';
   const totalTokens = response.usage?.total_tokens || 0;
@@ -162,7 +180,7 @@ export async function callOpenAIChat(
 
 const FIRST_CHUNK_TIMEOUT_MS = 120_000;
 
-export interface OpenAIStreamResult {
+export interface OpenAIStreamResult extends OpenAIResponsesStateCarrier {
   content: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tool_calls: { id: string; type: 'function'; function: { name: string; arguments: string } }[] | undefined;
@@ -190,6 +208,7 @@ export async function streamOpenAICompletion(
     onThinkingChunk?: (text: string) => void;
     interChunkTimeoutMsOverride?: number;
     firstChunkTimeoutMsOverride?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OpenAIStreamResult> {
   const client = await getOpenAIDirectClient();
@@ -220,6 +239,15 @@ export async function streamOpenAICompletion(
   const interChunkTimeoutMs = options?.interChunkTimeoutMsOverride ?? streamingConfig.TOOL_TIMEOUT_MS;
   const firstChunkTimeoutMs = options?.firstChunkTimeoutMsOverride ?? FIRST_CHUNK_TIMEOUT_MS;
 
+  if (shouldUseOpenAIResponses(model, messages, options)) {
+    return streamOpenAIResponses(client, model, messages, {
+      ...options, firstChunkTimeoutMsOverride: firstChunkTimeoutMs,
+      interChunkTimeoutMsOverride: interChunkTimeoutMs,
+    });
+  }
+  const compatibility = getModelCompatibility(model);
+  const reasoningEffort = openAIReasoningEffort(model, options?.reasoningEffort);
+
   // Build request params. Use `as any` on the create call — the OpenAI SDK v6
   // overload resolution is strict about ReasoningEffort being a union literal,
   // and conditional spreads widen `string` types. Matching the pattern used
@@ -231,11 +259,11 @@ export async function streamOpenAICompletion(
   const requestParams: Record<string, unknown> = {
     model: cleanModel,
     messages: requestMessages,
-    ...(options?.temperature !== undefined && { temperature: options.temperature }),
+    ...(!compatibility?.omitSampling && options?.temperature !== undefined && { temperature: options.temperature }),
     ...maxTokensParam,
     ...(options?.tools?.length && { tools: options.tools }),
     ...(options?.toolChoice !== undefined && { tool_choice: options.toolChoice }),
-    ...(options?.reasoningEffort && { reasoning_effort: options.reasoningEffort }),
+    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
   };
 
   /**
@@ -243,6 +271,7 @@ export async function streamOpenAICompletion(
    * Extracted so the outer function can retry with modified params
    * (e.g., stripping reasoning_effort on API rejection).
    */
+  let outputStarted = false;
   const doStream = async (params: Record<string, unknown>): Promise<OpenAIStreamResult> => {
     let wasAborted = false;
 
@@ -262,6 +291,8 @@ export async function streamOpenAICompletion(
     let content = '';
     let thinkingContent = '';
     let streamTotalTokens = 0;
+    let finishReason: string | null = null;
+    let refusal = '';
     const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 
     try {
@@ -275,7 +306,7 @@ export async function streamOpenAICompletion(
         ...params,
         stream: true,
         stream_options: { include_usage: true },
-      });
+      }, { signal: options?.signal });
 
       for await (const chunk of stream) {
         resetTimeout();
@@ -285,23 +316,35 @@ export async function streamOpenAICompletion(
           streamTotalTokens = chunk.usage.total_tokens ?? 0;
         }
 
-        const delta = chunk.choices?.[0]?.delta;
+        const choice = chunk.choices?.[0];
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+        const delta = choice?.delta;
         if (!delta) continue;
+
+        if (delta.refusal) {
+          outputStarted = true;
+          refusal += delta.refusal;
+          content += delta.refusal;
+          options?.onChunk?.(delta.refusal);
+        }
 
         // Content delta
         if (delta.content) {
+          outputStarted = true;
           content += delta.content;
           options?.onChunk?.(delta.content);
         }
 
         // Reasoning / thinking content (o1, o3, o4, gpt-5 series)
         if ((delta as any).reasoning_content) {
+          outputStarted = true;
           thinkingContent += (delta as any).reasoning_content;
           options?.onThinkingChunk?.((delta as any).reasoning_content);
         }
 
         // Tool call deltas
         if (delta.tool_calls) {
+          outputStarted = true;
           for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
             if (!toolCallMap.has(idx)) {
@@ -322,24 +365,37 @@ export async function streamOpenAICompletion(
           `OpenAI streaming timeout (model: ${cleanModel}). The model may be unresponsive.`
         );
       }
+      if (!finishReason || finishReason === 'length' || finishReason === 'content_filter') {
+        throw Object.assign(new Error(`Incomplete OpenAI chat response (${finishReason ?? 'missing finish reason'})`), { recoverable: false });
+      }
     } catch (error) {
       if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
-        throw new Error(
+        if (options?.signal?.aborted) throw error;
+        throw guardFallbackAfterOutput(new Error(
           `OpenAI streaming timeout (model: ${cleanModel}). The model may be unresponsive.`
-        );
+        ), outputStarted);
       }
-      throw error;
+      throw guardFallbackAfterOutput(error, outputStarted);
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
     }
 
-    const tool_calls = toolCallMap.size > 0
+    const tool_calls = !refusal && toolCallMap.size > 0
       ? [...toolCallMap.values()].map(tc => ({
           id: tc.id,
           type: 'function' as const,
           function: { name: tc.name, arguments: tc.arguments },
         }))
       : undefined;
+
+    for (const call of tool_calls ?? []) {
+      try {
+        const args: unknown = JSON.parse(call.function.arguments);
+        if (!call.id || !call.function.name || !args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid call');
+      } catch {
+        throw Object.assign(new Error('Invalid OpenAI tool call'), { recoverable: false, outputStarted });
+      }
+    }
 
     return {
       content: content || null,
@@ -355,7 +411,8 @@ export async function streamOpenAICompletion(
   } catch (error) {
     // Retry without reasoning_effort if the model rejects it with function tools.
     // This handles models like gpt-5.5 that require /v1/responses for tools+reasoning.
-    if (requestParams.reasoning_effort && isUnsupportedThinkingParamError(error)) {
+    if (!outputStarted && !compatibility && !options?.signal?.aborted
+      && requestParams.reasoning_effort && isUnsupportedThinkingParamError(error)) {
       console.warn('[OpenAI Direct] Retrying without reasoning_effort', { model: cleanModel });
       const { reasoning_effort, ...retryParams } = requestParams;
       return await doStream(retryParams);

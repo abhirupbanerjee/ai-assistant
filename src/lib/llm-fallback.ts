@@ -8,6 +8,7 @@
 
 import { getEnabledModel, getActiveModels } from './db/compat/enabled-models';
 import { getLlmFallbackSettings, getRoutesSettings } from './db/compat/config';
+import { classifyFallbackError, fallbackErrorMessage } from './llm-fallback-policy';
 
 // ============ Types ============
 
@@ -40,16 +41,16 @@ export class LlmFallbackError extends Error {
   code: 'NO_MODELS_AVAILABLE' | 'ALL_MODELS_FAILED' | 'CAPABILITY_UNAVAILABLE';
   recoverable: boolean;
   attemptedModels?: string[];
-  originalError?: Error;
+  originalError?: unknown;
 
   constructor(options: {
     code: 'NO_MODELS_AVAILABLE' | 'ALL_MODELS_FAILED' | 'CAPABILITY_UNAVAILABLE';
     message: string;
     recoverable: boolean;
     attemptedModels?: string[];
-    originalError?: Error;
+    originalError?: unknown;
   }) {
-    super(options.message);
+    super(options.message, { cause: options.originalError });
     this.name = 'LlmFallbackError';
     this.code = options.code;
     this.recoverable = options.recoverable;
@@ -127,102 +128,8 @@ export function getUnhealthyModels(): Array<{ modelId: string; expiresAt: Date }
  * Categorize an API error to determine if fallback should be attempted
  * Returns null for non-recoverable errors
  */
-export function isRecoverableApiError(error: Error): FallbackReason | null {
-  const msg = error.message.toLowerCase();
-
-  // Guardrail: local validation/programming errors should not trigger model fallback
-  if (
-    msg.includes('schema validation failed')
-    || msg.includes('json parse error')
-    || msg.includes('no json found')
-    || msg.includes('unknown llm provider')
-    || msg.includes('invalid input:')
-  ) {
-    return null;
-  }
-
-  // Rate limiting
-  if (msg.includes('rate limit') || msg.includes('429') || msg.includes('too many requests')) {
-    return 'rate_limit';
-  }
-
-  // Quota/billing issues
-  if (
-    msg.includes('quota')
-    || msg.includes('billing')
-    || msg.includes('insufficient_quota')
-    || msg.includes('payment required')
-    || msg.includes('402')
-  ) {
-    return 'quota_exceeded';
-  }
-
-  // Model not found/available
-  if (
-    (msg.includes('model') && (
-      msg.includes('not found')
-      || msg.includes('does not exist')
-      || msg.includes('unavailable')
-      || msg.includes('not available')
-      || msg.includes('not deployed')
-      || msg.includes('deployment not found')
-    ))
-    || msg.includes('resource not found')
-  ) {
-    return 'model_unavailable';
-  }
-
-  // Authentication/authorization errors
-  if (
-    msg.includes('unauthorized')
-    || msg.includes('forbidden')
-    || msg.includes('authentication')
-    || msg.includes('authorization')
-    || msg.includes('invalid api key')
-    || msg.includes('invalid key')
-    || msg.includes('invalid token')
-    || msg.includes('token expired')
-    || msg.includes('expired token')
-    || msg.includes('jwt expired')
-    || msg.includes('permission denied')
-    || msg.includes('access denied')
-    || msg.includes('insufficient permissions')
-    || msg.includes('unauthenticated')
-    || msg.includes('401')
-    || msg.includes('403')
-  ) {
-    return 'auth_error';
-  }
-
-  // Network/server/provider availability errors
-  if (
-    msg.includes('timeout')
-    || msg.includes('timed out')
-    || msg.includes('network')
-    || msg.includes('econnrefused')
-    || msg.includes('econnreset')
-    || msg.includes('enotfound')
-    || msg.includes('eai_again')
-    || msg.includes('socket hang up')
-    || msg.includes('service unavailable')
-    || msg.includes('temporarily unavailable')
-    || msg.includes('upstream')
-    || msg.includes('bad gateway')
-    || msg.includes('gateway timeout')
-    || msg.includes('internal server error')
-    || msg.includes('overloaded')
-    || msg.includes('overload')
-    || msg.includes('api unavailable')
-    || msg.includes('500')
-    || msg.includes('502')
-    || msg.includes('503')
-    || msg.includes('504')
-  ) {
-    return 'api_error';
-  }
-
-  // Not a recoverable error
-  return null;
+export function isRecoverableApiError(error: unknown): FallbackReason | null {
+  return classifyFallbackError(error);
 }
 
 /**
@@ -374,7 +281,7 @@ export function logFallbackEvent(event: {
   originalModel: string;
   newModel: string;
   reason: FallbackReason;
-  error?: Error;
+  error?: unknown;
   threadId?: string;
   userId?: string;
   attemptNumber: number;
@@ -388,7 +295,7 @@ export function logFallbackEvent(event: {
   console.log(`[LLM-Fallback]   Reason: ${event.reason} | Thread: ${event.threadId || 'N/A'} | Attempt: ${event.attemptNumber}/${event.totalAttempts}`);
 
   if (event.error) {
-    console.log(`[LLM-Fallback]   Error: ${event.error.message}`);
+    console.log(`[LLM-Fallback]   Error: ${fallbackErrorMessage(event.error)}`);
   }
 }
 
@@ -400,6 +307,7 @@ export function logFallbackEvent(event: {
  *
  * @param options.modelsToTry - Ordered list of models to attempt
  * @param options.execute - Function to execute with each model
+ * @param options.canFallback - Required for side-effecting callbacks whose errors lack progress flags
  * @param options.onSwitch - Callback when switching models (for streaming notifications)
  * @param options.context - Context for logging (threadId, userId)
  * @returns Result, the model that was used, and any switch events
@@ -407,11 +315,16 @@ export function logFallbackEvent(event: {
 export async function withModelFallback<T>(options: {
   modelsToTry: string[];
   execute: (model: string) => Promise<T>;
+  /** Return false once output is emitted or a tool starts; never replay side effects. */
+  canFallback?: () => boolean;
   onSwitch?: (event: ModelSwitchEvent) => void;
   context?: { threadId?: string; userId?: string };
 }): Promise<{ result: T; usedModel: string; switches: ModelSwitchEvent[] }> {
-  const { modelsToTry, execute, onSwitch, context } = options;
+  const { execute, onSwitch, context, canFallback } = options;
+  // Snapshot candidates: callbacks must not mutate the execution/diagnostic plan.
+  const modelsToTry = [...new Set(options.modelsToTry)];
   const switches: ModelSwitchEvent[] = [];
+  const attemptedModels: string[] = [];
 
   // No models available
   if (modelsToTry.length === 0) {
@@ -419,15 +332,17 @@ export async function withModelFallback<T>(options: {
       code: 'NO_MODELS_AVAILABLE',
       message: 'No LLM models available. Please contact your administrator to configure a fallback model.',
       recoverable: false,
+      attemptedModels,
     });
   }
 
-  let lastError: Error | null = null;
+  let lastError: unknown;
 
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     const t0 = Date.now();
 
+    attemptedModels.push(model);
     try {
       const result = await execute(model);
       // Fire-and-forget latency logging (never blocks response)
@@ -436,50 +351,44 @@ export async function withModelFallback<T>(options: {
       }).catch(() => { /* ignore */ });
       return { result, usedModel: model, switches };
     } catch (error) {
-      lastError = error as Error;
-      const reason = isRecoverableApiError(lastError);
+      lastError = error;
+      const reason = isRecoverableApiError(error);
+      const retryAllowed = reason !== null && (canFallback?.() ?? true);
 
-      // Fire-and-forget latency logging for failures
-      void import('./model-latency-logger').then(({ recordModelLatency }) => {
-        recordModelLatency({
-          modelId: model,
-          latencyMs: Date.now() - t0,
-          success: false,
-          errorType: reason ?? 'api_error',
-        });
-      }).catch(() => { /* ignore */ });
-
-      // Log the event
-      logFallbackEvent({
-        originalModel: model,
-        newModel: modelsToTry[i + 1] || 'none',
-        reason: reason || 'api_error',
-        error: lastError,
+      console.warn('[LLM-Fallback] Model attempt failed', {
+        model,
+        reason: reason ?? 'nonrecoverable',
+        error: fallbackErrorMessage(error),
+        attemptedModels: [...attemptedModels],
+        retryAllowed,
         ...context,
-        attemptNumber: i + 1,
-        totalAttempts: modelsToTry.length,
       });
 
-      if (reason) {
-        // Mark model as unhealthy
-        await markModelUnhealthy(model);
+      // Preserve the exact SDK/local error, including status, code, body, cause,
+      // usage and native replay flags. Early termination is NOT exhaustion.
+      if (!retryAllowed) throw error;
 
-        // If there's another model to try, switch to it
-        if (i < modelsToTry.length - 1) {
-          const switchEvent: ModelSwitchEvent = {
-            originalModel: model,
-            newModel: modelsToTry[i + 1],
-            reason,
-            timestamp: new Date(),
-          };
-          switches.push(switchEvent);
-          onSwitch?.(switchEvent);
-          continue;
-        }
+      // Only availability failures contribute to model health/latency metrics.
+      void import('./model-latency-logger').then(({ recordModelLatency }) => {
+        recordModelLatency({ modelId: model, latencyMs: Date.now() - t0, success: false, errorType: reason });
+      }).catch(() => { /* ignore */ });
+      // A diagnostic/config failure must not replace the provider's error.
+      await markModelUnhealthy(model).catch(() => {
+        console.warn(`[LLM-Fallback] Could not update health for ${model}`);
+      });
+
+      if (i < modelsToTry.length - 1) {
+        const switchEvent: ModelSwitchEvent = {
+          originalModel: model,
+          newModel: modelsToTry[i + 1],
+          reason,
+          timestamp: new Date(),
+        };
+        onSwitch?.(switchEvent);
+        switches.push(switchEvent);
+        logFallbackEvent({ ...switchEvent, error, ...context,
+          attemptNumber: i + 1, totalAttempts: modelsToTry.length });
       }
-
-      // Non-recoverable error or no more models
-      break;
     }
   }
 
@@ -488,8 +397,8 @@ export async function withModelFallback<T>(options: {
     code: 'ALL_MODELS_FAILED',
     message: 'All available LLM models failed. Please try again later.',
     recoverable: true,
-    attemptedModels: modelsToTry,
-    originalError: lastError || undefined,
+    attemptedModels,
+    originalError: lastError,
   });
 }
 

@@ -1,5 +1,15 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import { getModelCompatibility } from './model-compatibility';
+import {
+  applyAnthropicRequestPolicy, anthropicCompletionFromFinalMessage,
+  convertOpenAIMessagesToAnthropic, convertToolChoiceToAnthropic,
+  getAnthropicNativeContent, handleAnthropicStreamEvent, isMandatoryClaudeThinking,
+} from './anthropic-native-state';
+import { copyToolCompletionState, type ToolCompletionStateCarrier } from './tool-completion-state';
+import { guardFallbackAfterOutput } from './llm-fallback-policy';
+// Delegated callers must copy state through their wrappers AND assistant appends.
+export { copyToolCompletionState } from './tool-completion-state';
 import { isThinkTagModel } from '@/lib/services/model-discovery';
 import {
   buildThinkingRequestProfile,
@@ -807,47 +817,6 @@ function convertToolsToAnthropic(
     }));
 }
 
-/**
- * Convert OpenAI tool_choice to Anthropic format.
- * OpenAI 'auto' → Anthropic { type: 'auto' }
- * OpenAI 'required' → Anthropic { type: 'any' }
- * OpenAI { type: 'function', function: { name } } → Anthropic { type: 'tool', name }
- * OpenAI 'none' → omit tool_choice (no equivalent — just don't send tools)
- */
-function convertToolChoiceToAnthropic(
-  choice: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } } | undefined,
-): Anthropic.ToolChoice | undefined {
-  if (!choice || choice === 'auto') return { type: 'auto' };
-  if (choice === 'required') return { type: 'any' };
-  if (choice === 'none') return undefined;
-  if (typeof choice === 'object' && choice.type === 'function') {
-    return { type: 'tool', name: choice.function.name };
-  }
-  return { type: 'auto' };
-}
-
-/**
- * Build Anthropic message history from conversation context.
- * Converts OpenAI-shaped history messages to Anthropic MessageParam format.
- * Tool-related messages (role: 'tool', assistant with tool_calls) are skipped
- * since they reference prior tool call IDs that don't exist in the new session.
- */
-function buildAnthropicHistory(
-  historyMessages: Array<{ role: string; content: string; tool_calls?: unknown; tool_call_id?: string }>,
-): Anthropic.MessageParam[] {
-  const result: Anthropic.MessageParam[] = [];
-  for (const msg of historyMessages) {
-    // Skip tool-related history — tool_call_ids from prior sessions are invalid
-    if (msg.role === 'tool') continue;
-    if (msg.role === 'assistant' && msg.tool_calls) continue;
-
-    if (msg.role === 'user' || msg.role === 'assistant') {
-      result.push({ role: msg.role, content: msg.content });
-    }
-  }
-  return result;
-}
-
 // ============ Anthropic Streaming ============
 
 /**
@@ -874,7 +843,7 @@ async function streamAnthropicCompletion(
   onThinkingChunk?: (text: string) => void,
   interChunkTimeoutMsOverride?: number,
   firstChunkTimeoutMsOverride?: number,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; stopReason: string | null; totalTokens: number }> {
+): Promise<ReturnType<typeof anthropicCompletionFromFinalMessage>> {
   const controller = new AbortController();
   let wasAborted = false;
 
@@ -898,17 +867,12 @@ async function streamAnthropicCompletion(
   };
 
   let content = '';
-  let thinkingContent = '';
-  const toolCalls: { id: string; name: string; input: unknown }[] = [];
-  let stopReason: string | null = null;
-  let anthropicUsage: { input_tokens?: number; output_tokens?: number } = {};
+  let result: ReturnType<typeof anthropicCompletionFromFinalMessage>;
+  let outputStarted = false;
   let refusalDetails: { type?: string; category?: string; explanation?: string } | undefined;
 
-  // Track current tool_use input accumulation for manual assembly
-  const toolInputBuffers = new Map<number, { id: string; name: string; json: string }>();
-
   try {
-    const createParams: Anthropic.MessageCreateParamsStreaming = {
+    const createParams: Anthropic.MessageCreateParamsStreaming = applyAnthropicRequestPolicy({
       model: params.model,
       messages: params.messages,
       max_tokens: params.max_tokens,
@@ -919,18 +883,20 @@ async function streamAnthropicCompletion(
       ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
       ...(params.thinking ? { thinking: params.thinking } : {}),
       ...(params.output_config ? { output_config: params.output_config } : {}),
-    };
+    });
 
-    const stream = client.messages.stream(createParams, { signal: controller.signal });
+    const stream = client.messages.stream(createParams, { signal: controller.signal, maxRetries: 0 });
 
     // Use SDK event handlers for clean accumulation
     stream.on('text', (text) => {
+      if (text) outputStarted = true;
       resetTimeout();
       content += text;
       onChunk?.(text);
     });
 
     stream.on('inputJson', (_partialJson, _snapshot) => {
+      outputStarted = true;
       // Just reset the timeout — actual tool input is captured from finalMessage
       resetTimeout();
     });
@@ -939,6 +905,8 @@ async function streamAnthropicCompletion(
     // message_delta event. The installed SDK (0.80.0) does not type or persist
     // stop_details on the final message, so we capture it from the raw event.
     stream.on('streamEvent', (event) => {
+      if (event.type === 'content_block_start' || event.type === 'content_block_delta') outputStarted = true;
+      handleAnthropicStreamEvent(event, resetTimeout, onThinkingChunk);
       if (event.type === 'message_delta') {
         const rawEvent = event as unknown as Record<string, unknown>;
         const delta = rawEvent.delta as Record<string, unknown> | undefined;
@@ -963,68 +931,31 @@ async function streamAnthropicCompletion(
       );
     }
 
-    stopReason = message.stop_reason;
-    anthropicUsage = message.usage || {};
-
-    // Fable 5 returns stop_reason: 'refusal' for classifier-blocked prompts.
-    // Surface a helpful message instead of silently returning empty content.
-    const fableRefusal =
-      stopReason === 'refusal' &&
-      (params.model === 'claude-fable-5' || params.model.startsWith('claude-fable-5-'));
-    if (fableRefusal) {
-      const refusalMessage =
-        'Claude Fable 5 refused this request due to its safety guardrails. Try a different model or rephrase your prompt.';
-      content = refusalMessage;
-      onChunk?.(refusalMessage);
-
-      logger.warn('Claude Fable 5 refusal detected', {
+    result = anthropicCompletionFromFinalMessage(message, params.model);
+    if (result.stopReason === 'refusal') {
+      // Preserve the provider's own refusal text; synthesize only when empty.
+      if (!content && result.content) onChunk?.(result.content);
+      logger.warn('Claude refusal detected', {
         model: params.model,
-        stopReason,
+        stopReason: result.stopReason,
         refusalCategory: refusalDetails?.category,
-        refusalExplanation: refusalDetails?.explanation,
       });
-    }
-
-    // Extract content blocks from the final message
-    for (const block of message.content) {
-      if (block.type === 'thinking') {
-        thinkingContent += block.thinking;
-        onThinkingChunk?.(block.thinking);
-      } else if (block.type === 'tool_use') {
-        toolCalls.push({ id: block.id, name: block.name, input: block.input });
-      }
-      // 'text' blocks are already captured by the stream.on('text') handler
     }
 
   } catch (error) {
     if (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError' || error.message.includes('aborted'))) {
-      throw new Error(
+      throw guardFallbackAfterOutput(new Error(
         `Anthropic streaming timeout (model: ${params.model}). ` +
         `The model may be unresponsive or unable to handle the requested tool_choice.`
-      );
+      ), outputStarted);
     }
-    throw error;
+    throw guardFallbackAfterOutput(error, outputStarted);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
 
-  console.log(`[Anthropic] Stream complete — stop_reason: ${stopReason}, tool_calls: ${toolCalls.length}, model: ${params.model}`);
-
-  // Convert Anthropic tool_use blocks to OpenAI-compatible shape
-  // so the existing tool execution loop in generateResponseWithTools() works unchanged.
-  const openaiToolCalls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined =
-    toolCalls.length > 0
-      ? toolCalls.map(tc => ({
-          id: tc.id,
-          type: 'function' as const,
-          function: { name: tc.name, arguments: JSON.stringify(tc.input) },
-        }))
-      : undefined;
-
-  // Extract token usage from finalMessage
-  const anthropicTokens = (anthropicUsage.input_tokens ?? 0) + (anthropicUsage.output_tokens ?? 0);
-
-  return { content: content || null, tool_calls: openaiToolCalls, thinkingContent: thinkingContent || null, stopReason, totalTokens: anthropicTokens };
+  console.log(`[Anthropic] Stream complete — stop_reason: ${result.stopReason}, tool_calls: ${result.tool_calls?.length ?? 0}, model: ${params.model}`);
+  return result;
 }
 
 // ============ OpenAI Streaming ============
@@ -1072,6 +1003,7 @@ async function streamOneCompletion(
   let thinkingContent = '';
   let streamTotalTokens = 0;
   const thinkState = { inThink: false, tagBuf: '' };
+  let outputStarted = false;
   const thinkModel = isThinkTagModel(params.model ?? '');
   const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 
@@ -1096,11 +1028,13 @@ async function streamOneCompletion(
         || (delta as typeof delta & { reasoning_content?: string; reasoning?: string; thinking?: string }).reasoning
         || (delta as typeof delta & { reasoning_content?: string; reasoning?: string; thinking?: string }).thinking;
       if (reasoningDelta) {
+        outputStarted = true;
         thinkingContent += reasoningDelta;
         onThinkingChunk?.(reasoningDelta);
       }
 
       if (delta.content) {
+        outputStarted = true;
         if (thinkModel) {
           const { visible, thinking } = parseThinkChunk(delta.content, thinkState);
           if (thinking) { thinkingContent += thinking; onThinkingChunk?.(thinking); }
@@ -1112,6 +1046,7 @@ async function streamOneCompletion(
       }
 
       if (delta.tool_calls) {
+        outputStarted = true;
         for (const tc of delta.tool_calls) {
           const idx = tc.index;
           if (!toolCallMap.has(idx)) {
@@ -1138,12 +1073,12 @@ async function streamOneCompletion(
     }
   } catch (error) {
     if (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError')) {
-      throw new Error(
+      throw guardFallbackAfterOutput(new Error(
         `LLM streaming timeout (model: ${params.model}). ` +
         `The model may be unresponsive or unable to handle the requested tool_choice.`
-      );
+      ), outputStarted);
     }
-    throw error;
+    throw guardFallbackAfterOutput(error, outputStarted);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
@@ -1174,6 +1109,8 @@ async function streamOneCompletionWithThinkingRetry(
   try {
     return await streamOneCompletion(openai, params, onChunk, onThinkingChunk, interChunkTimeoutMsOverride, firstChunkTimeoutMsOverride);
   } catch (error) {
+    if ((error && typeof error === 'object' && 'outputStarted' in error && error.outputStarted === true)
+      || getModelCompatibility(params.model)) throw error;
     if (Object.keys(thinkingProfile.requestParams).length > 0 && isUnsupportedThinkingParamError(error)) {
       logger.warn('Retrying LLM request without thinking parameters', {
         model: params.model,
@@ -1226,82 +1163,6 @@ async function streamOneCompletionWithThinkingRetry(
 
 // ============ Tool Completion Helpers (for subagent / autonomous loops) ============
 
-/**
- * Convert OpenAI-shaped message history to Anthropic MessageParam format.
- * Preserves tool calls and tool results within the current session.
- * Batches consecutive tool messages into a single Anthropic user message.
- */
-function convertOpenAIMessagesToAnthropic(
-  messages: OpenAI.Chat.ChatCompletionMessageParam[]
-): { system?: string; anthropicMessages: Anthropic.MessageParam[] } {
-  let system: string | undefined;
-  const anthropicMessages: Anthropic.MessageParam[] = [];
-  let i = 0;
-
-  // Extract leading system messages ( Anthropic passes system separately )
-  while (i < messages.length && messages[i].role === 'system') {
-    const sysMsg = messages[i] as OpenAI.Chat.ChatCompletionSystemMessageParam;
-    const sysContent = typeof sysMsg.content === 'string' ? sysMsg.content : JSON.stringify(sysMsg.content);
-    system = system ? `${system}\n\n${sysContent}` : sysContent;
-    i++;
-  }
-
-  while (i < messages.length) {
-    const msg = messages[i];
-
-    if (msg.role === 'user') {
-      const userMsg = msg as OpenAI.Chat.ChatCompletionUserMessageParam;
-      const content = typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content);
-      anthropicMessages.push({ role: 'user', content });
-      i++;
-    } else if (msg.role === 'assistant') {
-      const assistantMsg = msg as OpenAI.Chat.ChatCompletionAssistantMessageParam;
-      const contentBlocks: Anthropic.ContentBlockParam[] = [];
-
-      if (assistantMsg.content) {
-        const text = typeof assistantMsg.content === 'string' ? assistantMsg.content : assistantMsg.content.map(c => (c.type === 'text' ? c.text : '')).join('');
-        contentBlocks.push({ type: 'text', text });
-      }
-
-      if (assistantMsg.tool_calls) {
-        for (const tc of assistantMsg.tool_calls) {
-          if (tc.type === 'function') {
-            contentBlocks.push({
-              type: 'tool_use',
-              id: tc.id,
-              name: tc.function.name,
-              input: (() => {
-                try { return JSON.parse(tc.function.arguments || '{}'); }
-                catch { return {}; }
-              })(),
-            });
-          }
-        }
-      }
-
-      anthropicMessages.push({ role: 'assistant', content: contentBlocks });
-      i++;
-    } else if (msg.role === 'tool') {
-      // Batch consecutive tool messages into a single Anthropic user message
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      while (i < messages.length && messages[i].role === 'tool') {
-        const toolMsg = messages[i] as OpenAI.Chat.ChatCompletionToolMessageParam;
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolMsg.tool_call_id,
-          content: typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content),
-        });
-        i++;
-      }
-      anthropicMessages.push({ role: 'user', content: toolResults });
-    } else {
-      i++;
-    }
-  }
-
-  return { system, anthropicMessages };
-}
-
 function detectProviderForToolCompletion(modelId: string): ModelSpec['provider'] {
   if (isClaudeModel(modelId)) return 'anthropic';
   if (isFireworksModel(modelId)) return 'fireworks';
@@ -1332,11 +1193,11 @@ export async function generateToolCompletion(
   modelSpec: ModelSpec,
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
   tools?: OpenAI.Chat.ChatCompletionTool[],
-  toolChoice?: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined,
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } } | undefined,
   temperature?: number,
   maxTokens?: number,
   firstChunkTimeoutMsOverride?: number,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; thinkingContent?: string }> {
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; thinkingContent?: string } & ToolCompletionStateCarrier> {
   const effectiveModel = modelSpec.model;
   const effectiveTemperature = getTemperatureForModel(effectiveModel, temperature ?? modelSpec.temperature);
   const effectiveMaxTokens = maxTokens ?? modelSpec.max_tokens ?? 4096;
@@ -1363,7 +1224,7 @@ export async function generateToolCompletion(
 
   if (useAnthropicDirect) {
     const client = await getAnthropicClient();
-    const { system, anthropicMessages } = convertOpenAIMessagesToAnthropic(messages);
+    const { system, anthropicMessages } = convertOpenAIMessagesToAnthropic(messages, { model: effectiveModel });
 
     const result = await streamAnthropicCompletion(
       client,
@@ -1384,12 +1245,12 @@ export async function generateToolCompletion(
       firstChunkTimeoutMsOverride,
     );
 
-    return {
+    return copyToolCompletionState(result, {
       content: result.content,
       tool_calls: result.tool_calls,
       tokens_used: result.totalTokens,
       thinkingContent: result.thinkingContent ?? undefined,
-    };
+    });
   }
 
   if (useOllamaCloudDirect) {
@@ -1411,12 +1272,12 @@ export async function generateToolCompletion(
       firstChunkTimeoutMsOverride,
     );
 
-    return {
+    return copyToolCompletionState(result, {
       content: result.content,
       tool_calls: result.tool_calls,
       tokens_used: result.totalTokens,
       thinkingContent: result.thinkingContent ?? undefined,
-    };
+    });
   }
 
   if (useGeminiDirect) {
@@ -1447,10 +1308,7 @@ export async function generateToolCompletion(
 
   if (useOpenAIDirect) {
     // OpenAI direct (Route 2) — use native OpenAI SDK streaming
-    const openaiMessages = messages.map(m => ({
-      role: m.role as string,
-      content: m.content,
-    }));
+    const openaiMessages = messages;
     const openaiResult = await streamOpenAICompletion(
       effectiveModel,
       openaiMessages,
@@ -1458,15 +1316,18 @@ export async function generateToolCompletion(
         temperature: effectiveTemperature,
         maxTokens: effectiveMaxTokens,
         tools: tools as any,
-        toolChoice: toolChoice as any,
+        toolChoice,
+        reasoningEffort: thinkingProfile.requestParams.reasoning_effort as string | undefined,
+        interChunkTimeoutMsOverride: SUBAGENT_INTER_CHUNK_TIMEOUT_MS,
+        firstChunkTimeoutMsOverride,
       },
     );
-    return {
+    return copyToolCompletionState(openaiResult, {
       content: openaiResult.content,
-      tool_calls: openaiResult.tool_calls as any,
+      tool_calls: openaiResult.tool_calls,
       tokens_used: openaiResult.totalTokens,
       thinkingContent: openaiResult.thinkingContent ?? undefined,
-    };
+    });
   }
 
   // OpenAI-compatible routes: Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
@@ -1524,21 +1385,25 @@ export async function generateToolCompletionWithFallback(
   modelSpec: ModelSpec,
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
   tools?: OpenAI.Chat.ChatCompletionTool[],
-  toolChoice?: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined,
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } } | undefined,
   temperature?: number,
   maxTokens?: number,
   firstChunkTimeoutMsOverride?: number,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string; thinkingContent?: string }> {
+  allowFallback = true,
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string; thinkingContent?: string } & ToolCompletionStateCarrier> {
   const { isRecoverableApiError, markModelUnhealthy } = await import('./llm-fallback');
 
-  const attemptModel = async (spec: ModelSpec): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string; thinkingContent?: string }> => {
+  const attemptModel = async (spec: ModelSpec): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string; thinkingContent?: string } & ToolCompletionStateCarrier> => {
     const result = await generateToolCompletion(spec, messages, tools, toolChoice, temperature, maxTokens, firstChunkTimeoutMsOverride);
-    return { ...result, model_used: spec.model };
+    return copyToolCompletionState(result, { ...result, model_used: spec.model });
   };
 
   try {
     return await attemptModel(modelSpec);
   } catch (error) {
+    // Later turns must stay on the same provider/model, even after compaction
+    // removed the old tools from the visible history.
+    if (!allowFallback || messages.some(message => message.role === 'tool' || message.role === 'function')) throw error;
     const reason = isRecoverableApiError(error as Error);
     if (!reason) throw error;
 
@@ -1827,6 +1692,10 @@ export async function generateResponseWithTools(
   // Add conversation history from context manager (anchors + recent)
   const historyForAPI = getHistoryForAPI(ctx);
   for (const msg of historyForAPI) {
+    // Explicit rebuild boundary: persisted/trimmed history has no native state.
+    // Drop complete old tool exchanges, not just the reasoning or tool results.
+    if ((useAnthropicDirect || getModelCompatibility(effectiveModel)?.toolEndpoint === 'responses')
+      && (msg.role === 'tool' || (msg.role === 'assistant' && msg.tool_calls))) continue;
     if (msg.role === 'tool') {
       messages.push({
         role: 'tool',
@@ -1847,9 +1716,11 @@ export async function generateResponseWithTools(
     }
   }
 
-  // Build Anthropic history (skips tool-related messages from prior sessions)
+  // Explicit rebuild boundary: no native reasoning/tool replay from context-manager history
   if (useAnthropicDirect) {
-    anthropicMessages.push(...buildAnthropicHistory(historyForAPI));
+    anthropicMessages.push(...convertOpenAIMessagesToAnthropic(historyForAPI, {
+      model: effectiveModel, boundary: 'rebuild',
+    }).anthropicMessages);
   }
 
   // DESIGN FIX: Apply token budget management to prevent silent truncation by API
@@ -2086,7 +1957,8 @@ export async function generateResponseWithTools(
   }
 
   // Downgrade forced tool_choice for models that don't support it
-  const modelSupportsForcedTool = await isModelForcedToolCapable(effectiveModel);
+  const modelSupportsForcedTool = getModelCompatibility(effectiveModel)?.supportsForcedToolChoice
+    ?? await isModelForcedToolCapable(effectiveModel);
   if (!modelSupportsForcedTool && (typeof effectiveToolChoice === 'object' || effectiveToolChoice === 'required')) {
     const originalToolChoice = typeof effectiveToolChoice === 'object' ? effectiveToolChoice.function.name : effectiveToolChoice;
     effectiveToolChoice = 'auto' as const;
@@ -2111,7 +1983,8 @@ export async function generateResponseWithTools(
     maxTokens: effectiveMaxTokens,
     toolsEnabled: Boolean(tools?.length),
   });
-  const disableClaudeThinkingForTools = useAnthropicDirect && baseThinkingProfile.enabled && Boolean(tools?.length);
+  const disableClaudeThinkingForTools = useAnthropicDirect && !isMandatoryClaudeThinking(effectiveModel)
+    && baseThinkingProfile.enabled && Boolean(tools?.length);
   if (disableClaudeThinkingForTools) {
     logger.warn('Claude thinking disabled for tool turn because thinking block preservation is not complete', {
       model: effectiveModel,
@@ -2157,7 +2030,7 @@ export async function generateResponseWithTools(
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
-  let responseMessage: { content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; totalTokens: number };
+  let responseMessage: StreamCompletionResult & ToolCompletionStateCarrier;
   let accumulatedTokens = 0;
 
   if (useAnthropicDirect && anthropicClient) {
@@ -2253,10 +2126,7 @@ export async function generateResponseWithTools(
     accumulatedTokens += geminiResult.totalTokens;
   } else if (useOpenAIDirect) {
     // OpenAI direct (Route 2) — use native OpenAI SDK streaming
-    const openaiMessages = messages.map(m => ({
-      role: m.role as string,
-      content: m.content,
-    }));
+    const openaiMessages = messages;
     const openaiResult = await streamOpenAICompletion(
       effectiveModel,
       openaiMessages,
@@ -2271,12 +2141,12 @@ export async function generateResponseWithTools(
         onThinkingChunk: callbacks?.onThinkingChunk,
       },
     );
-    responseMessage = {
+    responseMessage = copyToolCompletionState(openaiResult, {
       content: openaiResult.content,
-      tool_calls: openaiResult.tool_calls as any,
+      tool_calls: openaiResult.tool_calls,
       thinkingContent: openaiResult.thinkingContent,
       totalTokens: openaiResult.totalTokens,
-    };
+    });
     accumulatedTokens += openaiResult.totalTokens;
   } else {
     responseMessage = await streamOneCompletionWithThinkingRetry(openai!, completionParams, thinkingProfile, callbacks?.onChunk, callbacks?.onThinkingChunk);
@@ -2323,27 +2193,18 @@ export async function generateResponseWithTools(
       content: responseMessage.content,
       tool_calls: responseMessage.tool_calls,
     };
-    // Preserve reasoning_content for any model that returns it (Moonshot, Claude, DeepSeek, etc.)
-    if (responseMessage.thinkingContent) {
+    // Claude reasoning is replayed only as signed native blocks, not display text.
+    if (!useAnthropicDirect && responseMessage.thinkingContent) {
       assistantToolMessage.reasoning_content = responseMessage.thinkingContent;
     }
-    messages.push(assistantToolMessage);
+    messages.push(copyToolCompletionState(responseMessage, assistantToolMessage));
 
-    // Add assistant's tool call message (Anthropic format for API calls)
+    // Replay the unmodified final native content, never display thinking or a
+    // text/tool reconstruction. All blocks/signatures remain in provider order.
     if (useAnthropicDirect) {
-      const contentBlocks: Anthropic.ContentBlockParam[] = [];
-      if (responseMessage.content) {
-        contentBlocks.push({ type: 'text', text: responseMessage.content });
-      }
-      for (const tc of responseMessage.tool_calls!) {
-        contentBlocks.push({
-          type: 'tool_use',
-          id: tc.id,
-          name: tc.function.name,
-          input: JSON.parse(tc.function.arguments || '{}'),
-        });
-      }
-      anthropicMessages.push({ role: 'assistant', content: contentBlocks });
+      const nativeContent = getAnthropicNativeContent(responseMessage, effectiveModel);
+      if (!nativeContent) throw new Error('Missing Claude native content in active tool loop');
+      anthropicMessages.push({ role: 'assistant', content: nativeContent });
     }
 
     // Collect tool results for Anthropic (batched into a single 'user' message after all executions)
@@ -2812,6 +2673,8 @@ export async function generateResponseWithTools(
       break;
     }
 
+    if (totalToolCalls >= maxTotalToolCalls) break;
+
     // Get next response with tool results — streaming so the final text answer is forwarded live
     // Only apply forced tool_choice on first iteration, then let LLM decide
     if (useAnthropicDirect && anthropicClient) {
@@ -2886,6 +2749,18 @@ export async function generateResponseWithTools(
         totalTokens: geminiResult.totalTokens,
       };
       accumulatedTokens += geminiResult.totalTokens;
+    } else if (useOpenAIDirect) {
+      responseMessage = await streamOpenAICompletion(effectiveModel, messages, {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools,
+        toolChoice: toolChoiceAppliedByRouting ? 'auto' : effectiveToolChoice,
+        systemPrompt,
+        reasoningEffort: thinkingProfile.requestParams.reasoning_effort as string | undefined,
+        onChunk: callbacks?.onChunk,
+        onThinkingChunk: callbacks?.onThinkingChunk,
+      });
+      accumulatedTokens += responseMessage.totalTokens;
     } else {
       responseMessage = await streamOneCompletionWithThinkingRetry(
         openai!,
@@ -2973,6 +2848,20 @@ export async function generateResponseWithTools(
         };
         accumulatedTokens += geminiResult.totalTokens;
       }
+    } else if (useOpenAIDirect) {
+      responseMessage = await streamOpenAICompletion(effectiveModel, [
+        ...messages, { role: 'user', content: maxToolsMsg },
+      ], {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools,
+        toolChoice: 'none',
+        systemPrompt,
+        reasoningEffort: thinkingProfile.requestParams.reasoning_effort as string | undefined,
+        onChunk: callbacks?.onChunk,
+        onThinkingChunk: callbacks?.onThinkingChunk,
+      });
+      accumulatedTokens += responseMessage.totalTokens;
     } else {
       const finalMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         ...messages,
@@ -3049,4 +2938,3 @@ export async function generateResponseWithTools(
     totalTokens: accumulatedTokens,
   };
 }
-

@@ -14,6 +14,7 @@ export { sql };
 import { Pool, types as pgTypes } from 'pg';
 import type { DB } from './db-types';
 import { assertFeatureFlagCombinations, readFeatureFlagCombinations } from '../feature-flag-combinations';
+import { correctPersistedModelMetadata } from './compat/model-metadata-migration';
 
 // Parse PostgreSQL TIMESTAMP / TIMESTAMPTZ columns as strings instead of Date objects.
 // The entire codebase (types, interfaces, compat layer) expects ISO date strings.
@@ -2669,6 +2670,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
 
     console.log('[Kysely] Phase 0 invariant assertions passed (a: ID-set equality, b: deployment coverage, c: single default)');
   });
+
+  // Correct both read paths once, after the catalog exists. Runtime read/write
+  // guards also protect rows created or edited after this migration.
+  await runMigration(database, '2026-09-26-exact-model-metadata-v1', correctPersistedModelMetadata);
 
   // Startup assertion: reject invalid feature-flag orderings (plan §17).
   // Phase D turns on org-tenancy + credential resolver + vector tenancy, which
