@@ -2,25 +2,22 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import type { ArtifactCanvasItem, ArtifactComment } from '@/types';
+import type { ArtifactCanvasItem, ArtifactComment, ArtifactPreviewReady } from '@/types';
 import { useArtifactComments } from '@/hooks/useArtifactComments';
 import { useTextSelection } from '@/hooks/useTextSelection';
 import type { TextSelection } from '@/hooks/useTextSelection';
 import CanvasToolbar from './CanvasToolbar';
 import HtmlViewer from './viewers/HtmlViewer';
 import DocumentViewer from './viewers/DocumentViewer';
-import DriveEmbedViewer from './viewers/DriveEmbedViewer';
 import ImageViewer from './viewers/ImageViewer';
 import DiagramViewer from './viewers/DiagramViewer';
 import ChartViewer from './viewers/ChartViewer';
 import PodcastViewer from './viewers/PodcastViewer';
 import PdfViewer from './viewers/PdfViewer';
 import ZipViewer from './viewers/ZipViewer';
-import SkeletonArtifact from './SkeletonArtifact';
 import CommentSidebar from './CommentSidebar';
 import CommentInputBox from './CommentInputBox';
 import MobileArtifactComments from '@/components/mobile/MobileArtifactComments';
-import { useDriveUpload } from '@/hooks/useDriveUpload';
 
 interface ArtifactCanvasProps {
   artifact: ArtifactCanvasItem;
@@ -34,28 +31,21 @@ interface ArtifactCanvasProps {
   onSendComments?: (comments: ArtifactComment[]) => void;
 }
 
-const TEXT_SELECTABLE_TYPES: ArtifactCanvasItem['artifactType'][] = ['md', 'pdf', 'docx', 'html'];
+const TEXT_SELECTABLE_TYPES: ArtifactCanvasItem['artifactType'][] = ['md', 'pdf', 'docx', 'html', 'pptx', 'xlsx'];
 
 function ArtifactViewer({
   artifact,
-  threadId,
+  onReady,
+  onPage,
   containerRef,
   onAddImageComment,
 }: {
   artifact: ArtifactCanvasItem;
-  threadId: string | null;
+  onReady: (preview: ArtifactPreviewReady) => void;
+  onPage: (page: number) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onAddImageComment?: () => void;
 }) {
-  // Drive-hosted artifacts (PPTX/XLSX/DOCX) may need upload+embed
-  const { embedUrl, needsConsent, requestConsent, loading, error } = useDriveUpload({
-    artifact,
-    threadId,
-  });
-
-  // Inject resolved embed URL into the artifact for DriveEmbedViewer
-  const driveArtifact: ArtifactCanvasItem = embedUrl ? { ...artifact, embedUrl } : artifact;
-
   switch (artifact.artifactType) {
     case 'html':
       return (
@@ -74,63 +64,9 @@ function ArtifactViewer({
         </div>
       );
     case 'pdf':
-      return (
-        <div ref={containerRef} className="w-full h-full">
-          <PdfViewer
-            key={`${artifact.artifactId}:${artifact.downloadUrl}`}
-            artifact={artifact}
-            selectable
-          />
-        </div>
-      );
     case 'pptx':
     case 'xlsx':
-      if (loading) {
-        return (
-          <div className="h-full">
-            <SkeletonArtifact variant="document" />
-          </div>
-        );
-      }
-      if (needsConsent) {
-        return (
-          <div className="flex flex-col items-center justify-center h-full p-6 text-center bg-gray-50">
-            <p className="text-sm text-gray-700 mb-4">
-              View this file in Google Drive? The file will be uploaded so it can be previewed inline.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={requestConsent}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Upload & View
-              </button>
-              <a
-                href={artifact.downloadUrl}
-                download
-                className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors"
-              >
-                Download instead
-              </a>
-            </div>
-          </div>
-        );
-      }
-      if (error) {
-        return (
-          <div className="flex flex-col items-center justify-center h-full p-6 text-center bg-gray-50">
-            <p className="text-sm text-red-600 mb-2">{error}</p>
-            <a
-              href={artifact.downloadUrl}
-              download
-              className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              Download instead
-            </a>
-          </div>
-        );
-      }
-      return <DriveEmbedViewer artifact={driveArtifact} />;
+      return <div ref={containerRef} className="w-full h-full"><PdfViewer artifact={artifact} onReady={onReady} onPage={onPage}/></div>;
     case 'image':
       return <ImageViewer artifact={artifact} onAddImageComment={onAddImageComment} />;
     case 'diagram':
@@ -154,7 +90,7 @@ function ArtifactViewer({
   }
 }
 
-export default function ArtifactCanvas({
+function ArtifactCanvasContent({
   artifact,
   onClose,
   threadId,
@@ -171,8 +107,11 @@ export default function ArtifactCanvas({
   const hasPrev = hasNav && safeIndex > 0;
   const hasNext = hasNav && siblings ? safeIndex < siblings.length - 1 : false;
 
-  const { comments, addTextComment, addImageComment, removeComment, clearComments, commentCount } =
-    useArtifactComments(artifact);
+  const [preview, setPreview] = useState<ArtifactPreviewReady>();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageComment, setPageComment] = useState<number>();
+  const { comments, addTextComment, addImageComment, removeComment, commentCount, error, loading, saving } =
+    useArtifactComments(artifact, preview);
 
   const isMobile = useIsMobile();
   const [mobileScreen, setMobileScreen] = useState<'document' | 'comments'>('document');
@@ -248,21 +187,24 @@ export default function ArtifactCanvas({
   }, [captureSelection]);
 
   const handleAddImageComment = useCallback(() => {
+    setPageComment(undefined);
+    setPendingSelection(null);
     setFlipCommentInput(false);
     setCommentInputPosition(undefined);
     setCommentInputOpen(true);
   }, []);
 
   const handleSaveTextComment = useCallback(
-    (commentText: string) => {
+    async (commentText: string) => {
       const source = pendingSelection ?? selection;
       if (!source) return;
-      addTextComment({
+      const saved = await addTextComment({
         selectedText: source.selectedText,
         surroundingContext: source.surroundingContext,
         commentText,
         pageNumber: source.pageNumber,
       });
+      if (!saved) return;
       setPendingSelection(null);
       clearSelection();
       setCommentInputOpen(false);
@@ -273,12 +215,12 @@ export default function ArtifactCanvas({
 
 
   const handleSaveImageComment = useCallback(
-    (commentText: string) => {
-      addImageComment({ commentText });
+    async (commentText: string) => {
+      if (!(await addImageComment({ commentText, pageNumber: pageComment }))) return;
       setCommentInputOpen(false);
       if (!isMobile) setSidebarCollapsed(false);
     },
-    [addImageComment, isMobile]
+    [addImageComment, isMobile, pageComment]
   );
 
   const handleCancelComment = useCallback(() => {
@@ -289,19 +231,19 @@ export default function ArtifactCanvas({
   const handleSendAll = useCallback(() => {
     if (comments.length === 0) return;
     onSendComments?.(comments);
-    clearComments();
     onClose();
-  }, [comments, onSendComments, clearComments, onClose]);
+  }, [comments, onSendComments, onClose]);
 
   // A text selection cannot be captured from Drive's iframe previews, so offer
   // an explicit mobile comment action for spreadsheet and presentation files.
-  const needsGeneralCommentAction = isMobile && ['xlsx', 'pptx'].includes(artifact.artifactType);
+  const needsGeneralCommentAction = artifact.artifactType !== 'image';
 
   const reader = (
     <div ref={containerRef} className="flex-1 min-w-0 min-h-0 relative">
       <ArtifactViewer
         artifact={artifact}
-        threadId={threadId}
+        onReady={setPreview}
+        onPage={setCurrentPage}
         containerRef={containerRef}
         onAddImageComment={handleAddImageComment}
       />
@@ -328,6 +270,7 @@ export default function ArtifactCanvas({
           onCancel={handleCancelComment}
           placeholder={commentInputPosition ? 'Comment on selected text…' : 'Add a comment…'}
           mobile={isMobile}
+          saving={saving}
         />
       )}
     </div>
@@ -335,6 +278,8 @@ export default function ArtifactCanvas({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-white">
+      {(loading || saving || error) && <p role={error ? 'alert' : 'status'} className="p-2 text-sm border-b">{error || (saving ? 'Saving comment…' : 'Loading saved comments…')}</p>}
+      {preview && <div className="px-3 py-1 text-xs border-b flex gap-3"><button className="underline" onClick={()=>{handleAddImageComment();setPageComment(currentPage);}}>Comment on page {currentPage}</button>{comments.some(c=>c.renderVersion&&c.renderVersion!==preview.renderVersion)&&<span>Some saved anchors belong to a previous preview; page numbers have not been remapped.</span>}</div>}
       {isMobile && mobileScreen === 'comments' ? (
         <MobileArtifactComments
           comments={comments}
@@ -378,4 +323,10 @@ export default function ArtifactCanvas({
       )}
     </div>
   );
+}
+
+// A source/thread transition remounts drafts, async generations, page state and
+// selections together. Late responses cannot enter a different artifact pane.
+export default function ArtifactCanvas(props: ArtifactCanvasProps) {
+  return <ArtifactCanvasContent key={`${props.threadId}:${props.artifact.source?.kind}:${props.artifact.source?.id}:${props.artifact.artifactId}`} {...props}/>;
 }

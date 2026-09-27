@@ -20,12 +20,21 @@ RUN mkdir -p public
 
 # Copy browser-ready vendor bundles used by self-contained HTML generation.
 # Next standalone tracing does not include these dynamic fs reads from node_modules.
-RUN mkdir -p public/vendor && \
+# Also (re)copy pdfjs-dist static assets for the private PDF preview viewer
+# (PdfViewer worker/CMaps/standard fonts/wasm, pinned in package.json) so the
+# standalone image always serves assets matching the installed version.
+RUN mkdir -p public/vendor public/pdfjs && \
     cp node_modules/chart.js/dist/chart.umd.min.js public/vendor/chart.umd.min.js && \
     cp node_modules/chartjs-plugin-datalabels/dist/chartjs-plugin-datalabels.min.js public/vendor/chartjs-plugin-datalabels.min.js && \
     cp node_modules/mermaid/dist/mermaid.min.js public/vendor/mermaid.min.js && \
+    cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdfjs/pdf.worker.min.mjs && \
+    cp -r node_modules/pdfjs-dist/cmaps public/pdfjs/cmaps && \
+    cp -r node_modules/pdfjs-dist/standard_fonts public/pdfjs/standard_fonts && \
+    cp -r node_modules/pdfjs-dist/wasm public/pdfjs/wasm && \
     echo "=== HTML vendor bundle sizes ===" && \
-    ls -lh public/vendor/
+    ls -lh public/vendor/ && \
+    echo "=== pdfjs static asset sizes ===" && \
+    du -sh public/pdfjs/*
 
 # Build-time environment variables
 ENV NEXT_TELEMETRY_DISABLED=1

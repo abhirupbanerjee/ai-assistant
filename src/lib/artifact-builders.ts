@@ -37,6 +37,8 @@ export function getExpirationVariant(expiresAt: string | null): 'expired' | 'war
 
 export function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
   return {
+    source: /^[1-9]\d*$/.test(String(doc.id)) ? { kind: 'output', id: String(doc.id) } : undefined,
+    format: doc.filename.split('.').pop()?.toLowerCase(),
     artifactId: doc.id,
     artifactType: doc.fileType as ArtifactCanvasItem['artifactType'],
     title: doc.filename,
@@ -95,11 +97,17 @@ export function buildChartCanvasItem(
   };
 }
 
-function mapUploadArtifactType(fileType: string): ArtifactCanvasItem['artifactType'] {
+function mapUploadArtifactType(fileType: string, filename?: string): ArtifactCanvasItem['artifactType'] {
   if (fileType.startsWith('image/')) return 'image';
   if (fileType === 'application/pdf') return 'pdf';
   if (fileType === 'text/html') return 'html';
-  if (fileType === 'text/markdown') return 'md';
+  if (
+    fileType.startsWith('text/') ||
+    fileType === 'application/json' ||
+    fileType === 'application/csv' ||
+    fileType === 'text/csv' ||
+    fileType === 'text/markdown'
+  ) return 'md';
   if (
     fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     fileType === 'application/msword'
@@ -112,12 +120,22 @@ function mapUploadArtifactType(fileType: string): ArtifactCanvasItem['artifactTy
     fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
     fileType === 'application/vnd.ms-powerpoint'
   ) return 'pptx';
-  return 'md';
+  if (filename) {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (ext && ['txt', 'md', 'csv', 'json', 'log', 'tsv', 'yaml', 'yml', 'xml', 'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'sql', 'css'].includes(ext)) {
+      return 'md';
+    }
+    if (ext === 'html' || ext === 'htm') return 'html';
+  }
+  return 'unsupported';
 }
 
 export function buildUploadCanvasItem(upload: ThreadUploadItem): ArtifactCanvasItem {
-  const artifactType = mapUploadArtifactType(upload.fileType);
+  const format = upload.filename.split('.').pop()?.toLowerCase();
+  const artifactType = format === 'doc' ? 'unsupported' : mapUploadArtifactType(upload.fileType, upload.filename);
   return {
+    source: { kind: 'upload', id: String(upload.id) },
+    format,
     artifactId: `upload-${upload.id}`,
     artifactType,
     title: upload.filename,

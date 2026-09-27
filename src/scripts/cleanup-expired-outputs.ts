@@ -18,6 +18,7 @@ import { config } from 'dotenv';
 config(); // Load .env file
 
 import { cleanupExpiredDocuments, getExpiredDocuments } from '../lib/docgen/document-generator';
+import { cleanupArtifactPreviews } from '../lib/artifact-preview/cleanup';
 
 interface CleanupOptions {
   dryRun: boolean;
@@ -38,6 +39,18 @@ async function runCleanup(options: CleanupOptions): Promise<CleanupResult> {
   };
 
   try {
+    // Run even when no source outputs expired: cache TTL/orphan cleanup is
+    // independent of output retention, and upload/thread cascades leave files.
+    if (!options.dryRun) {
+      try {
+        const previews = await cleanupArtifactPreviews();
+        console.log(`Artifact preview orphan files removed: ${previews.removed}`);
+      } catch (previewError) {
+        const msg = previewError instanceof Error ? previewError.message : String(previewError);
+        result.errors.push(`Artifact preview cleanup: ${msg}`);
+        console.error('⚠️  Warning: Failed to clean up artifact preview orphans:', msg);
+      }
+    }
     // Get expired documents first (for dry-run and verbose output)
     const expired = await getExpiredDocuments();
     result.totalExpired = expired.length;

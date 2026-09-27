@@ -11,6 +11,7 @@ interface CommentInputBoxProps {
   placeholder?: string;
   /** Mobile composition pins the composer above browser chrome and the keyboard. */
   mobile?: boolean;
+  saving?: boolean;
 }
 
 export default function CommentInputBox({
@@ -20,6 +21,7 @@ export default function CommentInputBox({
   onCancel,
   placeholder = 'Add a comment…',
   mobile = false,
+  saving = false,
 }: CommentInputBoxProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -32,7 +34,7 @@ export default function CommentInputBox({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const trimmed = text.trim();
-      if (trimmed) {
+      if (trimmed && !saving) {
         onSave(trimmed);
       }
     } else if (e.key === 'Escape') {
@@ -95,6 +97,8 @@ export default function CommentInputBox({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={3}
+          maxLength={4000}
+          disabled={saving}
           className="w-full text-sm text-gray-900 placeholder-gray-400 bg-gray-50 rounded-md border border-gray-200 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
         <div className="flex justify-end mt-2 gap-2">
@@ -109,10 +113,10 @@ export default function CommentInputBox({
               const trimmed = text.trim();
               if (trimmed) onSave(trimmed);
             }}
-            disabled={!text.trim()}
+            disabled={!text.trim() || saving}
             className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-md transition-colors"
           >
-            Save
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

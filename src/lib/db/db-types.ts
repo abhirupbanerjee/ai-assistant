@@ -1393,7 +1393,24 @@ export interface CredentialAuditLogTable {
 
 // ============ Complete Database Interface ============
 
+export interface ArtifactPreviewsTable {
+  cache_key: string; upload_id: number | null; output_id: number | null;
+  thread_id: string; owner_id: number; partition_key: string; source_version: string;
+  state: 'queued' | 'active' | 'ready' | 'failed'; token: string;
+  lease_until: string; expires_at: string; created_at: Generated<string>;
+  render_version: string | null; page_count: number | null; byte_size: Generated<number>; converted: boolean;
+}
+export interface ArtifactPreviewCommentsTable {
+  id: string; upload_id: number | null; output_id: number | null;
+  thread_id: string; owner_id: number; partition_key: string; source_version: string;
+  render_version: string | null; kind: 'general' | 'page' | 'selection';
+  comment_text: string; selected_text: string | null; surrounding_context: string | null;
+  page_number: number | null; client_token: string; created_at: Generated<string>;
+}
 export interface DB {
+  artifact_previews: ArtifactPreviewsTable;
+  artifact_preview_comments: ArtifactPreviewCommentsTable;
+  artifact_preview_converter: { id: number; token: string | null; lease_until: string };
   users: UsersTable;
   categories: CategoriesTable;
   super_user_categories: SuperUserCategoriesTable;

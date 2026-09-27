@@ -61,7 +61,7 @@ export default function CommentSidebar({
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {comments.length === 0 ? (
           <div className="text-center py-8 text-gray-400 text-sm">
-            Select text or add an image comment to get started.
+            Add a general comment or select text to begin.
           </div>
         ) : (
           comments.map((comment) => (
@@ -82,6 +82,7 @@ export default function CommentSidebar({
                       “{truncate(comment.selectedText, 140)}”
                     </p>
                   )}
+                  {comment.persisted && <p className="text-xs text-gray-500">Saved · {comment.kind}</p>}
                   {comment.pageNumber && (
                     <p className="mt-1 text-xs text-gray-400">Page {comment.pageNumber}</p>
                   )}
@@ -89,7 +90,7 @@ export default function CommentSidebar({
                 <button
                   onClick={() => onRemove(comment.commentId)}
                   className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 p-0.5 rounded transition-opacity"
-                  aria-label="Remove comment"
+                  aria-label="Delete saved comment"
                 >
                   <X size={14} />
                 </button>
@@ -106,7 +107,7 @@ export default function CommentSidebar({
           className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
         >
           <Send size={15} />
-          Send All {comments.length > 0 && `(${comments.length})`}
+          Attach to chat {comments.length > 0 && `(${comments.length})`}
         </button>
       </div>
     </div>

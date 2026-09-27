@@ -1,273 +1,87 @@
 'use client';
+import { useEffect, useRef, useState } from 'react';
+import type { PDFDocumentProxy, RenderTask, TextLayer } from 'pdfjs-dist';
+import type { ArtifactCanvasItem, ArtifactPreviewReady } from '@/types/artifact-canvas';
+import { artifactEndpoint, artifactJson } from '@/lib/artifact-preview-client';
+import './pdf-preview.css';
 
-import { useEffect, useState } from 'react';
-import type { ArtifactCanvasItem } from '@/types';
-import { useIsMobile } from '@/hooks/useMediaQuery';
-
-interface ExtractedPage {
-  pageNumber: number;
-  text: string;
-}
-
-interface TextExtractionResponse {
-  pages: ExtractedPage[];
-  totalPages: number;
-  provider: string;
-}
-
-interface PdfViewerProps {
+interface Props {
   artifact: ArtifactCanvasItem;
-  selectable?: boolean;
+  onReady?: (preview: ArtifactPreviewReady) => void;
+  onPage?: (page: number) => void;
 }
-
-type ViewMode = 'text' | 'original';
-const DEBUG_ARTIFACT_RENDERING = process.env.NODE_ENV === 'development';
-
-export default function PdfViewer({ artifact, selectable = true }: PdfViewerProps) {
-  const isMobile = useIsMobile();
-  const [mode, setMode] = useState<ViewMode>(selectable ? 'text' : 'original');
-  const [pages, setPages] = useState<ExtractedPage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [originalPdfUrl, setOriginalPdfUrl] = useState<string | null>(null);
-  const [originalLoading, setOriginalLoading] = useState(false);
-  const [originalError, setOriginalError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selectable) return;
-
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setPages([]);
-
-    async function loadText() {
-      try {
-        const response = await fetch(`/api/artifacts/${artifact.artifactId}/text`, {
-          credentials: 'same-origin',
-        });
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || `Failed to extract text (${response.status})`);
-        }
-        const data = (await response.json()) as TextExtractionResponse;
-        if (!cancelled) {
-          setPages(data.pages || []);
-          if (DEBUG_ARTIFACT_RENDERING) {
-            const extractedPages = data.pages || [];
-            console.debug('[ArtifactCanvas][PDF] Text extraction completed', {
-              artifactId: artifact.artifactId,
-              provider: data.provider,
-              reportedPageCount: data.totalPages,
-              returnedPageCount: extractedPages.length,
-              pagesWithText: extractedPages.filter((page) => page.text.trim().length > 0).length,
-            });
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load PDF text');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadText();
-    return () => { cancelled = true; };
-  }, [artifact.artifactId, selectable]);
-
-  useEffect(() => {
-    if (mode !== 'original') {
-      setOriginalPdfUrl(null);
-      setOriginalLoading(false);
-      setOriginalError(null);
-      return;
-    }
-
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    setOriginalLoading(true);
-    setOriginalError(null);
-
-    async function loadOriginalPdf() {
-      try {
-        const response = await fetch(artifact.downloadUrl, { credentials: 'same-origin' });
-        if (!response.ok) throw new Error(`Failed to load original PDF (${response.status})`);
-
-        const blob = await response.blob();
-        if (cancelled) return;
-
-        // A Blob URL has no Content-Disposition response header, so browsers
-        // display it in the iframe even when the authenticated download route
-        // serves the source file as an attachment.
-        objectUrl = URL.createObjectURL(
-          blob.type === 'application/pdf' ? blob : blob.slice(0, blob.size, 'application/pdf')
-        );
-        setOriginalPdfUrl(objectUrl);
-      } catch (err) {
-        if (!cancelled) {
-          setOriginalError(err instanceof Error ? err.message : 'Failed to load original PDF');
-        }
-      } finally {
-        if (!cancelled) setOriginalLoading(false);
-      }
-    }
-
-    loadOriginalPdf();
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [artifact.downloadUrl, mode]);
-
-  if (!selectable) {
-    return (
-      <iframe
-        title={artifact.title}
-        src={artifact.downloadUrl}
-        className="w-full h-full border-0 bg-white"
-      />
-    );
-  }
-
-  const hasExtractedText = pages.some((page) => page.text.trim().length > 0);
-  const originalPdfSrc = originalPdfUrl ? `${originalPdfUrl}#view=FitH` : null;
-
-  return (
-    <div className="w-full h-full flex flex-col bg-gray-100">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-white shrink-0">
-        <span className="text-xs text-gray-500">
-          {mode === 'original'
-            ? 'Original PDF'
-            : loading
-              ? 'Extracting selectable text…'
-              : hasExtractedText
-                ? `${pages.length} page${pages.length !== 1 ? 's' : ''} · Extracted text`
-                : error
-                  ? 'Text extraction unavailable'
-                  : 'No selectable text found'}
-        </span>
-        <div
-          role="group"
-          className="flex shrink-0 items-center rounded-md border border-gray-200 p-0.5"
-          aria-label="PDF view mode"
-        >
-          <button
-            type="button"
-            onClick={() => setMode('text')}
-            aria-pressed={mode === 'text'}
-            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-              mode === 'text'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <span className="hidden min-[390px]:inline">Extracted </span>Text
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('original')}
-            aria-pressed={mode === 'original'}
-            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-              mode === 'original'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Original
-          </button>
-        </div>
-      </div>
-      {mode === 'original' ? (
-        originalLoading ? (
-          <div className="flex flex-1 items-center justify-center bg-white">
-            <div className="animate-pulse text-sm text-gray-400">Loading original PDF…</div>
-          </div>
-        ) : originalError ? (
-          <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-            <p className="mb-3 text-sm text-red-600">{originalError}</p>
-            <a
-              href={artifact.downloadUrl}
-              download
-              className="text-sm font-medium text-blue-600 hover:text-blue-700"
-            >
-              Download PDF instead
-            </a>
-          </div>
-        ) : originalPdfUrl ? (
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            {isMobile && (
-              <p className="shrink-0 border-b bg-white px-3 py-1.5 text-center text-[11px] text-gray-500">
-                Original layout uses page-width fit where supported. Pinch to zoom for detail.
-              </p>
-            )}
-            <iframe
-              title={artifact.title}
-              src={originalPdfSrc ?? undefined}
-              className="min-h-0 flex-1 w-full border-0 bg-white"
-            />
-          </div>
-        ) : null
-      ) : loading ? (
-        <div className="flex-1 overflow-auto p-3 sm:p-6">
-          <div className="max-w-3xl mx-auto space-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="animate-pulse rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-                <div className="h-3 bg-gray-200 rounded w-1/4 mb-4" />
-                <div className="space-y-2">
-                  <div className="h-2 bg-gray-200 rounded w-full" />
-                  <div className="h-2 bg-gray-200 rounded w-5/6" />
-                  <div className="h-2 bg-gray-200 rounded w-4/6" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : error ? (
-        <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-          <p className="mb-3 text-sm text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={() => setMode('original')}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700"
-          >
-            View Original PDF
-          </button>
-        </div>
-      ) : !hasExtractedText ? (
-        <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
-          <p className="max-w-md text-sm text-gray-600">
-            No selectable text was found. This PDF may be scanned, image-only, or protected.
-          </p>
-          <button
-            type="button"
-            onClick={() => setMode('original')}
-            className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700"
-          >
-            View Original PDF
-          </button>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-auto p-3 sm:p-6">
-          {pages.map((page) => (
-            <div
-              key={page.pageNumber}
-              data-page-number={page.pageNumber}
-              className="mx-auto mb-3 w-full max-w-3xl rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:mb-4 sm:p-6"
-            >
-              <div className="text-xs text-gray-400 mb-2 font-medium">
-                Page {page.pageNumber}
-              </div>
-              <p className="break-words whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-                {page.text}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+export default function PdfViewer({artifact,onReady,onPage}:Props){
+  const [preview,setPreview]=useState<ArtifactPreviewReady>();
+  const [document,setDocument]=useState<PDFDocumentProxy>();
+  const [page,setPage]=useState(1),[zoom,setZoom]=useState(1),[width,setWidth]=useState(600);
+  const [attempt,setAttempt]=useState(0),[error,setError]=useState<string>(),[busy,setBusy]=useState(true),[textless,setTextless]=useState(false);
+  const host=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),text=useRef<HTMLDivElement>(null),sheet=useRef<HTMLDivElement>(null);
+  const readyCallback=useRef(onReady),pageCallback=useRef(onPage);
+  readyCallback.current=onReady;pageCallback.current=onPage;
+  useEffect(()=>{const el=host.current;if(!el)return;const observer=new ResizeObserver(entries=>setWidth(Math.max(240,entries[0].contentRect.width-32)));observer.observe(el);return()=>observer.disconnect();},[]);
+  useEffect(()=>{
+    const controller=new AbortController();let cancelled=false;let task:ReturnType<typeof import('pdfjs-dist')['getDocument']>|undefined;
+    setBusy(true);setError(undefined);setPreview(undefined);setDocument(undefined);setPage(1);setZoom(1);
+    void(async()=>{
+      const endpoint=artifactEndpoint(artifact);if(!endpoint)throw new Error('This artifact has no supported private source identity.');
+      const metadata=await artifactJson<{sourceVersion:string}>(endpoint,{signal:controller.signal});
+      const result=await artifactJson<ArtifactPreviewReady>(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceVersion:metadata.sourceVersion}),signal:controller.signal});
+      if(cancelled)return;
+      const pdfjs=await import('pdfjs-dist');
+      if(cancelled)return;
+      pdfjs.GlobalWorkerOptions.workerSrc='/pdfjs/pdf.worker.min.mjs';
+      task=pdfjs.getDocument({url:result.pdfUrl,withCredentials:true,isEvalSupported:false,disableRange:true,disableStream:true,
+        cMapUrl:'/pdfjs/cmaps/',cMapPacked:true,standardFontDataUrl:'/pdfjs/standard_fonts/',wasmUrl:'/pdfjs/wasm/'});
+      const doc=await task.promise;
+      if(cancelled){await doc.destroy();return;}
+      setPreview(result);setDocument(doc);readyCallback.current?.(result);pageCallback.current?.(1);
+    })().catch(e=>{if(!cancelled)setError(e.message||'Preview could not be loaded.');}).finally(()=>{if(!cancelled)setBusy(false);});
+    return()=>{cancelled=true;controller.abort();void task?.destroy();};
+  },[artifact.source?.kind,artifact.source?.id,artifact.artifactId,attempt]);
+  useEffect(()=>{
+    if(!document)return;let cancelled=false;let render:RenderTask|undefined;let layer:TextLayer|undefined;
+    setBusy(true);setError(undefined);setTextless(false);
+    void(async()=>{
+      const pdfjs=await import('pdfjs-dist');const p=await document.getPage(page);
+      if(cancelled||!canvas.current||!text.current||!sheet.current)return;
+      const base=p.getViewport({scale:1});let scale=width/base.width*zoom;
+      // Bound canvas dimensions and pixels even when an unusual PDF page passes
+      // server validation. Zoom never allocates an unbounded bitmap.
+      scale=Math.min(scale,4096/base.width,4096/base.height,Math.sqrt(8_000_000/(base.width*base.height)));
+      const viewport=p.getViewport({scale});const el=canvas.current;
+      el.width=Math.ceil(viewport.width);el.height=Math.ceil(viewport.height);
+      sheet.current.style.width=`${viewport.width}px`;sheet.current.style.height=`${viewport.height}px`;
+      sheet.current.style.setProperty('--scale-factor',String(scale));
+      text.current.replaceChildren();
+      render=p.render({canvas:el,viewport});await render.promise;
+      if(cancelled)return;
+      const content=await p.getTextContent();if(cancelled)return;
+      setTextless(!content.items.some(item=>'str' in item&&item.str.trim()));
+      layer=new pdfjs.TextLayer({textContentSource:content,container:text.current,viewport});await layer.render();
+    })().catch(e=>{if(!cancelled&&e.name!=='RenderingCancelledException')setError('This page could not be rendered.');}).finally(()=>{if(!cancelled)setBusy(false);});
+    return()=>{cancelled=true;render?.cancel();layer?.cancel();};
+  },[document,page,zoom,width]);
+  const navigate=(n:number)=>{window.getSelection()?.removeAllRanges();setPage(n);pageCallback.current?.(n);host.current?.scrollTo({top:0});};
+  return <div className="h-full flex flex-col min-h-0">
+    <div className="p-2 border-b flex flex-wrap items-center gap-2 text-sm" aria-label="PDF controls">
+      <span>{preview?.converted?'Converted preview — original unchanged':'Original PDF'}</span>
+      {document&&<>
+        <button aria-label="Previous PDF page" disabled={page<=1} onClick={()=>navigate(page-1)}>Previous</button>
+        <label>Page <input aria-label="PDF page number" className="w-14 border rounded" type="number" min={1} max={document.numPages} value={page} onChange={e=>{const n=Number(e.target.value);if(Number.isInteger(n)&&n>=1&&n<=document.numPages)navigate(n);}}/> / {document.numPages}</label>
+        <button aria-label="Next PDF page" disabled={page>=document.numPages} onClick={()=>navigate(page+1)}>Next</button>
+        <button aria-label="Zoom out" disabled={zoom<=0.5} onClick={()=>setZoom(z=>Math.max(.5,z-.25))}>−</button>
+        <button onClick={()=>setZoom(1)}>Fit width</button>
+        <button aria-label="Zoom in" disabled={zoom>=2} onClick={()=>setZoom(z=>Math.min(2,z+.25))}>+</button>
+      </>}
     </div>
-  );
+    {busy&&<p role="status" className="p-2 text-sm">Preparing private preview…</p>}
+    {error&&<div role="alert" className="p-4 text-sm text-red-700">{error} <button className="underline" onClick={()=>setAttempt(n=>n+1)}>Retry preview</button></div>}
+    {textless&&<p className="p-2 text-xs">No selectable text on this page. General and page comments are available; OCR is not performed.</p>}
+    <div ref={host} className="flex-1 min-h-0 overflow-auto bg-gray-100 p-4">
+      <div ref={sheet} data-page-number={page} className="artifact-pdf-sheet relative mx-auto bg-white shadow" style={{display:document?'block':'none'}}>
+        <canvas ref={canvas} aria-label={`PDF page ${page}`} role="img"/>
+        <div ref={text} className="artifact-pdf-text"/>
+      </div>
+    </div>
+  </div>;
 }

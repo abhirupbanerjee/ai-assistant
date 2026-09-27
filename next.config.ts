@@ -30,9 +30,14 @@ const nextConfig: NextConfig = {
 
     /**
      * CSP hardening notes:
-     * - 'unsafe-eval' is required by Next.js dev mode and some dependencies (tiktoken, chart.js)
+     * - 'unsafe-eval' is required by Next.js dev mode and some dependencies (tiktoken, chart.js);
+     *   it also covers WASM compilation for pdf.js (wasm-unsafe-eval is implied).
      * - 'unsafe-inline' is required by Next.js App Router for RSC bootstrap scripts and
      *   __NEXT_DATA__ hydration blocks. Removing it broke the entire application (see 2026-05-23).
+     * - The private PDF preview (PdfViewer) loads its pdf.js Web Worker from the same
+     *   origin (/pdfjs/pdf.worker.min.mjs, served from public/pdfjs). worker-src is not
+     *   set, so it falls back to script-src, where 'self' already allows it — no
+     *   additional CSP directives are required for artifact previews.
      * - report-uri /api/csp-report enables monitoring of CSP violations in production
      * - Roadmap: Introduce hash-based CSP + Content-Security-Policy-Report-Only header to
      *   collect violation data, then migrate to a nonce-based strict CSP without 'unsafe-inline'.
@@ -120,6 +125,9 @@ const nextConfig: NextConfig = {
     // Docker build from failing to resolve it.
     'docx-preview',
     'jszip',
+    // Validation workers resolve these in a real Node context, outside the bundle.
+    'adm-zip',
+    'saxes',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {
@@ -142,6 +150,9 @@ const nextConfig: NextConfig = {
       // them into the standalone image so PPTX/legacy-Office extraction works at runtime.
       './node_modules/file-type/**/*',
       './node_modules/pdfjs-dist/**/*',
+      './node_modules/adm-zip/**/*',
+      './node_modules/saxes/**/*',
+      './node_modules/xmlchars/**/*',
       './node_modules/tesseract.js/**/*',
       // file-type's runtime deps (transitive — also missed by tracing).
       './node_modules/strtok3/**/*',

@@ -321,7 +321,7 @@ function HomeContent() {
   }, [openCanvas]);
 
   const handleSendComments = useCallback((comments: ArtifactComment[]) => {
-    setPendingArtifactComments(prev => [...prev, ...comments]);
+    setPendingArtifactComments(prev => [...prev, ...comments.filter(comment => !prev.some(existing => existing.commentId === comment.commentId))]);
   }, []);
 
   const handleRemoveArtifactComment = useCallback((commentId: string) => {

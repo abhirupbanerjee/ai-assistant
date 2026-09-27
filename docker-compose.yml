@@ -100,12 +100,16 @@ services:
       - ./config:/app/config:ro
       - ./data/transformers_cache:/tmp/transformers_cache  # Persist BGE reranker models (~670MB)
     # PostgreSQL: waits for healthy status when the postgres profile is active.
+    # Gotenberg: waits for started status when the gotenberg profile is active.
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
         required: false  # Only enforced when postgres profile is active
+      gotenberg:
+        condition: service_started
+        required: false  # Only enforced when gotenberg profile is active
     networks:
       - policy-bot-network
     restart: unless-stopped
@@ -207,6 +211,46 @@ services:
       resources:
         limits:
           memory: 1G
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  # Gotenberg — local LibreOffice conversion sidecar for authorized artifact
+  # previews (PDF/PPTX/XLSX). Opt-in: enable with --profile gotenberg plus
+  # ARTIFACT_PREVIEW_ENABLED=true and ARTIFACT_GOTENBERG_URL=http://gotenberg:3000
+  # in .env (see .env.example "Artifact Preview (local document conversion)").
+  # Security posture: image pinned by digest; NO published ports (reachable only
+  # from the app over policy-bot-network); LibreOffice URL fetch attempts blocked
+  # via LIBREOFFICE_DENY_LIST=. Note: if running with --profile ollama on an 8GB VM,
+  # avoid running Gotenberg simultaneously to avoid memory pressure.
+  gotenberg:
+    image: gotenberg/gotenberg:8.34.0-libreoffice@sha256:3c23aeb3a027a63d7c71745fc9d83724bd58cf9dfa470396ac82c0896028db2a
+    container_name: policy-bot-gotenberg
+    profiles:
+      - gotenberg
+    environment:
+      # Hard server-side request deadline. The app aborts its own conversion
+      # wait at 60s; 90s is a backstop so the provider never hangs longer than
+      # the DB lease (130s) that the app holds during conversion.
+      - API_TIMEOUT=90s
+      # App enforces 20MiB inputs; reject oversized multipart bodies at the door.
+      - API_BODY_LIMIT=25MB
+      # Serialize LibreOffice work: at most 2 queued conversions; the app also
+      # DB-serializes (single global active + <=2 queued reservations), but the
+      # provider must enforce its own bounded queue.
+      - LIBREOFFICE_MAX_QUEUE_SIZE=2
+      # Restart LibreOffice periodically to bound process-level degradation.
+      - LIBREOFFICE_RESTART_AFTER=10
+      # Start LibreOffice at container start so first conversion is not slow.
+      - LIBREOFFICE_AUTO_START=true
+      # Deny ALL LibreOffice outbound URL fetches (embedded/linked remote
+      # content). "." is a regex matching every non-empty URL.
+      - LIBREOFFICE_DENY_LIST=.
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 3G
     networks:
       - policy-bot-network
     restart: unless-stopped

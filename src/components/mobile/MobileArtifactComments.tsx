@@ -61,13 +61,14 @@ export default function MobileArtifactComments({
                       “{truncate(comment.selectedText, 180)}”
                     </p>
                   )}
+                  {comment.persisted && <p className="text-xs text-gray-500">Saved · {comment.kind}</p>}
                   {comment.pageNumber && <p className="mt-1 text-xs text-gray-400">Page {comment.pageNumber}</p>}
                 </div>
                 <button
                   type="button"
                   onClick={() => onRemove(comment.commentId)}
                   className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-red-600"
-                  aria-label="Remove comment"
+                  aria-label="Delete saved comment"
                 >
                   <X size={17} />
                 </button>
@@ -85,7 +86,7 @@ export default function MobileArtifactComments({
           className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Send size={16} />
-          Send all{comments.length > 0 ? ` (${comments.length})` : ''}
+          Attach to chat{comments.length > 0 ? ` (${comments.length})` : ''}
         </button>
       </footer>
     </section>

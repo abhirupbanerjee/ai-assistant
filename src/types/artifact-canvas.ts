@@ -1,8 +1,10 @@
 export type CanvasMode = 'normal' | 'canvas' | 'browser';
 
 export interface ArtifactCanvasItem {
+  source?: { kind: 'upload' | 'output'; id: string };
+  format?: string;
   artifactId: string;
-  artifactType: 'html' | 'docx' | 'md' | 'pdf' | 'pptx' | 'xlsx' | 'image' | 'diagram' | 'chart' | 'podcast' | 'zip';
+  artifactType: 'html' | 'docx' | 'md' | 'pdf' | 'pptx' | 'xlsx' | 'image' | 'diagram' | 'chart' | 'podcast' | 'zip' | 'unsupported';
   title: string;
   downloadUrl: string;
   // For Drive-embedded artifacts:
@@ -19,6 +21,11 @@ export interface ArtifactCanvasItem {
 
 /** A single comment attached to an artifact (Phase 2a Path A). */
 export interface ArtifactComment {
+  persisted?: boolean;
+  source?: { kind: 'upload' | 'output'; id: string };
+  sourceVersion?: string;
+  renderVersion?: string | null;
+  kind?: 'general' | 'page' | 'selection';
   commentId: string;
   artifactId: string;
   artifactType: string;
@@ -34,6 +41,15 @@ export interface ArtifactComment {
   imageUrl?: string;
 
   createdAt: number;
+}
+
+export interface ArtifactPreviewReady {
+  sourceVersion: string;
+  renderVersion: string;
+  pageCount: number;
+  pdfUrl: string;
+  converted: boolean;
+  state: 'ready';
 }
 
 export interface ArtifactCommentContext {

@@ -1309,3 +1309,4 @@ export {
   transitionStatus,
   markActive,
 } from './vector-index-generations';
+export * from './artifact-previews';
