@@ -129,11 +129,21 @@ const nextConfig: NextConfig = {
     'adm-zip',
     'saxes',
   ],
-  // Body size limit for large file uploads (backup restore, document uploads)
+  // Body size limit for large file uploads (backup restore, document uploads).
+  //
+  // NOTE: `serverActions.bodySizeLimit` was removed on upgrade to Next.js 16.3.6.
+  // It only governs Server Action payloads, and this codebase contains no
+  // `'use server'` modules — every upload path is a Route Handler reading
+  // `request.formData()` (e.g. /api/admin/backup/restore, /api/superuser/documents,
+  // /api/threads/[threadId]/upload). The option was therefore dead config that
+  // implied an upload limit it never enforced.
+  //
+  // `proxyClientMaxBodySize` is the only option that actually governs Route
+  // Handler request bodies. It is still `experimental`, so it carries no semver
+  // guarantee across minor releases — if large uploads start failing with 413
+  // after a Next.js upgrade, verify this flag has not been renamed or promoted
+  // out of `experimental` before looking anywhere else.
   experimental: {
-    serverActions: {
-      bodySizeLimit: maxUploadSize,
-    },
     // For API routes with middleware/proxy (Next.js 16+)
     proxyClientMaxBodySize: maxUploadSize,
   },

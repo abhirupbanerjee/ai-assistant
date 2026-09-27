@@ -6,6 +6,18 @@ import { isUserAllowed, getUserRole } from './users';
 import { getUserByEmail, canLoginWithCredentials, getCredentialsAuthSettings, initializeAdminsFromEnv, initializeAdminCredentialsFromEnv } from './db/compat';
 import { verifyPassword } from './password';
 
+/**
+ * next-auth v4 honours `trustHost` at runtime but never added it to its published
+ * types (it is only typed from v5 onwards). Previously this was worked around with
+ * `@ts-expect-error`, which is fragile: `@ts-expect-error` itself becomes a build
+ * error the moment upstream adds the field, so a routine dependency bump would break
+ * `npm run type-check` on a line that had become correct.
+ *
+ * Declaring the field additively keeps it type-checked today and forward-compatible:
+ * if next-auth later types `trustHost` as `boolean`, this intersection is a no-op.
+ */
+export type NextAuthOptionsWithTrustHost = NextAuthOptions & { trustHost?: boolean };
+
 // Trigger user initialization at module load time
 // This ensures admin users are created before auth routes are accessed
 // Guard against Next.js build: no database is available during `next build`,
@@ -94,7 +106,7 @@ const pages: NextAuthOptions['pages'] = {
  * Reads credentials settings from the compat layer so Postgres mode works correctly.
  * Called per-request in the NextAuth route handler.
  */
-export async function getAuthOptions(): Promise<NextAuthOptions> {
+export async function getAuthOptions(): Promise<NextAuthOptionsWithTrustHost> {
   const credentialsSettings = await getCredentialsAuthSettings();
 
   // Build providers array dynamically
@@ -161,7 +173,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   }
 
   return {
-    // @ts-expect-error - trustHost is supported in runtime but not in next-auth v4 types
+    // `trustHost` is honoured at runtime by next-auth v4 but is absent from its
+    // published types (it was only typed from v5 onwards). Modelled via
+    // `NextAuthOptionsWithTrustHost` instead of a `@ts-expect-error`, which would
+    // itself become a build error the moment upstream adds the field.
     trustHost: true,
     providers,
     callbacks,
@@ -183,8 +198,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 // Static authOptions for getServerSession() callers.
 // Session verification only needs callbacks/pages — providers are not used for JWT decoding.
 // Changes to credentials settings take effect per-request via the dynamic handler above.
-export const authOptions: NextAuthOptions = {
-  // @ts-expect-error - trustHost is supported in runtime but not in next-auth v4 types
+export const authOptions: NextAuthOptionsWithTrustHost = {
   trustHost: true,
   providers: [],
   callbacks,

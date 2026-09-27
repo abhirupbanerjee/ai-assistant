@@ -20,8 +20,13 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # `--legacy-peer-deps` must match the Dockerfile's install step. next-auth v4
+      # declares `peer next@"^12.2.5 || ^13 || ^14 || ^15"` and so conflicts with
+      # Next.js 16. Both installs honour the lockfile, but leaving the flags divergent
+      # means CI would fail on peer resolution the first time the lockfile is
+      # regenerated, while the image build kept succeeding.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       # Gate 1: Golden-master parity harness (§7.3 item 6)
       - name: Golden-master parity harness
