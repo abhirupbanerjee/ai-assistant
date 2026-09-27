@@ -1,4 +1,5 @@
 import { resolveChatComments } from '@/lib/artifact-preview/chat';
+import { PreviewError } from '@/lib/artifact-preview/policy';
 /**
  * Streaming Chat API
  *
@@ -183,7 +184,16 @@ export async function POST(request: NextRequest) {
         try {
           if (!commentUser) throw new Error('Unauthorized');
           validatedComments = await resolveChatComments(rawArtifactComments, commentUser.id, threadId, request.headers, request.nextUrl.origin);
-        } catch {
+        } catch (commentError) {
+          // Never log the exception or request body: database errors and comments
+          // may contain private document data. Keep the client response generic.
+          const code = commentError instanceof PreviewError ? commentError.code : 'UNEXPECTED_ERROR';
+          const csrfDetails = code === 'CSRF_REJECTED' ? {
+            hasOrigin: request.headers.has('origin'),
+            originMatchesRequest: request.headers.get('origin') === request.nextUrl.origin,
+            fetchSiteIsSameOrigin: request.headers.get('sec-fetch-site') === 'same-origin',
+          } : undefined;
+          console.error('[Stream] Artifact comment validation failed', { code, ...csrfDetails });
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Artifact comments are unavailable or invalid. Reload the source and try again.', recoverable: false });
           cleanup(); safeClose(); return;
         }
