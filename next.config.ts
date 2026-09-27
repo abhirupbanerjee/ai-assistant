@@ -128,6 +128,9 @@ const nextConfig: NextConfig = {
     // Validation workers resolve these in a real Node context, outside the bundle.
     'adm-zip',
     'saxes',
+    // pdfjs-dist/legacy/build/pdf.mjs is loaded by the validation worker in
+    // Node and needs this native package for DOMMatrix/ImageData/Path2D.
+    '@napi-rs/canvas',
   ],
   // Body size limit for large file uploads (backup restore, document uploads).
   //
@@ -160,6 +163,10 @@ const nextConfig: NextConfig = {
       // them into the standalone image so PPTX/legacy-Office extraction works at runtime.
       './node_modules/file-type/**/*',
       './node_modules/pdfjs-dist/**/*',
+      // The worker imports pdfjs-dist dynamically; its optional native canvas
+      // dependency cannot be discovered reliably by standalone tracing.
+      './node_modules/@napi-rs/canvas/**/*',
+      './node_modules/@napi-rs/canvas-linux-x64-gnu/**/*',
       './node_modules/adm-zip/**/*',
       './node_modules/saxes/**/*',
       './node_modules/xmlchars/**/*',

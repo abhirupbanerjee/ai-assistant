@@ -88,6 +88,13 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# The PDF validation worker loads pdfjs-dist's Node legacy parser dynamically.
+# It needs DOMMatrix/ImageData/Path2D from @napi-rs/canvas and the matching
+# glibc x64 native binary; standalone tracing cannot see that worker import.
+COPY --from=builder /app/node_modules/@napi-rs/canvas ./node_modules/@napi-rs/canvas
+COPY --from=builder /app/node_modules/@napi-rs/canvas-linux-x64-gnu ./node_modules/@napi-rs/canvas-linux-x64-gnu
+RUN node -e 'const {createRequire}=require("node:module");const {pathToFileURL}=require("node:url");const r=createRequire("/app/package.json");import(pathToFileURL(r.resolve("pdfjs-dist/legacy/build/pdf.mjs")).href).then(m=>{if(typeof m.getDocument!=="function")process.exit(1)}).catch(e=>{console.error("PDF preview parser cannot start:",e.code||e.name);process.exit(1)})'
+
 # Copy ONNX runtime native libraries for local reranker (Transformers.js)
 # Only copy linux/x64 binaries needed for production
 COPY --from=builder /app/node_modules/onnxruntime-node/bin/napi-v3/linux/x64 ./node_modules/onnxruntime-node/bin/napi-v3/linux/x64
