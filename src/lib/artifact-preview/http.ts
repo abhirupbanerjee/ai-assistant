@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail } from '@/lib/db/compat';
-import { PreviewError, assertSurface, version } from './policy';
+import { PreviewError, assertSurface, expectedArtifactOrigin, version } from './policy';
 import { resolveSource } from './source';
 import { boundedBody } from './provider';
 
@@ -12,7 +12,7 @@ export function failure(error: unknown) {
   return json({ error: safe.code.replaceAll('_', ' ').toLowerCase(), code: safe.code }, safe.status);
 }
 export async function authorize(request: Request, context: RouteContext, mutation = false) {
-  assertSurface(request.headers, mutation, new URL(request.url).origin);
+  assertSurface(request.headers, mutation, expectedArtifactOrigin(request.url));
   const session = await getCurrentUser();
   if (!session) throw new PreviewError('AUTH_REQUIRED', 401);
   const user = await getUserByEmail(session.email);

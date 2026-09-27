@@ -1134,7 +1134,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           pipeline: preferences?.pipeline,
           pipelineMode: preferences?.pipelineMode,
           truncateFromMessageId: options?.truncateFromMessageId,
-          artifactComments: options?.artifactComments,
+          artifactComments: options?.artifactComments?.length ? options.artifactComments : undefined,
         }),
         signal: abortControllerRef.current.signal,
       });

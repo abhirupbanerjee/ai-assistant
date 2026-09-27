@@ -1,5 +1,5 @@
 import { resolveChatComments } from '@/lib/artifact-preview/chat';
-import { PreviewError } from '@/lib/artifact-preview/policy';
+import { PreviewError, expectedArtifactOrigin } from '@/lib/artifact-preview/policy';
 /**
  * Streaming Chat API
  *
@@ -183,14 +183,23 @@ export async function POST(request: NextRequest) {
         let validatedComments;
         try {
           if (!commentUser) throw new Error('Unauthorized');
-          validatedComments = await resolveChatComments(rawArtifactComments, commentUser.id, threadId, request.headers, request.nextUrl.origin);
+          // Plain chat (including an empty comment array) needs no mutation
+          // origin; keep origin validation for any non-empty/invalid payload.
+          const commentOrigin = rawArtifactComments == null ||
+            (Array.isArray(rawArtifactComments) && rawArtifactComments.length === 0)
+            ? '' : expectedArtifactOrigin(request.url);
+          validatedComments = await resolveChatComments(rawArtifactComments, commentUser.id, threadId, request.headers, commentOrigin);
         } catch (commentError) {
           // Never log the exception or request body: database errors and comments
           // may contain private document data. Keep the client response generic.
           const code = commentError instanceof PreviewError ? commentError.code : 'UNEXPECTED_ERROR';
+          let originMatchesExpected = false;
+          if (code === 'CSRF_REJECTED') {
+            try { originMatchesExpected = request.headers.get('origin') === expectedArtifactOrigin(request.url); } catch { /* Invalid deployment origin is already rejected. */ }
+          }
           const csrfDetails = code === 'CSRF_REJECTED' ? {
             hasOrigin: request.headers.has('origin'),
-            originMatchesRequest: request.headers.get('origin') === request.nextUrl.origin,
+            originMatchesExpected,
             fetchSiteIsSameOrigin: request.headers.get('sec-fetch-site') === 'same-origin',
           } : undefined;
           console.error('[Stream] Artifact comment validation failed', { code, ...csrfDetails });

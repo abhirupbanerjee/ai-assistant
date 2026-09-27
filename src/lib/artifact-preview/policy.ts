@@ -45,6 +45,19 @@ export function assertSurface(headers: Headers, mutation = false, origin?: strin
   if (headers.has('x-agent-bot-api-key') || headers.has('x-workspace-slug')) throw new PreviewError('ACCESS_DENIED', 403);
   if (mutation && (!origin || headers.get('origin') !== origin || (headers.get('sec-fetch-site') && headers.get('sec-fetch-site') !== 'same-origin'))) throw new PreviewError('CSRF_REJECTED', 403);
 }
+// Behind TLS-terminating proxies the internal request URL can be http://app:3000.
+// Use the trusted deployment origin, never Origin or forwarded headers, as the
+// expected value. When unset, retain the existing direct-request behavior.
+export function expectedArtifactOrigin(requestUrl: string, configured = process.env.NEXTAUTH_URL): string {
+  try {
+    const url = new URL(configured || requestUrl);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+        (configured && (url.pathname !== '/' || url.search || url.hash))) throw new Error('Invalid origin');
+    return url.origin;
+  } catch {
+    throw new PreviewError('CSRF_REJECTED', 403);
+  }
+}
 export function providerUrl(raw = process.env.ARTIFACT_GOTENBERG_URL): string {
   if (process.env.ARTIFACT_PREVIEW_ENABLED !== 'true' || !raw) throw new PreviewError('PREVIEW_DISABLED', 503);
   let url: URL;

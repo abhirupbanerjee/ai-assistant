@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { identity, partition, assertRecordScope, cacheKey, hash, assertSurface, providerUrl, version } from './policy';
+import { identity, partition, assertRecordScope, cacheKey, hash, assertSurface, expectedArtifactOrigin, providerUrl, version } from './policy';
 import { contained, readPrivateFile } from './source';
 import { commentInput } from './comments';
 import { imageMime, resolveChatComments } from './chat';
@@ -37,6 +37,24 @@ test('tenant scope is never global and surfaces/mutations fail closed', () => {
   assert.throws(() => assertSurface(new Headers(),true,'https://app'));
   assert.throws(() => assertSurface(new Headers({origin:'https://evil'}),true,'https://app'));
   assert.doesNotThrow(() => assertSurface(new Headers({origin:'https://app'}),true,'https://app'));
+});
+test('CSRF origin uses trusted external URL behind TLS proxy, not internal or client-supplied headers', () => {
+  const external = 'https://app.example';
+  const internal = 'http://app:3000/api/chat/stream';
+  const headers = new Headers({ origin: external, 'sec-fetch-site': 'same-origin', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http' });
+  assert.equal(expectedArtifactOrigin(internal, external), external);
+  assert.doesNotThrow(() => assertSurface(headers, true, expectedArtifactOrigin(internal, external)));
+  assert.throws(() => assertSurface(new Headers({ origin: 'https://evil.example', 'sec-fetch-site': 'same-origin' }), true, expectedArtifactOrigin(internal, external)), { code: 'CSRF_REJECTED' });
+  assert.throws(() => assertSurface(new Headers({ origin: external, 'sec-fetch-site': 'cross-site' }), true, expectedArtifactOrigin(internal, external)), { code: 'CSRF_REJECTED' });
+  assert.equal(expectedArtifactOrigin('http://localhost:3000/api/chat/stream', ''), 'http://localhost:3000');
+  assert.throws(() => expectedArtifactOrigin(internal, 'https://evil.example/path'), { code: 'CSRF_REJECTED' });
+});
+test('empty comment lists do not turn ordinary chat into a CSRF-gated comment submission', async () => {
+  const empty = await resolveChatComments([], 1, 'thread', new Headers({ origin: 'https://app.example' }), 'http://app:3000');
+  assert.deepEqual(empty.comments, []);
+  assert.equal(empty.images.size, 0);
+  await assert.rejects(resolveChatComments([], 1, 'thread', new Headers({ 'x-workspace-slug': 'other' }), 'https://app.example'), { code: 'ACCESS_DENIED' });
+  await assert.rejects(resolveChatComments([{ commentId: 'saved', persisted: true }], 1, 'thread', new Headers({ origin: 'https://app.example' }), 'http://app:3000'), { code: 'CSRF_REJECTED' });
 });
 test('provider URL permits local trusted endpoint only', () => {
   const prior = process.env.ARTIFACT_PREVIEW_ENABLED; process.env.ARTIFACT_PREVIEW_ENABLED = 'true';

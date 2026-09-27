@@ -16,6 +16,12 @@ export async function resolveChatComments(input: unknown, owner: number, threadI
   const comments: ArtifactComment[] = [];
   const images = new Map<string, { base64: string; mimeType: string; filename: string }>();
   if (input === undefined || input === null) return { comments, images };
+  // An empty list has no comment references to authorize. Still enforce user
+  // surface isolation, but do not require a mutation Origin for plain chat.
+  if (Array.isArray(input) && input.length === 0) {
+    assertSurface(headers);
+    return { comments, images };
+  }
   assertSurface(headers, true, origin);
   if (!Array.isArray(input) || input.length > 50) throw new PreviewError('INVALID_COMMENT');
   const seen = new Set<string>();
