@@ -1,4 +1,5 @@
 import type { OpenAI } from 'openai';
+import { repairTruncatedJson } from './json-repair';
 import { tavilyWebSearch, tavilyWebExtract, tavilyWebCrawl, tavilyWebMap } from './tools/tavily';
 import { documentGenerationTool } from './tools/docgen';
 import { dataSourceTool } from './tools/data-source';
@@ -604,20 +605,11 @@ export function getAllTools(): ToolDefinition[] {
 
 /**
  * Attempt to repair truncated JSON from streaming issues.
- * Handles unclosed strings, arrays, and objects caused by premature stream termination.
+ * Structural repair (rewind to last complete element, close bracket stack) —
+ * supersedes the old blind close-quote + bracket-count approach, which could
+ * not recover mid-element truncation (the pptx_gen slide-array failure).
  */
-function attemptJsonRepair(s: string): string | null {
-  let result = s.trim();
-  if (!result) return null;
-  // Close unclosed strings
-  if ((result.match(/"/g) || []).length % 2 !== 0) result += '"';
-  // Close arrays then objects
-  const arrDiff = (result.match(/\[/g) || []).length - (result.match(/\]/g) || []).length;
-  const objDiff = (result.match(/\{/g) || []).length - (result.match(/\}/g) || []).length;
-  result += ']'.repeat(Math.max(0, arrDiff));
-  result += '}'.repeat(Math.max(0, objDiff));
-  try { JSON.parse(result); return result; } catch { return null; }
-}
+const attemptJsonRepair = repairTruncatedJson;
 
 export async function executeTool(
   name: string,

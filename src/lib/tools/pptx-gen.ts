@@ -659,6 +659,33 @@ For image slides, provide an imagePrompt describing the visual.`,
         } as PptxGenResponse);
       }
 
+      // Truncation guard (mirrors diagram-gen/generator.ts): streaming
+      // truncation or structural JSON repair can leave a partially-emitted
+      // final slide (missing type/title). Drop malformed slides instead of
+      // failing the whole generation, and tell the LLM what was dropped so a
+      // follow-up turn can re-add them.
+      const malformedSlides: string[] = [];
+      args.slides = args.slides.filter((s) => {
+        if (!s || typeof s !== 'object' || !s.type || !s.title) {
+          malformedSlides.push(typeof s?.title === 'string' ? s.title : String(s?.type ?? 'unnamed'));
+          return false;
+        }
+        return true;
+      });
+      if (malformedSlides.length > 0) {
+        console.warn(
+          `[PptxGen] dropped ${malformedSlides.length} malformed/truncated slide(s): ${malformedSlides.join('; ').substring(0, 200)}`
+        );
+      }
+      if (args.slides.length === 0) {
+        return JSON.stringify({
+          success: false,
+          error: 'All slides were malformed (likely truncated output). Re-generate with fewer slides or a higher token budget.',
+          errorCode: 'INVALID_INPUT',
+          suggestion: 'Emit valid, complete JSON for each slide object with "type" and "title" fields.',
+        } as PptxGenResponse);
+      }
+
       // Validate slide limit
       if (args.slides.length > maxSlides) {
         return JSON.stringify({

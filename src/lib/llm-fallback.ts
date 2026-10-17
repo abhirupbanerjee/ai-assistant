@@ -209,7 +209,9 @@ export async function buildModelsToTry(
       // glm-5p3-flash is the current Fireworks GLM generation (glm-5p2 purged Sept 2026);
       // minimax-m2p5 was also purged. Transport form accounts/fireworks/models/glm-5p3-flash
       // is derived from this alias ID at call time.
-      const route2Fallbacks = ['fireworks/glm-5p3-flash', 'fireworks/minimax-m3', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
+      // deepseek-v4-flash is a retired alias temporarily routed to V4.1 Flash
+      // (DeepSeek changelog, Sept 2026); deepseek-flash is the current API ID.
+      const route2Fallbacks = ['fireworks/glm-5p3-flash', 'fireworks/minimax-m3', 'deepseek-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
       for (const fb of route2Fallbacks) {
         if (!models.includes(fb) && isModelHealthy(fb)) {
           models.push(fb);
@@ -250,7 +252,9 @@ export async function buildModelsToTry(
     // glm-5p3-flash is the current Fireworks GLM generation (glm-5p2 purged Sept 2026);
     // minimax-m2p5 was also purged. Transport form accounts/fireworks/models/glm-5p3-flash
     // is derived from this alias ID at call time.
-    const route2Fallbacks = ['fireworks/glm-5p3-flash', 'fireworks/minimax-m3', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
+    // deepseek-v4-flash is a retired alias temporarily routed to V4.1 Flash
+    // (DeepSeek changelog, Sept 2026); deepseek-flash is the current API ID.
+    const route2Fallbacks = ['fireworks/glm-5p3-flash', 'fireworks/minimax-m3', 'deepseek-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
     for (const fb of route2Fallbacks) {
       if (!models.includes(fb) && isModelHealthy(fb)) {
         models.push(fb);

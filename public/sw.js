@@ -19,7 +19,11 @@
 // v14 evicts the app shell that reserved a full 64px mobile FAB row above
 // active threads. The FABs now overlay chat content while only the device
 // status-bar/notch safe area remains reserved in standalone PWA mode.
-const CACHE_VERSION = 'v14';
+// v15 evicts the pre-LLM-release app shell. The 2026-10-17 release changed
+// model routing/fallbacks and Server Action IDs; cached v14 HTML/chunks carry
+// stale action IDs that 404 ("Failed to find Server Action") on the new
+// server. Bump required with every deploy that changes build output.
+const CACHE_VERSION = 'v15';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
