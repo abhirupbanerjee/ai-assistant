@@ -4,7 +4,7 @@ import { identity, partition, assertRecordScope, cacheKey, hash, assertSurface, 
 import { contained, readPrivateFile } from './source';
 import { commentInput } from './comments';
 import { imageMime, resolveChatComments } from './chat';
-import { buildUploadCanvasItem } from '@/lib/artifact-builders';
+import { buildDocCanvasItem, buildUploadCanvasItem } from '@/lib/artifact-builders';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -125,5 +125,22 @@ test('upload canvas item mappings preserve text, markdown, docx, and office type
   assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'doc.docx', fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }).artifactType, 'docx');
   assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'slides.pptx', fileType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }).artifactType, 'pptx');
   assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'sheet.xlsx', fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }).artifactType, 'xlsx');
+  assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'slides.pptx', fileType: 'application/octet-stream' }).artifactType, 'pptx');
+  assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'sheet.xlsx', fileType: 'application/octet-stream' }).artifactType, 'xlsx');
+  assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'doc.docx', fileType: 'application/octet-stream' }).artifactType, 'docx');
+  assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'unknown.bin', fileType: 'application/octet-stream' }).artifactType, 'unsupported');
   assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'old.doc', fileType: 'application/msword' }).artifactType, 'unsupported');
+  assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'old.ppt', fileType: 'application/vnd.ms-powerpoint' }).artifactType, 'unsupported');
+  assert.equal(buildUploadCanvasItem({ ...baseUpload, filename: 'old.xls', fileType: 'application/vnd.ms-excel' }).artifactType, 'unsupported');
+});
+test('generated Office artifacts use the supported file extension for the preview viewer', () => {
+  const base = { id: '42', filename: 'report.pptx', fileType: 'md', downloadUrl: '/api/documents/42/download', fileSize: 1, fileSizeFormatted: '1 B', expiresAt: null } as Parameters<typeof buildDocCanvasItem>[0];
+  assert.equal(buildDocCanvasItem(base).artifactType, 'pptx');
+  assert.deepEqual(buildDocCanvasItem(base).source, { kind: 'output', id: '42' });
+  assert.equal(buildDocCanvasItem({ ...base, filename: 'data.xlsx' }).artifactType, 'xlsx');
+  assert.equal(buildDocCanvasItem({ ...base, filename: 'report.docx' }).artifactType, 'docx');
+  assert.equal(buildDocCanvasItem({ ...base, filename: 'report.pdf' }).artifactType, 'pdf');
+  for (const filename of ['old.ppt', 'old.xls', 'old.doc']) {
+    assert.equal(buildDocCanvasItem({ ...base, filename, fileType: 'pptx' }).artifactType, 'unsupported');
+  }
 });

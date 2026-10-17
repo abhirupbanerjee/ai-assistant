@@ -69,8 +69,6 @@ const TOOL_CAPABLE_PATTERNS = [
   // Fireworks-hosted chat models (serverless)
   /^fireworks\//,
   /^accounts\/fireworks\//,
-  // Azure AI Foundry (Route 5)
-  /^azure-foundry\//,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing
@@ -88,8 +86,6 @@ const VISION_CAPABLE_PATTERNS = [
   /^gemini-3/,
   /^mistral-large/,  // Mistral Large 3+ supports vision
   /^mistral-small/,
-  // Azure AI Foundry (Route 5) — same vision capabilities as OpenAI
-  /^azure-foundry\/gpt-4/,
   // Anthropic Claude (all Claude 3+ models support vision)
   /^claude/,
   // MiniMax M3 is natively multimodal (text + image + video)
@@ -139,8 +135,6 @@ const FORCED_TOOL_CAPABLE_PATTERNS = [
   // Fireworks hosted
   /^fireworks\//,
   /^accounts\/fireworks/,
-  // Azure AI Foundry (Route 5)
-  /^azure-foundry\//,
 ];
 
 // Models known to reliably handle parallel tool calls (multiple tool_calls in one response)
@@ -162,8 +156,6 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
   // Fireworks-hosted models (MiniMax, Kimi, etc.)
   /^fireworks\//,
   /^accounts\/fireworks/,
-  // Azure AI Foundry (Route 5) — same parallel capabilities as OpenAI
-  /^azure-foundry\//,
   // Moonshot / Kimi K2 — full tool calling with parallel support
   /^moonshot\/kimi/,
   // DeepSeek V4 — full tool calling with parallel support
@@ -304,6 +296,10 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   // DeepSeek V4 (native API)
   'deepseek-v4-flash': 1048576,
   'deepseek-v4-pro': 1048576,
+  // DeepSeek V4.1 Flash — 'deepseek-flash' is the current API ID (Sept 2026 rename)
+  'deepseek-flash': 1048576,
+  // Google Gemini 4 Argon (GA Oct 2026) — unified 1M context, up to 1M decode
+  'gemini-4-argon': 1048576,
 
   // Fireworks serverless chat models
   'fireworks/deepseek-v4-flash': 1048576,
@@ -350,7 +346,6 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
   gemini: 65536,
   mistral: 8000,
   fireworks: 16384,
-  'azure-foundry': 16000,
   moonshot: 16000,
 };
 
@@ -486,6 +481,8 @@ function getContextWindow(modelId: string): number | null {
     [/^mistral-small/, 32000],
     [/^claude/, 1000000],
     [/^deepseek-v4/, 1048576],
+    [/^deepseek-flash/, 1048576],
+    [/^gemini-4/, 1000000],
     [/^fireworks\/deepseek-v4/, 1048576],
     [/^accounts\/fireworks\/models\/deepseek-v4/, 1048576],
     [/^fireworks\/glm/, 200000],
@@ -735,31 +732,6 @@ async function discoverOllamaCloudModelsWithKey(apiKey: string, apiBase?: string
   }));
 }
 
-/** Verify a supplied Azure AI Foundry project endpoint using workload identity. */
-async function discoverAzureFoundryModelsAtEndpoint(apiBase: string): Promise<DiscoveredModel[]> {
-  const { AIProjectClient } = await import('@azure/ai-projects');
-  const { DefaultAzureCredential } = await import('@azure/identity');
-  const project = new AIProjectClient(apiBase.replace(/\/$/, ''), new DefaultAzureCredential());
-  const deployments: DiscoveredModel[] = [];
-  for await (const deployment of project.deployments.list()) {
-    if (deployment.type === 'ModelDeployment' && 'modelName' in deployment && 'modelPublisher' in deployment) {
-      const d = deployment as { name: string; modelName: string };
-      deployments.push({
-        id: `azure-foundry/${d.name}`,
-        name: generateDisplayName(d.modelName),
-        provider: 'azure-foundry',
-        toolCapable: isToolCapable(`azure-foundry/${d.name}`),
-        visionCapable: isVisionCapable(`azure-foundry/${d.name}`),
-        forcedToolCapable: isForcedToolCapable(`azure-foundry/${d.name}`),
-        maxInputTokens: getContextWindow(`azure-foundry/${d.name}`),
-        maxOutputTokens: getDefaultOutputTokens('azure-foundry'),
-        isEnabled: false,
-      });
-    }
-  }
-  return deployments.sort((a, b) => a.name.localeCompare(b.name));
-}
-
 /**
  * Discover models from Anthropic API
  * Uses the List Models endpoint: GET /v1/models
@@ -820,7 +792,9 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
 
   const data = await response.json() as { data: Array<{ id: string }> };
 
-  const allowedDeepSeekModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+  // 'deepseek-flash' is the V4.1 Flash API ID (Sept 2026 rename from 'deepseek-v4-flash');
+  // keep 'deepseek-v4-flash' for accounts still pinned to the legacy ID.
+  const allowedDeepSeekModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-flash']);
   const filtered = data.data.filter(m => isChatModel(m.id) && allowedDeepSeekModels.has(m.id));
   const models = await Promise.all(filtered.map(async m => ({
     id: m.id,
@@ -1192,19 +1166,6 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         break;
       }
 
-      case 'azure-foundry': {
-        const apiBase = await getProviderApiBase('azure-foundry');
-        if (!apiBase) {
-          return { success: false, provider, models: [], error: 'AZURE_FOUNDRY_ENDPOINT not configured' };
-        }
-        const discovered = await discoverAzureFoundryModelsAtEndpoint(apiBase);
-        models = await Promise.all(discovered.map(async (model) => ({
-          ...model,
-          isEnabled: !!(await getEnabledModel(model.id)),
-        })));
-        break;
-      }
-
       default:
         return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
     }
@@ -1258,7 +1219,7 @@ export async function testProviderConnection(provider: string): Promise<{
  *
  * @param provider  Provider ID (e.g. 'openai', 'anthropic')
  * @param apiKey    The API key to test
- * @param apiBase   Optional API base URL override (for ollama, azure-foundry)
+ * @param apiBase   Optional API base URL override (for ollama)
  */
 export async function testProviderConnectionWithKey(
   provider: string,
@@ -1304,14 +1265,6 @@ export async function testProviderConnectionWithKey(
       case 'moonshot':
         models = await discoverMoonshotModels(apiKey);
         break;
-      case 'azure-foundry':
-        if (!apiBase) {
-          return { success: false, message: 'Azure Foundry endpoint URL is required' };
-        }
-        // Azure Foundry uses DefaultAzureCredential. Verify the supplied
-        // endpoint directly rather than falling back to persisted settings.
-        models = await discoverAzureFoundryModelsAtEndpoint(apiBase);
-        break;
       default:
         return { success: false, message: `Unknown provider: ${provider}` };
     }
@@ -1334,7 +1287,7 @@ export async function discoverAllModels(): Promise<{
   providers: Record<string, DiscoveryResult>;
   totalModels: number;
 }> {
-  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud', 'moonshot', 'azure-foundry'];
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud', 'moonshot'];
   const results: Record<string, DiscoveryResult> = {};
   let totalModels = 0;
 

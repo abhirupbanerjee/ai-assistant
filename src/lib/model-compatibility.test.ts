@@ -38,7 +38,7 @@ for (const [model, mandatory, effort, mode] of MODELS) {
       contextWindow: adaptive ? 1_000_000 : 1_050_000,
       maxOutputTokens: 128_000,
     });
-    for (const prefix of ['', 'openai/', 'anthropic/', 'azure-foundry/', 'gateway/provider/', 'ollama-']) {
+    for (const prefix of ['', 'openai/', 'anthropic/', 'gateway/provider/', 'ollama-']) {
       const qualified = ` ${prefix}${model.toUpperCase()}:latest `;
       assert.equal(normalizeModelId(qualified), model);
       assert.equal(getModelCompatibility(qualified), compatibility);

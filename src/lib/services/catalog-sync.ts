@@ -297,7 +297,6 @@ export async function syncAllProviderCatalogs(): Promise<SyncResult[]> {
     'fireworks',
     'moonshot',
     'ollama-cloud',
-    'azure-foundry',
   ];
 
   const results: SyncResult[] = [];

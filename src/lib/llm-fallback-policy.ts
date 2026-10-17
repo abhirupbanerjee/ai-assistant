@@ -92,6 +92,10 @@ export function classifyFallbackError(error: unknown): RecoverableFallbackReason
   if (statuses.includes(429) || codes.includes('rate_limit_exceeded') || codes.includes('rate_limit_error')
     || /\brate limit\b|too many requests/.test(messages)) return 'rate_limit';
   if (modelUnavailable) return 'model_unavailable';
+  // A model ID with no direct provider route (e.g. an aggregator alias like
+  // "firerouter/auto") is a configuration gap, not a client bug. Treat it as
+  // an unavailable model so the fallback chain can try the next candidate.
+  if (/no direct provider route matched|unsupported model for chat/.test(messages)) return 'model_unavailable';
   if (statuses.some(status => status === 408 || (status >= 500 && status <= 599))
     || codes.some(code => /^(?:timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|server_error|internal_server_error|overloaded_error|interrupted)$/.test(code))
     || /\btimeout\b|timed out|network (?:error|failure|request failed)|fetch failed|failed to fetch|\b(?:econnrefused|econnreset|enotfound|eai_again)\b|socket hang up|service unavailable|temporarily unavailable|bad gateway|gateway timeout|internal server error|\boverloaded?\b|api unavailable/.test(messages)) return 'api_error';

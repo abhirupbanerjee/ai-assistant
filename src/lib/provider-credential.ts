@@ -65,7 +65,7 @@ export interface ResolvedProviderCredential {
 }
 
 // Providers whose "configured" condition is a base URL rather than an API key.
-const BASE_URL_PROVIDERS = new Set(['ollama', 'azure-foundry']);
+const BASE_URL_PROVIDERS = new Set(['ollama']);
 
 function isAvailable(
   providerId: string,

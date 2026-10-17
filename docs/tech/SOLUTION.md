@@ -54,12 +54,12 @@ Comprehensive architecture documentation for AI Assistant - an enterprise RAG pl
 │    ROUTE 2       │     ROUTE 3      │            ROUTE 5                │
 │  Direct Providers│  Local / Ollama  │     Aggregator Gateways           │
 ├──────────────────┼──────────────────┼────────────────────────────────────┤
-│ ┌──────────────┐ │ ┌──────────────┐ │ ┌──────────────┐ ┌──────────────┐ │
-│ │ OpenAI       │ │ │ Ollama       │ │ │Azure Foundry │ │ Ollama Cloud │ │
-│ │ (openai SDK) │ │ │ (llama3.2,   │ │ │(@azure/ai-   │ │ (native API) │ │
-│ │ gpt-4.1 (V)  │ │ │  qwen3,      │ │ │ projects)    │ │              │ │
-│ │ gpt-4.1-mini │ │ │  gpt-oss)    │ │ │              │ │              │ │
-│ │ gpt-4.1-nano │ │ └──────────────┘ │ └──────────────┘ └──────────────┘ │
+│ ┌──────────────┐ │ ┌──────────────┐ │ ┌──────────────┐                 │
+│ │ OpenAI       │ │ │ Ollama       │ │ │ Ollama Cloud │                 │
+│ │ (openai SDK) │ │ │ (llama3.2,   │ │ │ (native API) │                 │
+│ │ gpt-4.1 (V)  │ │ │  qwen3,      │ │ │              │                 │
+│ │ gpt-4.1-mini │ │ │  gpt-oss)    │ │ │              │                 │
+│ │ gpt-4.1-nano │ │ └──────────────┘ │ └──────────────┘                 │
 │ └──────────────┘ │                  │                                    │
 │ ┌──────────────┐ │ ← OpenAI SDK →   │ ┌──────────────┐                   │
 │ │ Anthropic    │ │  ollama:11434/v1 │ │ Fireworks AI │                   │
@@ -113,7 +113,7 @@ All providers use direct native SDKs/APIs — no LLM proxy intermediary. Routes 
 |-------|---------|-----------|------------|
 | **Route 2** | Direct Providers | OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot | Native SDK / direct API |
 | **Route 3** | Local / Ollama | Ollama (local inference) | OpenAI SDK → ollama:11434/v1 |
-| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compat |
+| **Route 5** | Aggregator Gateways | Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compat |
 
 Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). All three routes can be active simultaneously for cross-route failover. For air-gapped deployments, enable only Route 3. See [features/LLM.md](../features/LLM.md) for the authoritative LLM architecture reference and [features/air-gapped-deployment.md](../features/air-gapped-deployment.md) for air-gapped deployment details.
 

@@ -12,7 +12,7 @@ AI Assistant routes all LLM requests through **three independent paths**, giving
 |-------|------|-----------|------------|
 | **Route 2** | Direct Providers | OpenAI, Anthropic Claude, Google Gemini, Mistral AI, DeepSeek, Moonshot | Native SDK / direct API |
 | **Route 3** | Local / Ollama | Ollama (local inference) | OpenAI SDK → `ollama:11434/v1` |
-| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compatible API |
+| **Route 5** | Aggregator Gateways | Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compatible API |
 
 All three routes can run simultaneously for maximum availability, or any can be disabled independently. For air-gapped deployments, enable only Route 3. See [`air-gapped-deployment.md`](air-gapped-deployment.md) for the full offline capabilities reference.
 
@@ -21,7 +21,7 @@ All three routes can run simultaneously for maximum availability, or any can be 
 - **Resilience** — cross-route fallback if one provider or gateway goes down
 - **Provider isolation** — each provider uses its native SDK for reliable tool calling, thinking, and streaming. Anthropic via `@anthropic-ai/sdk`, Gemini via `@google/genai`, Mistral via `@mistralai/mistralai`
 - **Air-gap support** — Route 3 enables fully offline deployments with local LLM inference via Ollama
-- **Gateway aggregation** — Route 5 groups multi-model gateways (Azure Foundry, Fireworks, Ollama Cloud) for serverless catalog model access
+- **Gateway aggregation** — Route 5 groups multi-model gateways (Fireworks, Ollama Cloud) for serverless catalog model access
 - **Compliance** — restrict which provider APIs are reachable from your deployment
 
 ### Historical Note
@@ -51,7 +51,6 @@ Models and providers are classified by ID pattern matching in [`src/lib/llm-fall
 | `deepseek` | Route 2 |
 | `moonshot` | Route 2 |
 | `ollama` | Route 3 |
-| `azure-foundry` | Route 5 |
 | `fireworks` | Route 5 |
 | `ollama-cloud` | Route 5 |
 
@@ -66,7 +65,6 @@ Models and providers are classified by ID pattern matching in [`src/lib/llm-fall
 | `deepseek-`, `deepseek/` | Route 2 | `deepseek-v4-flash` |
 | `moonshot/` | Route 2 | `moonshot/kimi-k2p5` |
 | `ollama-`, `ollama/` | Route 3 | `ollama-llama3.2`, `ollama/qwen3:4b` |
-| `azure-foundry/` | Route 5 | `azure-foundry/gpt-4.1` |
 | `fireworks/` | Route 5 | `fireworks/minimax-m2p5` |
 | `ollama-cloud/`, `*-cloud`, `*:cloud` | Route 5 | `ollama-cloud/llama4` |
 
@@ -84,7 +82,7 @@ Routes are configured via the admin UI and stored in the database:
 interface RoutesSettings {
   route2Enabled: boolean;   // Route 2: Direct providers (OpenAI, Claude, Gemini, Mistral, DeepSeek, Moonshot)
   route3Enabled: boolean;   // Route 3: Local / Ollama direct (air-gapped capable)
-  route5Enabled: boolean;   // Route 5: Aggregator gateways (Azure AI Foundry, Fireworks AI, Ollama Cloud)
+  route5Enabled: boolean;   // Route 5: Aggregator gateways (Fireworks AI, Ollama Cloud)
   primaryRoute: 'route2' | 'route3' | 'route5';  // Which route is primary (others become fallback)
 }
 ```
@@ -146,7 +144,6 @@ interface RoutesSettings {
                               │  isMistralModel?     │
                               │  isDeepSeekModel?    │
                               │  isOllamaModel?      │
-                              │  isAzureFoundry?     │
                               │  isFireworksModel?   │
                               │  isOllamaCloud?      │
                               └───┬──────┬──────┬────┘
@@ -161,11 +158,11 @@ interface RoutesSettings {
             │                        │                          │
             ▼                        ▼                          ▼
    ┌──────────────────┐   ┌──────────────────┐   ┌─────────────────────────┐
-   │ OpenAI           │   │ Ollama           │   │ Azure AI Foundry        │
-   │ → api.openai.com │   │ → ollama:11434   │   │ → @azure/ai-projects    │
-   │                   │   │                  │   │ Fireworks AI            │
-   │ Anthropic         │   │                  │   │ → api.fireworks.ai      │
-   │ → @anthropic-ai   │   │                  │   │ Ollama Cloud            │
+   │ OpenAI           │   │ Ollama           │   │ Fireworks AI            │
+   │ → api.openai.com │   │ → ollama:11434   │   │ → api.fireworks.ai      │
+   │                   │   │                  │   │ Ollama Cloud            │
+   │ Anthropic         │   │                  │   │ → ollama.com/api        │
+   │ → @anthropic-ai   │   │                  │   │                         │
    │                   │   │                  │   │ → ollama.com/api        │
    │ Gemini            │   │                  │   │                         │
    │ → @google/genai   │   │                  │   │                         │
@@ -220,8 +217,7 @@ const useGeminiDirect     = isGeminiModel(effectiveModel);       // gemini/, gem
 const useMistralDirect    = isMistralModel(effectiveModel);      // mistral/, codestral/, pixtral/
 const useDeepSeekDirect   = isDeepSeekModel(effectiveModel);     // deepseek-, deepseek/
 const useOllamaDirect     = isOllamaModel(effectiveModel);       // ollama-, ollama/
-const useAzureFoundry     = isAzureFoundryModel(effectiveModel); // azure-foundry/
-const useOllamaCloud      = isOllamaCloudModel(effectiveModel);  // ollama-cloud/
+const useOllamaCloud      = isOllamaCloudModel(effectiveModel);  // ollama-cloud/, *-cloud, *:cloud
 
 // Each branch dispatches to the appropriate native client:
 // OpenAI   → getOpenAIDirectClient()          → api.openai.com/v1
@@ -231,7 +227,6 @@ const useOllamaCloud      = isOllamaCloudModel(effectiveModel);  // ollama-cloud
 // DeepSeek → getDeepSeekClient()             → api.deepseek.com/v1
 // Moonshot → getMoonshotClient()             → api.moonshot.cn/v1
 // Ollama   → getOllamaClient()               → ollama:11434/v1
-// Azure    → getAzureFoundryClient()         → @azure/ai-projects SDK
 // Fireworks→ getFireworksClient()            → api.fireworks.ai/inference/v1
 // OllamaC  → callOllamaCloud()               → ollama.com/api (native)
 ```
@@ -346,7 +341,7 @@ No new environment variables are required. Routes use existing provider API keys
 |-------|--------------|
 | Route 2 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY` |
 | Route 3 | None (Ollama runs locally). Optional: `OLLAMA_BASE_URL` to override default `http://localhost:11434` |
-| Route 5 | `FIREWORKS_AI_API_KEY`, `AZURE_FOUNDRY_ENDPOINT` + (`AZURE_FOUNDRY_API_KEY` or Entra ID env vars), `OLLAMA_CLOUD_API_KEY` |
+| Route 5 | `FIREWORKS_AI_API_KEY`, `OLLAMA_CLOUD_API_KEY` |
 
 All API keys can also be configured via Admin UI (Settings > LLM > Providers), which takes precedence over environment variables.
 

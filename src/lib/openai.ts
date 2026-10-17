@@ -191,7 +191,6 @@ import {
 } from './conversation-context';
 import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from './provider-credential';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
-import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, streamMistralCompletion, isMistralEmbeddingModel, createMistralEmbedding, createMistralEmbeddings } from '@/lib/llm/providers/mistral';
 import { isGeminiModel, streamGeminiCompletion, isGeminiEmbeddingModel, createGeminiEmbedding, createGeminiEmbeddings } from '@/lib/llm/providers/gemini';
 import { isOpenAIModel, stripOpenAIPrefix, streamOpenAICompletion, requiresMaxCompletionTokens, isOpenAIEmbeddingModel, createOpenAIEmbedding, createOpenAIEmbeddings, getOpenAIDirectClient } from '@/lib/llm/providers/openai';
@@ -438,8 +437,6 @@ async function getDeepSeekClient(): Promise<OpenAI> {
 /** Reset all cached LLM clients so they re-read API keys on next use */
 export function resetLlmClients(): void {
   sharedProviderClientFactory.clear();
-  // Reset Azure Foundry singleton (uses its own module-level cache)
-  import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
   // Reset OpenAI direct singleton
   import('@/lib/llm/providers/openai').then(m => m.resetOpenAIClient()).catch(() => {});
 }
@@ -1170,7 +1167,6 @@ function detectProviderForToolCompletion(modelId: string): ModelSpec['provider']
   if (isOllamaModel(modelId)) return 'ollama';
   if (isMoonshotModel(modelId)) return 'moonshot';
   if (isDeepSeekModel(modelId)) return 'deepseek';
-  if (modelId.startsWith('azure-foundry/')) return 'azure-foundry';
   if (modelId.startsWith('gemini')) return 'gemini';
   if (modelId.startsWith('mistral') || modelId.startsWith('codestral') || modelId.startsWith('pixtral')) return 'mistral';
   return 'openai';
@@ -1208,7 +1204,6 @@ export async function generateToolCompletion(
   const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
-  const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
   const useGeminiDirect = isGeminiModel(effectiveModel);
   const useOpenAIDirect = isOpenAIModel(effectiveModel);
 
@@ -1330,21 +1325,19 @@ export async function generateToolCompletion(
     });
   }
 
-  // OpenAI-compatible routes: Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
+  // OpenAI-compatible routes: Fireworks (Route 5), Ollama local, Moonshot, DeepSeek
   // (OpenAI direct already handled above — returns early)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openai: any = useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
-    : useAzureFoundryDirect ? await getAzureFoundryClient()
     : (() => { throw new Error(`Unsupported model for chat: ${effectiveModel}. No direct provider route matched.`); })();
 
   const completionModel = useFireworksDirect ? getFireworksModelId(effectiveModel)
     : useOllamaDirect ? getOllamaModelId(effectiveModel)
     : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
     : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
-    : useAzureFoundryDirect ? stripAzureFoundryPrefix(effectiveModel)
     : effectiveModel;
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
@@ -1619,7 +1612,6 @@ export async function generateResponseWithTools(
   const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
-  const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
   const useMistralDirect = isMistralModel(effectiveModel);
   const useGeminiDirect = isGeminiModel(effectiveModel);
   const useOpenAIDirect = isOpenAIModel(effectiveModel);
@@ -1629,7 +1621,6 @@ export async function generateResponseWithTools(
     : useOllamaCloudDirect ? 'Ollama Cloud directly'
     : useMoonshotDirect ? 'Moonshot AI directly'
     : useDeepSeekDirect ? 'DeepSeek API directly'
-    : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
     : useMistralDirect ? 'Mistral AI directly (Route 2)'
     : useGeminiDirect ? 'Gemini directly (Route 2)'
     : 'OpenAI directly (Route 2)';
@@ -1641,7 +1632,6 @@ export async function generateResponseWithTools(
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
     : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
-    : useAzureFoundryDirect ? await getAzureFoundryClient()
     : useMistralDirect ? null // Mistral uses native SDK, not OpenAI SDK
     : useGeminiDirect ? null // Gemini uses native @google/genai SDK, not OpenAI SDK
     : useOpenAIDirect ? await getOpenAIDirectClient() // OpenAI direct (Route 2)
@@ -2016,7 +2006,6 @@ export async function generateResponseWithTools(
       : useOllamaDirect ? getOllamaModelId(effectiveModel)
       : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
       : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
-      : useAzureFoundryDirect ? stripAzureFoundryPrefix(effectiveModel)
       : effectiveModel,
     messages,
     tools,

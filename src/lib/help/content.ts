@@ -126,7 +126,7 @@ const overview: HelpTab = {
           rows: [
             ['Route 2', 'Direct providers', 'Native SDK or direct API', 'OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot'],
             ['Route 3', 'Local inference', 'Local Ollama server', 'Locally installed Ollama models; suitable for air-gapped deployments'],
-            ['Route 5', 'Aggregator gateways', 'Native SDK or compatible API', 'Azure AI Foundry, Fireworks AI, Ollama Cloud'],
+            ['Route 5', 'Aggregator gateways', 'Native SDK or compatible API', 'Fireworks AI, Ollama Cloud'],
           ],
         },
         {

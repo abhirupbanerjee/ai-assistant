@@ -974,7 +974,7 @@ In the pre-June-2026 LiteLLM-based architecture, streaming tool-call JSON assemb
 
 #### Resolution
 
-All providers now use direct native SDKs/APIs (Routes 2/3/5). Every provider — OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Azure Foundry, Fireworks, Ollama Cloud — connects via its own native SDK or API. Tool calling works reliably across all models without exception.
+All providers now use direct native SDKs/APIs (Routes 2/3/5). Every provider — OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Fireworks, Ollama Cloud — connects via its own native SDK or API. Tool calling works reliably across all models without exception.
 
 #### For Agent Bot Integrators
 

@@ -11,7 +11,7 @@ Route 3 is the dedicated offline route. It connects directly to a local Ollama s
 ```
 Route 2: Direct Providers           →  OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot (cloud)
 Route 3: Local / Ollama             →  Ollama (:11434/v1 direct)                           (offline)
-Route 5: Aggregator Gateways        →  Azure AI Foundry, Fireworks AI, Ollama Cloud         (cloud)
+Route 5: Aggregator Gateways        →  Fireworks AI, Ollama Cloud                           (cloud)
 ```
 
 For a pure air-gapped deployment, enable only Route 3 and disable Routes 2 and 5.

@@ -1035,8 +1035,6 @@ export default function LandingPage() {
                 Integrates with centralized proxies, cloud model registries, and API brokers to simplify management and facilitate immediate failovers.
               </p>
               <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-1.5 font-semibold text-[11px] text-blue-400">
-                <span>Azure AI Foundry</span>
-                <span className="text-slate-700">·</span>
                 <span>Fireworks AI</span>
                 <span className="text-slate-700">·</span>
                 <span>Ollama Cloud</span>

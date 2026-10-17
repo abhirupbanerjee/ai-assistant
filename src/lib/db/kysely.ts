@@ -384,7 +384,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
       fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
       'ollama-cloud': { apiKey: 'OLLAMA_API_KEY' },
-      'azure-foundry': { apiKey: 'AZURE_FOUNDRY_API_KEY', apiBase: 'AZURE_FOUNDRY_ENDPOINT' },
     };
 
     for (const provider of DEFAULT_PROVIDERS) {
@@ -448,19 +447,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     .execute();
   console.log('[Kysely] Ensured Moonshot provider exists');
 
-  // Seed Azure AI Foundry provider (Route 5 aggregator — added after initial setup)
+  // Cleanup: remove the retired Azure AI Foundry provider (idempotent — no-op
+  // for fresh installs and databases that never had it).
   await database
-    .insertInto('llm_providers')
-    .values({
-      id: 'azure-foundry',
-      name: 'Azure AI Foundry',
-      api_key: process.env['AZURE_FOUNDRY_API_KEY'] || null,
-      api_base: process.env['AZURE_FOUNDRY_ENDPOINT'] || null,
-      enabled: 1,
-    })
-    .onConflict(oc => oc.column('id').doNothing())
+    .deleteFrom('provider_capabilities')
+    .where('provider_id', '=', 'azure-foundry')
     .execute();
-  console.log('[Kysely] Ensured Azure AI Foundry provider exists');
+  await database
+    .deleteFrom('providers')
+    .where('id', '=', 'azure-foundry')
+    .execute();
+  await database
+    .deleteFrom('llm_providers')
+    .where('id', '=', 'azure-foundry')
+    .execute();
 
   // Migration: Create reindex_jobs table if it doesn't exist
   await sql`
@@ -522,10 +522,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] Renamed Ollama model IDs to actual model names');
 
   // Migration: Seed current Fireworks serverless chat models
+  // glm-5p2 was removed from Fireworks public serverless on Sept 25, 2026;
+  // glm-5p3 / glm-5p3-flash are the current GLM generation.
   const newFireworksModels = [
     {
-      id: 'fireworks/glm-5p2',
-      display_name: 'GLM 5.2 (Fireworks)',
+      id: 'fireworks/glm-5p3',
+      display_name: 'GLM 5.3 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 1048576,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/glm-5p3-flash',
+      display_name: 'GLM 5.3 Flash (Fireworks)',
       tool_capable: 1,
       vision_capable: 0,
       max_input_tokens: 1048576,
@@ -537,22 +547,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       tool_capable: 1,
       vision_capable: 0,
       max_input_tokens: 202752,
-      max_output_tokens: 16384,
-    },
-    {
-      id: 'fireworks/kimi-k2p7-code',
-      display_name: 'Kimi K2.7 Code (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 1,
-      max_input_tokens: 262144,
-      max_output_tokens: 16384,
-    },
-    {
-      id: 'fireworks/kimi-k2p6',
-      display_name: 'Kimi K2.6 (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 1,
-      max_input_tokens: 262144,
       max_output_tokens: 16384,
     },
     {
@@ -580,22 +574,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       max_output_tokens: 32768,
     },
     {
-      id: 'fireworks/minimax-m2p7',
-      display_name: 'MiniMax M2.7 (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 0,
-      max_input_tokens: 196608,
-      max_output_tokens: 16384,
-    },
-    {
-      id: 'fireworks/minimax-m2p5',
-      display_name: 'MiniMax M2.5 (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 0,
-      max_input_tokens: 196608,
-      max_output_tokens: 16384,
-    },
-    {
       id: 'fireworks/gpt-oss-120b',
       display_name: 'OpenAI GPT-OSS 120B (Fireworks)',
       tool_capable: 1,
@@ -619,22 +597,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       max_input_tokens: 262144,
       max_output_tokens: 16384,
     },
-    {
-      id: 'fireworks/deepseek-v4-flash',
-      display_name: 'DeepSeek V4 Flash (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 0,
-      max_input_tokens: 1048576,
-      max_output_tokens: 16384,
-    },
-    {
-      id: 'fireworks/deepseek-v4-pro',
-      display_name: 'DeepSeek V4 Pro (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 0,
-      max_input_tokens: 1048576,
-      max_output_tokens: 16384,
-    },
   ];
   for (const model of newFireworksModels) {
     await database
@@ -656,9 +618,55 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }
   console.log('[Kysely] Seeded new Fireworks models');
 
-  // Migration: Remove retired Fireworks models
-  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/qwen3-coder-480b-a35b-instruct', 'fireworks/qwen3-vl-30b-a3b-thinking', 'fireworks/qwen3p6-plus')`.execute(database);
-  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, qwen3-coder-480b, qwen3-vl-30b-a3b-thinking, qwen3p6-plus)');
+  // Migration: Seed newly released models from other providers (disabled until an admin enables them).
+  // - deepseek-flash: DeepSeek V4.1 Flash, the current API ID (Sept 2026 rename from deepseek-v4-flash).
+  // - gemini-4-argon: Gemini 4 flagship, GA Oct 13, 2026.
+  const newProviderModels = [
+    {
+      id: 'deepseek-flash',
+      provider_id: 'deepseek',
+      display_name: 'DeepSeek V4.1 Flash',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 1048576,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'gemini-4-argon',
+      provider_id: 'gemini',
+      display_name: 'Gemini 4 Argon',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 1048576,
+      max_output_tokens: 65536,
+    },
+  ];
+  for (const model of newProviderModels) {
+    await database
+      .insertInto('enabled_models')
+      .values({
+        id: model.id,
+        provider_id: model.provider_id,
+        display_name: model.display_name,
+        tool_capable: model.tool_capable,
+        vision_capable: model.vision_capable,
+        max_input_tokens: model.max_input_tokens,
+        max_output_tokens: model.max_output_tokens,
+        is_default: 0,
+        enabled: 0,
+        sort_order: 9900,
+      })
+      .onConflict(oc => oc.column('id').doNothing())
+      .execute();
+  }
+  console.log('[Kysely] Seeded new provider models (deepseek-flash, gemini-4-argon)');
+
+  // Migration: Remove retired Fireworks models.
+  // - deepseek-v4-flash / deepseek-v4-pro / glm-5p2 / kimi-k2p6 / kimi-k2p7-code: removed from
+  //   Fireworks public serverless on Sept 25, 2026 (deepseek-v4-flash 404s at runtime).
+  // - minimax-m2p5 / minimax-m2p7 / gpt-oss-20b: removed from Fireworks serverless Aug 27, 2026.
+  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/qwen3-coder-480b-a35b-instruct', 'fireworks/qwen3-vl-30b-a3b-thinking', 'fireworks/qwen3p6-plus', 'fireworks/deepseek-v4-flash', 'fireworks/deepseek-v4-pro', 'fireworks/glm-5p2', 'fireworks/kimi-k2p6', 'fireworks/kimi-k2p7-code', 'fireworks/minimax-m2p5', 'fireworks/minimax-m2p7', 'fireworks/gpt-oss-20b')`.execute(database);
+  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, qwen3-coder-480b, qwen3-vl-30b-a3b-thinking, qwen3p6-plus, deepseek-v4-flash/pro, glm-5p2, kimi-k2p6, kimi-k2p7-code, minimax-m2p5/m2p7, gpt-oss-20b)');
 
   // Migration: Remove deprecated DeepSeek legacy models
   await sql`DELETE FROM enabled_models WHERE id IN ('deepseek-chat', 'deepseek-reasoner')`.execute(database);
@@ -1691,6 +1699,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }> = [
     // === Fireworks AI — Serverless Chat Models ===
     { id: 'fireworks/minimax-m3', max_input_tokens: 512000, max_output_tokens: 32768, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20 },
+    // GLM 5.3 / 5.3 Flash — current Fireworks serverless GLM generation (Sept 2026).
+    // glm-5p2 was removed from public serverless on Sept 25, 2026.
+    { id: 'fireworks/glm-5p3-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.15, output_cost_per_1m: 0.50 },
+    { id: 'fireworks/glm-5p3', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 2.10, output_cost_per_1m: 6.60 },
     { id: 'fireworks/glm-5p2', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 1.40, output_cost_per_1m: 4.40 },
     { id: 'fireworks/glm-5p1', max_input_tokens: 202752, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 1.40, output_cost_per_1m: 4.40 },
     { id: 'fireworks/kimi-k2p7-code', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.95, output_cost_per_1m: 4.00 },
@@ -1707,11 +1719,15 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     // === DeepSeek Native API ===
     { id: 'deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28 },
     { id: 'deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.435, output_cost_per_1m: 0.87 },
+    // DeepSeek V4.1 Flash — current API ID 'deepseek-flash' (Sept 2026); peak-hour rates.
+    { id: 'deepseek-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20 },
     // === OpenAI GPT-5.6 Family ===
     { id: 'gpt-5.6-luna', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.00, output_cost_per_1m: 6.00 },
     { id: 'gpt-5.6-terra', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 15.00 },
     { id: 'gpt-5.6-sol', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 5.00, output_cost_per_1m: 30.00 },
     // === Google Gemini ===
+    // Gemini 4 Argon — flagship, GA Oct 13, 2026; introductory $2/$10 until Nov 30, 2026.
+    { id: 'gemini-4-argon', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 2.00, output_cost_per_1m: 10.00 },
     { id: 'gemini-3.6-flash', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 7.50 },
     { id: 'gemini-3.5-flash', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 9.00 },
     { id: 'gemini-3.5-flash-lite', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 2.50 },
@@ -2599,14 +2615,14 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       maxOutputTokens: {},
     };
 
-    for (const providerId of ['openai', 'gemini', 'mistral', 'deepseek', 'moonshot', 'anthropic', 'azure-foundry']) {
+    for (const providerId of ['openai', 'gemini', 'mistral', 'deepseek', 'moonshot', 'anthropic']) {
       await trx
         .updateTable('providers' as never)
         .set({ discovery_manifest: JSON.stringify(nativeManifest) as never } as never)
         .where('id' as never, '=', providerId as never)
         .execute();
     }
-    console.log('[Kysely] Phase 0 seed: seeded discovery_manifest for 7 native providers');
+    console.log('[Kysely] Phase 0 seed: seeded discovery_manifest for 6 native providers');
 
     // ── §7.1 item 8: Boot-time invariant assertions ───────────────────
     // (a) ID-set equality between enabled_models and model_catalog for capability_id='llm'

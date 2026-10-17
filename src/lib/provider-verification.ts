@@ -53,7 +53,7 @@ export async function verifyProviderCredential(input: {
   apiKey: string | null;
   apiBase: string | null;
 }): Promise<ProviderVerificationResult> {
-  const requiresBaseOnly = input.providerId === 'ollama' || input.providerId === 'azure-foundry';
+  const requiresBaseOnly = input.providerId === 'ollama';
   if ((requiresBaseOnly && !input.apiBase) || (!requiresBaseOnly && !input.apiKey)) {
     return {
       ok: false,

@@ -58,14 +58,13 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   anthropic: ['LLM'],
   'ollama-cloud': ['LLM'],
   moonshot: ['LLM'],
-  'azure-foundry': ['LLM', 'Embeddings'],
 };
 
 const ROUTE_1_PROVIDERS: string[] = []; // All providers migrated to Route 2/5
 const ROUTE_2_PROVIDERS = ['openai', 'deepseek', 'anthropic', 'moonshot', 'mistral', 'gemini'];
 const ROUTE_3_PROVIDERS = ['ollama'];
-const ROUTE_5_PROVIDERS = ['azure-foundry', 'fireworks', 'ollama-cloud'];
-const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks', 'ollama', 'azure-foundry'];
+const ROUTE_5_PROVIDERS = ['fireworks', 'ollama-cloud'];
+const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks', 'ollama'];
 
 // ============================================================================
 // Status Badge Component
@@ -567,7 +566,6 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
     const source = getProviderSource(provider);
     const isOllama = provider.id === 'ollama';
     const isOllamaCloud = provider.id === 'ollama-cloud';
-    const isAzureFoundry = provider.id === 'azure-foundry';
     const capabilities = PROVIDER_CAPABILITIES[provider.id] || ['LLM'];
     const testResult = testResults[provider.id];
 
@@ -578,31 +576,13 @@ export default function ApiKeysSettings({ userRole = 'admin' }: ApiKeysSettingsP
           <CapabilityTags capabilities={capabilities} />
         </div>
         <div className="flex-1 relative">
-          {isAzureFoundry ? (
-            <div className="space-y-1.5">
-              <KeyInput
-                value={editedLLMKeys[provider.id]?.apiKey ?? (provider.apiKeyConfigured ? provider.apiKey : '')}
-                onChange={(val) => handleLLMKeyChange(provider.id, val, false)}
-                placeholder="Enter API key..."
-                disabled={!isSuperAdmin}
-              />
-              <KeyInput
-                value={editedLLMKeys[provider.id]?.apiBase ?? provider.apiBase ?? ''}
-                onChange={(val) => handleLLMKeyChange(provider.id, val, true)}
-                placeholder="https://<resource>.services.ai.azure.com"
-                isUrl
-                disabled={!isSuperAdmin}
-              />
-            </div>
-          ) : (
-            <KeyInput
-              value={getLLMKeyValue(provider)}
-              onChange={(val) => handleLLMKeyChange(provider.id, val, isOllama)}
-              placeholder={isOllama ? 'http://localhost:11434' : 'Enter API key...'}
-              isUrl={isOllama}
-              disabled={!isSuperAdmin}
-            />
-          )}
+          <KeyInput
+            value={getLLMKeyValue(provider)}
+            onChange={(val) => handleLLMKeyChange(provider.id, val, isOllama)}
+            placeholder={isOllama ? 'http://localhost:11434' : 'Enter API key...'}
+            isUrl={isOllama}
+            disabled={!isSuperAdmin}
+          />
         </div>
         <div className="flex-shrink-0 flex items-center gap-2">
           <StatusBadge source={source} />

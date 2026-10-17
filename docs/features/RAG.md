@@ -214,7 +214,7 @@ All providers use direct native SDKs/APIs — no proxy intermediary.
 |-------|----------|----------|
 | **Route 2** | Direct providers | OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot |
 | **Route 3** | Local Ollama | Air-gapped deployments |
-| **Route 5** | Aggregator gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud |
+| **Route 5** | Aggregator gateways | Fireworks AI, Ollama Cloud |
 
 Model detection is prefix-based and runs after organization-aware capability/credential resolution. See [`docs/features/LLM.md`](LLM.md) for the authoritative provider, route, fallback, and credential-resolution reference.
 

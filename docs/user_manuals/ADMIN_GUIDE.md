@@ -1646,7 +1646,7 @@ The **Routes** section controls which LLM provider paths are active. AI Assistan
 |-------|-----------|------------|
 | **Route 2** | OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot | Native SDK / direct API |
 | **Route 3** | Ollama (local) | OpenAI SDK → ollama:11434/v1 |
-| **Route 5** | Azure AI Foundry, Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compat |
+| **Route 5** | Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compat |
 
 | Setting | Description |
 |---------|-------------|

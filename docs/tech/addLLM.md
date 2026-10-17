@@ -100,7 +100,7 @@ New models are automatically classified into one of three routes based on their 
 |-------|------------------|--------------|
 | **Route 2** (Direct) | `openai/`, `gpt-`, `o1`, `o3`, `o4`, `anthropic/`, `claude-`, `gemini/`, `gemini-`, `mistral/`, `codestral/`, `pixtral/`, `deepseek-`, `deepseek/`, `moonshot/` | `openai`, `anthropic`, `gemini`, `mistral`, `deepseek`, `moonshot` |
 | **Route 3** (Local / Ollama) | `ollama-`, `ollama/` | `ollama` |
-| **Route 5** (Aggregators) | `azure-foundry/`, `fireworks/`, `ollama-cloud/`, `*-cloud`, `*:cloud` | `azure-foundry`, `fireworks`, `ollama-cloud` |
+| **Route 5** (Aggregators) | `fireworks/`, `ollama-cloud/`, `*-cloud`, `*:cloud` | `fireworks`, `ollama-cloud` |
 
 Route 5 is checked **first** in model filtering. Classification is handled by [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallback.ts) — no manual route mapping needed when adding models.
 
@@ -625,8 +625,6 @@ const TOOL_CAPABLE_PATTERNS = [
   // Fireworks-hosted chat models
   /^fireworks\//,
   /^accounts\/fireworks\//,
-  // Azure AI Foundry (Route 5)
-  /^azure-foundry\//,
   // Ollama
   /^llama3/,
   /^llama4/,

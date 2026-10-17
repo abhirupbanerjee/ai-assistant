@@ -60,7 +60,6 @@ export const REFERENCE_PROVIDERS: Array<{ id: string; name: string; sortOrder: n
   { id: 'fireworks', name: 'Fireworks AI', sortOrder: 70 },
   { id: 'ollama-cloud', name: 'Ollama Cloud', sortOrder: 80 },
   { id: 'moonshot', name: 'Moonshot AI', sortOrder: 90 },
-  { id: 'azure-foundry', name: 'Azure AI Foundry', sortOrder: 100 },
   // Capability-only providers referenced by existing settings.
   { id: 'tavily', name: 'Tavily (Web Search)', sortOrder: 110 },
   { id: 'cohere', name: 'Cohere (Reranking)', sortOrder: 120 },
@@ -100,7 +99,6 @@ export const PROVIDER_ENV_KEY_MAP: Record<string, { apiKey?: string; apiBase?: s
   fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
   'ollama-cloud': { apiKey: 'OLLAMA_API_KEY' },
   moonshot: { apiKey: 'MOONSHOT_API_KEY', apiBase: 'MOONSHOT_API_BASE' },
-  'azure-foundry': { apiKey: 'AZURE_FOUNDRY_API_KEY', apiBase: 'AZURE_FOUNDRY_ENDPOINT' },
 };
 
 // ============================================================================

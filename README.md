@@ -475,8 +475,6 @@ FIREWORKS_AI_API_KEY=...           # Fireworks open-source models (dev/test)
 MOONSHOT_API_KEY=...               # Moonshot Kimi models (direct Route 2)
 MOONSHOT_API_BASE=...              # Optional custom Moonshot endpoint
 OLLAMA_API_BASE=http://localhost:11434  # Local Ollama (or host.docker.internal)
-AZURE_FOUNDRY_ENDPOINT=...         # Azure AI Foundry endpoint (Route 5)
-AZURE_FOUNDRY_API_KEY=...          # Azure AI Foundry API key (Route 5)
 OLLAMA_CLOUD_API_KEY=...           # Ollama Cloud hosted models (Route 5)
 
 # Production Auth (at least one)

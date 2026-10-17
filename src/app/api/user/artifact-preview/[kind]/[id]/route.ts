@@ -7,11 +7,26 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 export async function GET(request: Request, context: RouteContext) {
+  let stage: 'authorize' | 'comments' = 'authorize';
   try {
     const src = await authorize(request, context);
+    stage = 'comments';
+    const comments = await commentsFor(src);
     return json({ source: { kind: src.ref.kind, id: String(src.ref.id) }, sourceVersion: src.sourceVersion,
-      format: src.format, title: src.title, previewSupported: ['pdf', 'pptx', 'xlsx'].includes(src.format), comments: await commentsFor(src) });
-  } catch (error) { return failure(error); }
+      format: src.format, title: src.title, previewSupported: ['pdf', 'pptx', 'xlsx'].includes(src.format), comments });
+  } catch (error) {
+    if (!(error instanceof PreviewError)) {
+      // Do not log the exception or request: DB errors may embed private data.
+      // PostgreSQL SQLSTATEs are fixed-length diagnostic codes, not query text.
+      const code = (error as { code?: unknown } | null)?.code;
+      console.error('[ArtifactPreview] GET failed', {
+        stage,
+        sqlstate: typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code) ? code : undefined,
+        errorType: error instanceof Error ? error.name : 'NonError',
+      });
+    }
+    return failure(error);
+  }
 }
 export async function POST(request: Request, context: RouteContext) {
   try {

@@ -164,11 +164,10 @@ export function isRoute3Model(model: string): boolean {
 }
 
 /**
- * Check if a model belongs to Route 5 (aggregator gateways: Azure AI Foundry, Fireworks AI, Ollama Cloud)
+ * Check if a model belongs to Route 5 (aggregator gateways: Fireworks AI, Ollama Cloud)
  */
 export function isRoute5Model(model: string): boolean {
-  return model.startsWith('azure-foundry/')
-    || model.startsWith('fireworks/')
+  return model.startsWith('fireworks/')
     || model.startsWith('ollama-cloud/')
     || model.endsWith('-cloud')
     || model.includes(':cloud');
@@ -207,7 +206,10 @@ export async function buildModelsToTry(
     // Route-aware: append cross-route fallback models if other routes are enabled
     const routesSettings = await getRoutesSettings();
     if (routesSettings.route2Enabled && !isRoute2Model(selectedModel!)) {
-      const route2Fallbacks = ['fireworks/minimax-m2p5', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
+      // glm-5p3-flash is the current Fireworks GLM generation (glm-5p2 purged Sept 2026);
+      // minimax-m2p5 was also purged. Transport form accounts/fireworks/models/glm-5p3-flash
+      // is derived from this alias ID at call time.
+      const route2Fallbacks = ['fireworks/glm-5p3-flash', 'fireworks/minimax-m3', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
       for (const fb of route2Fallbacks) {
         if (!models.includes(fb) && isModelHealthy(fb)) {
           models.push(fb);
@@ -245,7 +247,10 @@ export async function buildModelsToTry(
   // Route-aware: inject cross-route fallback models if other routes are enabled
   const routesSettings = await getRoutesSettings();
   if (routesSettings.route2Enabled) {
-    const route2Fallbacks = ['fireworks/minimax-m2p5', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
+    // glm-5p3-flash is the current Fireworks GLM generation (glm-5p2 purged Sept 2026);
+    // minimax-m2p5 was also purged. Transport form accounts/fireworks/models/glm-5p3-flash
+    // is derived from this alias ID at call time.
+    const route2Fallbacks = ['fireworks/glm-5p3-flash', 'fireworks/minimax-m3', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
     for (const fb of route2Fallbacks) {
       if (!models.includes(fb) && isModelHealthy(fb)) {
         models.push(fb);

@@ -276,7 +276,6 @@ function detectProvider(modelId: string): import('../src/types/agent').LLMProvid
   if (modelId.startsWith('ollama')) return 'ollama';
   if (modelId.startsWith('moonshot') || modelId.startsWith('kimi')) return 'moonshot';
   if (modelId.startsWith('deepseek')) return 'deepseek';
-  if (modelId.startsWith('azure-foundry/')) return 'azure-foundry';
   if (modelId.startsWith('gemini')) return 'gemini';
   if (modelId.startsWith('mistral') || modelId.startsWith('codestral') || modelId.startsWith('pixtral')) return 'mistral';
   return 'openai';

@@ -26,8 +26,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import { CohereClient } from 'cohere-ai';
 import { GoogleGenAI } from '@google/genai';
 import { DocumentAnalysisClient, AzureKeyCredential } from '@azure/ai-form-recognizer';
-import { AIProjectClient } from '@azure/ai-projects';
-import { DefaultAzureCredential } from '@azure/identity';
 
 // ============================================================================
 // Types
@@ -127,15 +125,6 @@ const OPENAI_COMPATIBLE_PROVIDERS = new Set([
   'ollama-cloud',
 ]);
 
-function buildAzureFoundryClient(apiBase: string | null): OpenAI {
-  if (!apiBase) {
-    throw new Error('Azure AI Foundry not configured (AZURE_FOUNDRY_ENDPOINT required)');
-  }
-  const project = new AIProjectClient(apiBase.replace(/\/$/, ''), new DefaultAzureCredential());
-  // Returns a standard openai SDK client routing through the project endpoint.
-  return project.getOpenAIClient();
-}
-
 /**
  * Construct a provider client from a credential ref. No caching here — caching
  * is the `ProviderClientFactory`'s responsibility.
@@ -176,9 +165,6 @@ export function buildProviderClient(ref: CredentialRef): ProviderClient {
         client: new DocumentAnalysisClient(endpoint, new AzureKeyCredential(apiKey ?? '')),
       };
     }
-
-    case 'azure-foundry':
-      return { kind: 'openai', client: buildAzureFoundryClient(apiBase) };
 
     // Local key-less reranker: represented as an http client with no secret.
     case 'bge':

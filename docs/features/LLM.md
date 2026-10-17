@@ -26,7 +26,7 @@ AI Assistant routes all LLM requests through **three independent paths**. Every 
 |-------|---------|-----------|--------|
 | **Route 2** | Direct Providers | OpenAI, Anthropic Claude, Google Gemini, Mistral AI, DeepSeek, Moonshot | `route2Enabled` |
 | **Route 3** | Local / Ollama | Ollama (local inference) | `route3Enabled` |
-| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud | `route5Enabled` |
+| **Route 5** | Aggregator Gateways | Fireworks AI, Ollama Cloud | `route5Enabled` |
 
 **Primary route** is configurable via `primaryRoute` (`'route2'` | `'route3'` | `'route5'`). At least one route must be enabled at all times.
 
@@ -35,7 +35,7 @@ AI Assistant routes all LLM requests through **three independent paths**. Every 
 - **Resilience** — cross-route fallback if one provider or gateway fails
 - **Provider isolation** — each provider uses its native SDK for reliable tool calling, thinking, and streaming
 - **Air-gap support** — Route 3 enables fully offline deployments (Ollama local)
-- **Gateway aggregation** — Route 5 groups multi-model gateways (Azure Foundry, Fireworks, Ollama Cloud) for catalog access
+- **Gateway aggregation** — Route 5 groups multi-model gateways (Fireworks, Ollama Cloud) for catalog access
 - **Compliance** — restrict which provider APIs are reachable from your deployment
 
 ### Historical Note
@@ -69,7 +69,6 @@ AI Assistant routes all LLM requests through **three independent paths**. Every 
 
 | Provider | Model Prefixes | SDK / API | API Endpoint | Source File |
 |----------|---------------|-----------|-------------|-------------|
-| **Azure AI Foundry** | `azure-foundry/` | `@azure/ai-projects` + `@azure/identity` | Configured via `AZURE_FOUNDRY_ENDPOINT` | [`src/lib/llm/providers/azure-foundry.ts`](../../src/lib/llm/providers/azure-foundry.ts) |
 | **Fireworks AI** | `fireworks/` | OpenAI-compatible | `api.fireworks.ai/inference/v1` | [`src/lib/llm/providers/fireworks.ts`](../../src/lib/llm/providers/fireworks.ts) |
 | **Ollama Cloud** | `ollama-cloud/`, `*-cloud`, `*:cloud` | Native `/api/chat` | `ollama.com/api` | [`src/lib/services/ollama-cloud.ts`](../../src/lib/services/ollama-cloud.ts) |
 
@@ -84,7 +83,7 @@ Detection functions live in [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallba
 
 // isRoute3Model(model) — matches: ollama-, ollama/
 
-// isRoute5Model(model) — matches: azure-foundry/, fireworks/,
+// isRoute5Model(model) — matches: fireworks/,
 //   ollama-cloud/, *-cloud, *:cloud
 ```
 
@@ -251,9 +250,8 @@ graph TD
     D --> D5["DeepSeek<br/>OpenAI-compat → api.deepseek.com"]
     D --> D6["Moonshot<br/>OpenAI-compat → api.moonshot.cn"]
 
-    F --> F1["Azure AI Foundry<br/>@azure/ai-projects + Entra ID"]
-    F --> F2["Fireworks AI<br/>OpenAI-compat → api.fireworks.ai"]
-    F --> F3["Ollama Cloud<br/>Native /api/chat → ollama.com"]
+    F --> F1["Fireworks AI<br/>OpenAI-compat → api.fireworks.ai"]
+    F --> F2["Ollama Cloud<br/>Native /api/chat → ollama.com"]
 
     D1 --> G["Unified Response<br/>content + tool_calls + tokens"]
     D2 --> G
@@ -296,8 +294,7 @@ createInternalCompletion(model, opts)
     ├─ isGeminiModel?     → callGeminiChat()          [@google/genai]
     ├─ isOpenAIModel?     → callOpenAIChat()          [openai SDK]
     ├─ isOllamaModel?     → callOllama()              [OpenAI SDK → ollama:11434]
-    ├─ isOllamaCloud?     → callOllamaCloudDirect()   [Native /api/chat]
-    └─ isAzureFoundry?    → callAzureFoundry()        [@azure/ai-projects]
+    └─ isOllamaCloud?     → callOllamaCloudDirect()   [Native /api/chat]
 ```
 
 ---
@@ -318,7 +315,6 @@ createInternalCompletion(model, opts)
 | [`src/lib/llm/providers/openai.ts`](../../src/lib/llm/providers/openai.ts) | OpenAI direct provider (chat, embeddings, detection) |
 | [`src/lib/llm/providers/gemini.ts`](../../src/lib/llm/providers/gemini.ts) | Gemini direct provider (chat, embeddings, detection) |
 | [`src/lib/llm/providers/mistral.ts`](../../src/lib/llm/providers/mistral.ts) | Mistral direct provider (chat, embeddings, detection) |
-| [`src/lib/llm/providers/azure-foundry.ts`](../../src/lib/llm/providers/azure-foundry.ts) | Azure AI Foundry provider (Route 5) |
 | [`src/lib/llm/providers/fireworks.ts`](../../src/lib/llm/providers/fireworks.ts) | Fireworks AI provider (Route 5) |
 | [`src/lib/services/ollama-cloud.ts`](../../src/lib/services/ollama-cloud.ts) | Ollama Cloud provider (Route 5) |
 | [`src/lib/services/model-discovery.ts`](../../src/lib/services/model-discovery.ts) | Provider API model discovery, capability patterns |
@@ -345,9 +341,6 @@ createInternalCompletion(model, opts)
 | `DEEPSEEK_API_KEY` | DeepSeek | Chat |
 | `MOONSHOT_API_KEY` | Moonshot | Chat |
 | `FIREWORKS_AI_API_KEY` | Fireworks AI | Chat, embeddings, reranking |
-| `AZURE_FOUNDRY_ENDPOINT` | Azure AI Foundry | Endpoint URL (required) |
-| `AZURE_FOUNDRY_API_KEY` | Azure AI Foundry | API key (or use `DefaultAzureCredential` with Entra ID) |
-| `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` | Azure AI Foundry | Entra ID auth (alternative to API key) |
 | `OLLAMA_CLOUD_API_KEY` | Ollama Cloud | Chat |
 
 Environment values provide platform-managed credentials. Organization BYOK keys are configured through **Admin → Settings → AI & API Setup**, encrypted by CredentialVault, and never displayed after submission. Legacy LLM/provider settings are read-only redirects while the redesigned UI is enabled.

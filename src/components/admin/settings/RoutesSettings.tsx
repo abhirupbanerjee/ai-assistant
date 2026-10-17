@@ -46,7 +46,7 @@ const isRoute3Model = (id: string) =>
   id.startsWith('ollama-') || id.startsWith('ollama/');
 
 const isRoute5ModelClient = (id: string) =>
-  id.startsWith('azure-foundry/') || id.startsWith('fireworks/') || id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
+  id.startsWith('fireworks/') || id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
 
 // ============ Component ============
 
@@ -451,7 +451,7 @@ export default function RoutesSettingsPanel() {
             <Cloud size={20} className="text-teal-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 5: Aggregator Gateways</h3>
-              <p className="text-xs text-gray-500">Azure AI Foundry, Fireworks AI, and Ollama Cloud — unified aggregator gateway access.</p>
+              <p className="text-xs text-gray-500">Fireworks AI and Ollama Cloud — unified aggregator gateway access.</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -502,7 +502,7 @@ export default function RoutesSettingsPanel() {
             </div>
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
-              Providers: <code className="bg-gray-100 px-1 rounded">Azure AI Foundry</code> · <code className="bg-gray-100 px-1 rounded">Fireworks AI</code> · <code className="bg-gray-100 px-1 rounded">Ollama Cloud</code>
+              Providers: <code className="bg-gray-100 px-1 rounded">Fireworks AI</code> · <code className="bg-gray-100 px-1 rounded">Ollama Cloud</code>
             </div>
           </div>
         )}

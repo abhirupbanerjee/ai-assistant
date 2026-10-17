@@ -80,7 +80,7 @@ type SectionId = 'providers' | 'models' | 'auto-leaderboard';
 
 const FALLBACK_ROUTE_2_PROVIDERS = new Set(['openai', 'anthropic', 'moonshot', 'deepseek', 'mistral', 'gemini']);
 const FALLBACK_ROUTE_3_PROVIDERS = new Set(['ollama']);
-const FALLBACK_ROUTE_5_PROVIDERS = new Set(['azure-foundry', 'fireworks', 'ollama-cloud']);
+const FALLBACK_ROUTE_5_PROVIDERS = new Set(['fireworks', 'ollama-cloud']);
 
 /**
  * Build kind-based route classification from loaded providers.
@@ -121,7 +121,7 @@ function isRoute5Model(modelId: string, routeMap?: Map<string, number>): boolean
     }
   }
   // Fallback pattern match (backward compat)
-  return modelId.startsWith('azure-foundry/') || modelId.startsWith('fireworks/') || modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud');
+  return modelId.startsWith('fireworks/') || modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud');
 }
 
 function isRoute3Model(modelId: string, routeMap?: Map<string, number>): boolean {

@@ -89,6 +89,7 @@ export function requiresMaxCompletionTokens(model: string): boolean {
   const id = stripOpenAIPrefix(model.toLowerCase());
   return getModelCompatibility(model)?.toolEndpoint === 'responses'
     || id.startsWith('gpt-5')
+    || id.startsWith('gpt-6')
     || id.startsWith('o1')
     || id.startsWith('o3')
     || id.startsWith('o4');

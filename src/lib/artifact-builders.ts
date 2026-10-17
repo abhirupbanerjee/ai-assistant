@@ -36,11 +36,21 @@ export function getExpirationVariant(expiresAt: string | null): 'expired' | 'war
 }
 
 export function buildDocCanvasItem(doc: GeneratedDocumentInfo): ArtifactCanvasItem {
+  const format = doc.filename.split('.').pop()?.toLowerCase();
+  // Older generated-document metadata can carry a tool/content type instead of
+  // the file extension. Select modern Office viewers from the filename; the
+  // private PDF/Office endpoint independently validates stored source bytes.
+  // Legacy binary Office files must not be sent to OOXML/PDF viewers.
+  const artifactType: ArtifactCanvasItem['artifactType'] = format && ['doc', 'ppt', 'xls'].includes(format)
+    ? 'unsupported'
+    : format && ['pdf', 'pptx', 'xlsx', 'docx'].includes(format)
+      ? format as ArtifactCanvasItem['artifactType']
+      : doc.fileType as ArtifactCanvasItem['artifactType'];
   return {
     source: /^[1-9]\d*$/.test(String(doc.id)) ? { kind: 'output', id: String(doc.id) } : undefined,
-    format: doc.filename.split('.').pop()?.toLowerCase(),
+    format,
     artifactId: doc.id,
-    artifactType: doc.fileType as ArtifactCanvasItem['artifactType'],
+    artifactType,
     title: doc.filename,
     downloadUrl: doc.downloadUrl,
   };
@@ -98,6 +108,13 @@ export function buildChartCanvasItem(
 }
 
 function mapUploadArtifactType(fileType: string, filename?: string): ArtifactCanvasItem['artifactType'] {
+  const ext = filename?.split('.').pop()?.toLowerCase();
+  if (ext && ['doc', 'ppt', 'xls'].includes(ext)) return 'unsupported';
+  // Some uploads arrive with a generic MIME type. The private preview endpoint
+  // still checks the stored source and actual bytes before rendering Office/PDF.
+  if ((fileType === 'application/octet-stream' || !fileType) && ext && ['pdf', 'pptx', 'xlsx', 'docx'].includes(ext)) {
+    return ext as ArtifactCanvasItem['artifactType'];
+  }
   if (fileType.startsWith('image/')) return 'image';
   if (fileType === 'application/pdf') return 'pdf';
   if (fileType === 'text/html') return 'html';
@@ -121,7 +138,6 @@ function mapUploadArtifactType(fileType: string, filename?: string): ArtifactCan
     fileType === 'application/vnd.ms-powerpoint'
   ) return 'pptx';
   if (filename) {
-    const ext = filename.split('.').pop()?.toLowerCase();
     if (ext && ['txt', 'md', 'csv', 'json', 'log', 'tsv', 'yaml', 'yml', 'xml', 'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'sql', 'css'].includes(ext)) {
       return 'md';
     }
@@ -132,7 +148,7 @@ function mapUploadArtifactType(fileType: string, filename?: string): ArtifactCan
 
 export function buildUploadCanvasItem(upload: ThreadUploadItem): ArtifactCanvasItem {
   const format = upload.filename.split('.').pop()?.toLowerCase();
-  const artifactType = format === 'doc' ? 'unsupported' : mapUploadArtifactType(upload.fileType, upload.filename);
+  const artifactType = mapUploadArtifactType(upload.fileType, upload.filename);
   return {
     source: { kind: 'upload', id: String(upload.id) },
     format,

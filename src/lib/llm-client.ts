@@ -14,7 +14,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings } from './db/compat/config';
 import { resolveProviderCredentialForRequest, sharedProviderClientFactory } from './provider-credential';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
-import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, stripAzureFoundryPrefix } from './llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, callMistralChat } from './llm/providers/mistral';
 import { isGeminiModel, stripGeminiPrefix, callGeminiChat } from './llm/providers/gemini';
 import { isOpenAIModel, stripOpenAIPrefix, callOpenAIChat } from './llm/providers/openai';
@@ -88,7 +87,7 @@ function emitUsage(
  *      on thinking + text combined; the effort parameter controls depth. We add
  *      adaptive headroom (requestedMax * ADAPTIVE_RATIO) to max_tokens.
  *   3. Shared-pool providers (DeepSeek, GPT-5, Kimi, MiniMax, Ollama, Mistral,
- *      Fireworks, Azure Foundry): reasoning counts against max_tokens. We add a
+ *      Fireworks): reasoning counts against max_tokens. We add a
  *      scaled reasoning budget (requestedMax * REASONING_RATIO) with a floor and
  *      cap both at the model's max_output_tokens (from the enabled_models DB
  *      table, via getModelOutputLimit).
@@ -201,7 +200,7 @@ async function getThinkingCompletionParams(
   }
 
   // --- Shared-pool providers (DeepSeek, GPT-5, Kimi, MiniMax, Ollama, Mistral,
-  // Fireworks, Azure Foundry) ---
+  // Fireworks) ---
   // Reasoning tokens count against max_tokens. Add a scaled reasoning budget.
   const reasoningBudget = Math.min(
     Math.max(Math.round(requestedMax * REASONING_RATIO), FLOOR_REASONING),
@@ -310,7 +309,6 @@ async function getDeepSeekClient(): Promise<OpenAI> {
 /** Reset all cached LLM clients so they re-read API keys on next use */
 export function resetLlmClients(): void {
   sharedProviderClientFactory.clear();
-  resetAzureFoundryClient();
 }
 
 // ============ Provider Callers ============
@@ -536,39 +534,6 @@ async function callOllamaCloudDirect(model: string, opts: InternalCompletionOpti
   return '';
 }
 
-/**
- * Call Azure AI Foundry (Route 5) — OpenAI-compatible API
- */
-async function callAzureFoundry(model: string, opts: InternalCompletionOptions): Promise<string> {
-  const client = await getAzureFoundryClient();
-  const baseTemp = opts.temperature ?? 0.3;
-  // Strip azure-foundry/ prefix for temperature lookup (bare model name used in overrides)
-  const cleanModel = stripAzureFoundryPrefix(model);
-  // Thinking models (depends on deployed model) need reasoning headroom.
-  const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(cleanModel, opts.maxTokens ?? 2000, opts.reasoningMode);
-  const response = await client.chat.completions.create({
-    model, // Provider strips prefix internally for API call
-    messages: opts.messages.map(m => ({
-      role: m.role as 'system' | 'user' | 'assistant',
-      content: m.content,
-    })),
-    temperature: getTemperatureForModel(cleanModel, baseTemp),
-    max_tokens: maxTokens,
-    ...requestParams,
-  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
-  const message = response.choices[0]?.message;
-  const visible = stripThinkTags(message?.content?.trim() || '');
-  emitUsage(opts, response.usage, model);
-  if (visible) return visible;
-  if (enabled) {
-    const reasoning = (message as unknown as Record<string, unknown>)?.reasoning_content;
-    if (reasoning) {
-      logEmptyThinkingResponse('Azure Foundry', model, maxTokens, String(reasoning).length);
-    }
-  }
-  return '';
-}
-
 // ============ Route Classification ============
 
 function isClaudeModel(model: string): boolean {
@@ -664,11 +629,6 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
   // Route 5 models → always direct to Ollama Cloud
   if (isOllamaCloudModelFn(model)) {
     return callOllamaCloudDirect(model, opts);
-  }
-
-  // Route 5 models → aggregator gateways
-  if (isAzureFoundryModel(model)) {
-    return callAzureFoundry(model, opts);
   }
 
   throw new Error(`Unsupported model for internal completion: ${model}. No provider route matched.`);

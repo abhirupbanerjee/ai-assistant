@@ -70,7 +70,7 @@ function harness(overrides: Record<string, unknown> = {}) {
     getAnthropicModelId: (model: string) => model.replace(/^anthropic\//, ''),
     isOpenAIModel: (model: string) => model.includes('gpt-'),
     isFireworksModel: () => false, isOllamaModel: () => false, isOllamaCloudModel: () => false,
-    isMoonshotModel: () => false, isDeepSeekModel: () => false, isAzureFoundryModel: () => false,
+    isMoonshotModel: () => false, isDeepSeekModel: () => false,
     isMistralModel: () => false, isGeminiModel: () => false,
     getOpenAIDirectClient: async () => ({}), requiresMaxCompletionTokens: () => true,
     getLlmSettings: async () => ({ model: 'gpt-6-astra', temperature: 0.4 }),
