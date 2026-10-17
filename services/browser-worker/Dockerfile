@@ -25,7 +25,11 @@ COPY src ./src
 RUN npm run build
 
 # --- Runtime stage (official Playwright image: Chromium + deps preinstalled) --
-FROM mcr.microsoft.com/playwright:v1.59.1-jammy AS runtime
+# The image tag MUST match the exact `playwright` version pinned in package.json.
+# A mismatch makes chromium.launch() fail: the driver looks for browser binaries
+# the base image doesn't ship (verified in prod 2026-10-17: 1.62.1 driver vs 1.59.1
+# image → "Executable doesn't exist at /ms-playwright/chromium_headless_shell-...").
+FROM mcr.microsoft.com/playwright:v1.62.1-jammy AS runtime
 
 WORKDIR /app
 
