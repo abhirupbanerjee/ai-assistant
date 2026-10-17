@@ -103,6 +103,22 @@ test('compatibility only overrides exact IDs, not unknown families, suffixes, or
   assert.equal(isClaudeAdaptiveThinkingModel('claude-opus-5-50'), false);
 });
 
+test('GPT-6 point releases resolve the generation family; lookalikes stay unresolved', () => {
+  for (const model of ['gpt-6.1-sol', 'gpt-6.1-luna', 'gpt-6.2-astra', 'gpt-6.10-sol']) {
+    const compatibility = getModelCompatibility(model);
+    assert.ok(compatibility, model);
+    assert.equal(compatibility.toolEndpoint, 'responses', model);
+    assert.equal(compatibility.defaultEffort, model.endsWith('-astra') ? 'medium' : 'medium', model);
+    assert.equal(compatibility.alwaysThinking, model.endsWith('-astra'), model);
+    assert.ok(Object.isFrozen(compatibility));
+    assert.equal(getModelCompatibility(`openai/${model}`), compatibility, model);
+  }
+  for (const model of ['gpt-6.1-sol-pro', 'gpt-6.1-astra-mini', 'gpt-6.1-sol-2026-09-01',
+    'gpt-6.1', 'gpt-7-sol', 'gpt-5.6-sol']) {
+    assert.equal(getModelCompatibility(model), undefined, model);
+  }
+});
+
 test('legacy temperatures retain existing omission, locking, and default behavior', () => {
   for (const model of ['o3', 'claude-opus-4-7', 'claude-fable-5', 'moonshot/kimi-k2.6']) {
     assert.equal(getTemperatureForModel(model, 0.7), undefined, model);

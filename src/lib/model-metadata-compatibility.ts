@@ -1,6 +1,9 @@
-import { getModelCompatibility, normalizeModelId } from './model-compatibility';
+import { getModelCompatibility, isGpt6GenerationModel, normalizeModelId } from './model-compatibility';
 
 // Deliberately exact: do not infer capabilities for future variants or snapshots.
+// Exception: GPT-6 generation tier IDs (gpt-6[.N]-astra/-sol/-luna) resolve via
+// isGpt6GenerationModel so point releases (e.g. gpt-6.1-sol) get the same
+// capability/budget correction as their base tier.
 const METADATA_MODELS = new Set([
   'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
   'claude-fable-5-1', 'claude-opus-5-5',
@@ -26,7 +29,7 @@ export function getKnownModelMetadata(modelId: string): {
   maxInputTokens: number;
   maxOutputTokens: number;
 } | undefined {
-  if (!METADATA_MODELS.has(normalizeModelId(modelId))) return undefined;
+  if (!METADATA_MODELS.has(normalizeModelId(modelId)) && !isGpt6GenerationModel(modelId)) return undefined;
   const compatibility = getModelCompatibility(modelId);
   if (!compatibility) return undefined;
   return {

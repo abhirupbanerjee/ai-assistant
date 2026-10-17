@@ -516,14 +516,26 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
     .selectFrom('enabled_models')
     .select(db.fn.max<number>('sort_order').as('max_order'))
     .executeTakeFirst();
-  const sortOrder = input.sortOrder ?? ((maxOrder?.max_order ?? 0) + 1);
+  // An existing legacy row (e.g. a migration-seeded disabled model) keeps its
+  // sort_order unless the caller explicitly provides one, so enabling a seeded
+  // model does not reshuffle the model list.
+  const existingRow = await db
+    .selectFrom('enabled_models')
+    .select('sort_order')
+    .where('id', '=', input.id)
+    .executeTakeFirst();
+  const sortOrder = input.sortOrder ?? existingRow?.sort_order ?? ((maxOrder?.max_order ?? 0) + 1);
   const isDefault = input.isDefault ?? false;
   const enabled = input.enabled !== false;
   const caps = buildCapabilitiesJson(input);
 
   try {
     await transaction(async (trx) => {
-    // 1. Legacy write (always — keeps flag-off path working)
+    // 1. Legacy write (always — keeps flag-off path working).
+    //    Upsert: migration seeds insert new model rows as disabled
+    //    (enabled=0, onConflict doNothing), so a plain INSERT here would hit
+    //    enabled_models_pkey (Postgres 23505) the first time an admin enables
+    //    the model. On conflict, update in place — enabling a seeded row.
     await trx
       .insertInto('enabled_models')
       .values({
@@ -544,6 +556,26 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
         enabled: enabled ? 1 : 0,
         sort_order: sortOrder,
       })
+      .onConflict(oc => oc
+        .column('id')
+        .doUpdateSet({
+          provider_id: input.providerId,
+          display_name: input.displayName,
+          tool_capable: caps.tool_capable ? 1 : 0,
+          vision_capable: caps.vision_capable ? 1 : 0,
+          parallel_tool_capable: caps.parallel_tool_capable ? 1 : 0,
+          thinking_capable: caps.thinking_capable ? 1 : 0,
+          forced_tool_capable: caps.forced_tool_capable ? 1 : 0,
+          capability_tier: input.capabilityTier || 'unclassified',
+          max_input_tokens: input.maxInputTokens || null,
+          max_output_tokens: input.maxOutputTokens || null,
+          input_cost_per_1m: input.inputCostPer1M ?? null,
+          output_cost_per_1m: input.outputCostPer1M ?? null,
+          is_default: isDefault ? 1 : 0,
+          enabled: enabled ? 1 : 0,
+          sort_order: sortOrder,
+        })
+      )
       .execute();
 
     // 2. Catalog write-through mirror (model_catalog upsert)
@@ -638,10 +670,13 @@ export async function createEnabledModelsBatch(inputs: CreateEnabledModelInput[]
   const results: EnabledModel[] = [];
 
   for (const input of inputs) {
-    // Skip if model already exists
-    if (await getEnabledModel(input.id)) {
-      continue;
-    }
+    // Do NOT skip models that already exist: migration seeds pre-insert new
+    // models as disabled rows in enabled_models but do not mirror them into
+    // model_catalog, so getEnabledModel (catalog read path) returns null for
+    // them. Skipping here used to let the plain INSERT in createEnabledModel
+    // collide with the seeded row (Postgres 23505 on enabled_models_pkey) and
+    // fail the whole POST. createEnabledModel now upserts: an existing
+    // (seeded-disabled) row is updated in place — enabling the model.
     results.push(await createEnabledModel(input));
   }
 

@@ -410,6 +410,26 @@ export async function streamOpenAICompletion(
   try {
     return await doStream(requestParams);
   } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+    // Re-route to /v1/responses when the API explicitly rejects the
+    // function-tools + reasoning_effort combination on chat completions
+    // ("... are not supported for <model> in /v1/chat/completions. To use
+    // function tools, use /v1/responses or set reasoning_effort to 'none'.").
+    // Stripping reasoning_effort alone is not the requested remedy — the
+    // Responses API natively supports tools + reasoning. Covers unknown
+    // GPT-6.x thinking models that lack a compat entry (e.g. gpt-6.1-sol).
+    if (!outputStarted && !options?.signal?.aborted
+      && requestParams.tools
+      && message.includes('function tools') && message.includes('reasoning_effort')) {
+      console.warn('[OpenAI Direct] Re-routing to /v1/responses (function tools + reasoning_effort unsupported on chat completions)', { model: cleanModel });
+      return await streamOpenAIResponses(client, model, messages, {
+        ...options,
+        firstChunkTimeoutMsOverride: options?.firstChunkTimeoutMsOverride ?? firstChunkTimeoutMs,
+        interChunkTimeoutMsOverride: options?.interChunkTimeoutMsOverride ?? interChunkTimeoutMs,
+      });
+    }
+
     // Retry without reasoning_effort if the model rejects it with function tools.
     // This handles models like gpt-5.5 that require /v1/responses for tools+reasoning.
     if (!outputStarted && !compatibility && !options?.signal?.aborted

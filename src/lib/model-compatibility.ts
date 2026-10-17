@@ -69,11 +69,34 @@ const MODEL_COMPATIBILITY: Readonly<Record<string, ModelCompatibility>> = Object
 });
 
 /**
- * Pure, exact-ID lookup after provider-prefix normalization. No family-prefix matching:
- * undefined means there is no explicit override, not that a capability is unsupported.
+ * Strict GPT-6 generation-family resolver, future-proofing point releases:
+ * exactly `gpt-6` or `gpt-6.<digits>` followed by `-astra` (mandatory thinking) or
+ * `-sol` / `-luna`. Deliberately narrower than family-prefix matching — lookalikes
+ * (`gpt-6-sol-pro`, `gpt-6-astra-mini`, `gpt-6-sol-2026-09-01`, `gpt-5.6-sol`, bare
+ * `gpt-6`) remain unresolved so exact-ID semantics elsewhere are preserved.
+ */
+const GPT6_FAMILY_RE = /^gpt-6(?:\.\d+)?-(?:astra|sol|luna)$/;
+
+/** True for GPT-6 generation tier IDs, including future point releases. */
+export function isGpt6GenerationModel(model: string): boolean {
+  return GPT6_FAMILY_RE.test(normalizeModelId(model));
+}
+
+function resolveGpt6FamilyCompatibility(id: string): ModelCompatibility | undefined {
+  if (!GPT6_FAMILY_RE.test(id)) return undefined;
+  return id.endsWith('-astra')
+    ? MODEL_COMPATIBILITY['gpt-6-astra']
+    : GPT6;
+}
+
+/**
+ * Pure, exact-ID lookup after provider-prefix normalization. No family-prefix matching
+ * except the strict GPT-6 point-release resolver above: undefined means there is no
+ * explicit override, not that a capability is unsupported.
  * Returned metadata and effort arrays are immutable and safe to share across callers.
  */
 export function getModelCompatibility(model: string): ModelCompatibility | undefined {
   const id = normalizeModelId(model);
-  return Object.hasOwn(MODEL_COMPATIBILITY, id) ? MODEL_COMPATIBILITY[id] : undefined;
+  if (Object.hasOwn(MODEL_COMPATIBILITY, id)) return MODEL_COMPATIBILITY[id];
+  return resolveGpt6FamilyCompatibility(id);
 }
