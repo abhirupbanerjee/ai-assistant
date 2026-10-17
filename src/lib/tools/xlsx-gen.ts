@@ -370,6 +370,7 @@ The generated file will be available for download.`,
       return JSON.stringify({
         success: true,
         document: {
+          id: docId,
           filename,
           fileSize: result.fileSize,
           sheetCount: result.sheetCount,

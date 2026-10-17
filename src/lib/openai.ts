@@ -66,6 +66,19 @@ function countTokens(text: string, model: string = 'gpt-4o'): number {
 }
 
 /**
+ * Extract the numeric output id from a document download URL produced by the
+ * generation tools (e.g. `/api/documents/42/download` or
+ * `/api/workspace-documents/7/download`). Used as a fallback when a tool
+ * response omits the explicit `document.id` field — without it the artifact
+ * canvas item has no private preview identity and PDF/Office preview fails.
+ */
+function extractOutputIdFromUrl(downloadUrl: string | undefined | null): string | null {
+  if (!downloadUrl) return null;
+  const match = downloadUrl.match(/\/api\/(?:documents|workspace-documents)\/([1-9]\d*)\/download/);
+  return match ? match[1] : null;
+}
+
+/**
  * Map various model names to tiktoken model names
  */
 function mapToTiktokenModel(model: string): TiktokenModel {
@@ -2245,10 +2258,20 @@ export async function generateResponseWithTools(
                 callbacks.onArtifact('visualization', viz);
               }
               if (parsed.success && parsed.document) {
+                // Tool responses vary in age/shape: doc_gen includes the
+                // thread_outputs row id, older pptx_gen/xlsx_gen payloads
+                // only embedded it in the downloadUrl. Derive it as a
+                // fallback so the artifact canvas gets a private preview
+                // identity either way.
+                const docId = String(parsed.document.id ?? extractOutputIdFromUrl(parsed.document.downloadUrl) ?? `doc-${Date.now()}`);
+                // Same for fileType/fileSizeFormatted: pptx_gen/xlsx_gen omit
+                // them. The extension is a reliable fallback for grouping and
+                // canvas viewer selection.
+                const derivedFileType = parsed.document.fileType || parsed.document.filename?.split('.').pop()?.toLowerCase();
                 const doc: GeneratedDocumentInfo = {
-                  id: parsed.document.id,
+                  id: docId,
                   filename: parsed.document.filename,
-                  fileType: parsed.document.fileType,
+                  fileType: (derivedFileType as GeneratedDocumentInfo['fileType']) || 'md',
                   fileSize: parsed.document.fileSize || 0,
                   fileSizeFormatted: parsed.document.fileSizeFormatted || '',
                   downloadUrl: parsed.document.downloadUrl,

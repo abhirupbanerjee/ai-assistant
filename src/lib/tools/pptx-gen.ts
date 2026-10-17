@@ -850,6 +850,7 @@ For image slides, provide an imagePrompt describing the visual.`,
       const response: PptxGenResponse = {
         success: true,
         document: {
+          id: docId,
           filename,
           fileSize: result.fileSize,
           slideCount: result.slideCount,

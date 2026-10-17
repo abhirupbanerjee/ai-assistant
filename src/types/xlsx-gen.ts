@@ -91,6 +91,8 @@ export interface XlsxResult {
 export interface XlsxGenResponse {
   success: boolean;
   document?: {
+    /** thread_outputs/workspace_outputs row id (needed for private preview identity) */
+    id?: number;
     filename: string;
     fileSize: number;
     sheetCount: number;
