@@ -11,7 +11,7 @@ import { cacheKey, hash, PreviewError } from './policy';
 
 const url = integrationDatabaseUrl();
 const fixtureSchema = `
-CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT NOT NULL);
+CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user');
 CREATE TABLE threads(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), organization_id INTEGER);
 CREATE TABLE organization_memberships(organization_id INTEGER, user_id INTEGER REFERENCES users(id), status TEXT NOT NULL, PRIMARY KEY(organization_id,user_id));
 CREATE TABLE thread_uploads(id INTEGER PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE, filename TEXT NOT NULL, filepath TEXT NOT NULL, file_size INTEGER NOT NULL);
@@ -43,7 +43,7 @@ test('artifact preview PostgreSQL integration (isolated schema, two independent 
     async function reset() {
       await sql`TRUNCATE artifact_preview_comments, artifact_previews, thread_uploads, thread_outputs, organization_memberships, threads, users CASCADE`.execute(db);
       await sql`UPDATE artifact_preview_converter SET token=NULL, lease_until=clock_timestamp() - interval '1 second'`.execute(db);
-      await sql`INSERT INTO users VALUES (1,'one@example.test'),(2,'two@example.test'); INSERT INTO threads VALUES ('owned',1,NULL),('other',2,NULL);`.execute(db);
+      await sql`INSERT INTO users VALUES (1,'one@example.test','user'),(2,'two@example.test','user'); INSERT INTO threads VALUES ('owned',1,NULL),('other',2,NULL);`.execute(db);
       for(let id=1;id<=5;id++) await sql`INSERT INTO thread_uploads VALUES (${id},'owned',${`fixture${id}.xlsx`},'/unused',4)`.execute(db);
       await sql`INSERT INTO thread_uploads VALUES (9,'other','private.xlsx','/unused',4); INSERT INTO thread_outputs VALUES (1,'owned','fixture.pdf','/unused',4,'pdf',NULL)`.execute(db);
     }

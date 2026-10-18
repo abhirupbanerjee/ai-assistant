@@ -28,8 +28,8 @@ export function createArtifactPreviewRepository(database: () => Promise<Kysely<D
 
   async function source(db: Kysely<DB>, ref: SourceRef, lock = false) {
     const table = ref.kind === 'upload' ? 'thread_uploads' : 'thread_outputs';
-    const result = await sql<{ id: number; thread_id: string; filename: string; filepath: string; file_size: number; user_id: number; organization_id: number | null; email: string }>`
-      SELECT s.id, s.thread_id, s.filename, s.filepath, s.file_size, t.user_id, t.organization_id, u.email
+    const result = await sql<{ id: number; thread_id: string; filename: string; filepath: string; file_size: number; user_id: number; organization_id: number | null; email: string; role: string }>`
+      SELECT s.id, s.thread_id, s.filename, s.filepath, s.file_size, t.user_id, t.organization_id, u.email, u.role
       FROM ${sql.table(table)} s JOIN threads t ON t.id = s.thread_id JOIN users u ON u.id = t.user_id
       WHERE s.id = ${ref.id} AND t.user_id = ${ref.owner}
       ${lock ? sql`FOR UPDATE OF s, t, u` : sql``}
@@ -42,12 +42,22 @@ export function createArtifactPreviewRepository(database: () => Promise<Kysely<D
       expires_at = output?.expires_at ?? null;
       if (!output || (expires_at && (!Number.isFinite(Date.parse(expires_at)) || Date.parse(expires_at) <= Date.now()))) throw new PreviewError('SOURCE_UNAVAILABLE', 404);
     }
-    if (row.organization_id !== null) {
+    if (row.organization_id !== null && row.role !== 'super_admin') {
       let membership = db.selectFrom('organization_memberships').select('user_id')
         .where('organization_id', '=', row.organization_id).where('user_id', '=', ref.owner).where('status', '=', 'active');
       if (lock) membership = membership.forUpdate();
       const member = await membership.executeTakeFirst();
-      if (!member) throw new PreviewError('ACCESS_DENIED', 403);
+      if (!member) {
+        // Diagnostic only: numeric IDs, no user data. Distinguishes
+        // "no membership row at all" from a non-active status (invited/removed).
+        console.error('[ArtifactPreview] org membership denied', {
+          organizationId: row.organization_id,
+          userId: ref.owner,
+          sourceKind: ref.kind,
+          sourceId: ref.id,
+        });
+        throw new PreviewError('ACCESS_DENIED', 403);
+      }
     }
     return { ...row, expires_at, partition: partition(row.user_id, row.organization_id) };
   }

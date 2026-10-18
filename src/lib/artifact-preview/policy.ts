@@ -42,7 +42,15 @@ export function version(value: unknown): string {
   return value;
 }
 export function assertSurface(headers: Headers, mutation = false, origin?: string) {
-  if (headers.has('x-agent-bot-api-key') || headers.has('x-workspace-slug')) throw new PreviewError('ACCESS_DENIED', 403);
+  if (headers.has('x-agent-bot-api-key') || headers.has('x-workspace-slug')) {
+    // Diagnostic only: header names, never values or credentials.
+    console.error('[ArtifactPreview] surface denied', {
+      hasBotApiKey: headers.has('x-agent-bot-api-key'),
+      hasWorkspaceSlug: headers.has('x-workspace-slug'),
+      mutation,
+    });
+    throw new PreviewError('ACCESS_DENIED', 403);
+  }
   if (mutation && (!origin || headers.get('origin') !== origin || (headers.get('sec-fetch-site') && headers.get('sec-fetch-site') !== 'same-origin'))) throw new PreviewError('CSRF_REJECTED', 403);
 }
 // Behind TLS-terminating proxies the internal request URL can be http://app:3000.
