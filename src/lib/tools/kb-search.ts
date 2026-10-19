@@ -25,6 +25,8 @@ import { getRequestContext } from '../request-context';
 import { getDocumentsByCategory, getGlobalDocuments, getRagSettings } from '../db/compat';
 import { getCategoriesByIds } from '../db/compat/categories';
 import { getVectorStore, resolveActiveCollectionNames } from '../vector-store';
+import { searchUploadSections, type UploadSearchHit } from '../upload-source';
+import { isUploadOnDemandEnabled } from '../upload-processing';
 import { rerankChunks } from '../reranker';
 import { ragLogger as logger } from '../logger';
 import type { RetrievedChunk } from '@/types';
@@ -44,6 +46,44 @@ const PASSAGE_CHAR_BUDGET = 1200;
 interface KbSearchArgs {
   query?: string;
   top_k?: number;
+  scope?: 'kb' | 'uploads' | 'all';
+  document_id?: string;
+}
+
+/** Shape the upload-hit list into the shared kb_search response payload. */
+function uploadSearchResponse(
+  scope: 'kb' | 'uploads' | 'all',
+  query: string,
+  hits: UploadSearchHit[],
+  topK: number,
+): Record<string, unknown> {
+  return {
+    success: true,
+    scope,
+    query,
+    exhaustive: false,
+    results: hits.map(h => ({
+      documentId: h.documentId,
+      documentName: h.documentName,
+      seq: h.seq,
+      page_start: h.pageStart,
+      page_end: h.pageEnd,
+      char_start: h.charStart,
+      char_end: h.charEnd,
+      text: h.text.length > PASSAGE_CHAR_BUDGET
+        ? h.text.slice(0, PASSAGE_CHAR_BUDGET) + '…'
+        : h.text,
+      score: Math.round(h.score * 1000) / 1000,
+    })),
+    totalFound: hits.length,
+    hasMore: hits.length >= topK,
+    ...(hits.length >= topK
+      ? { note: 'Results are ranked, not exhaustive. Call kb_read with the documentId (and page_start/page_end or from_char) for exact ranges.' }
+      : {}),
+    ...(hits.length === 0
+      ? { hint: 'No upload sections matched. Call kb_summary scope=uploads to see extracted uploads, or search the KB with scope=kb.' }
+      : {}),
+  };
 }
 
 /**
@@ -66,6 +106,43 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
 
   const ctx = getRequestContext();
   const categoryIds = ctx.categoryIds || [];
+  const scope = args?.scope === 'kb' || args?.scope === 'uploads' ? args.scope : 'all';
+
+  // ---- Uploads scope: search the thread's private upload sections (§C2) ----
+  // For the default 'all' scope, upload hits are MERGED into the final result —
+  // they are never discarded just because the KB side of the search runs too.
+  let uploadHits: UploadSearchHit[] = [];
+  if (scope !== 'kb') {
+    const uploadsEnabled = isUploadOnDemandEnabled();
+    if (uploadsEnabled && ctx.threadId) {
+      const hits = await searchUploadSections({
+        threadId: ctx.threadId,
+        userId: ctx.userId || '',
+        query,
+        topK,
+        documentId: args?.document_id,
+      });
+      if (scope === 'uploads') {
+        return JSON.stringify(uploadSearchResponse(scope, query, hits, topK));
+      }
+      // Default 'all' scope: keep the upload hits so they can be merged with
+      // the KB results below instead of being silently discarded.
+      uploadHits = hits;
+    } else if (scope === 'uploads') {
+      return JSON.stringify({
+        success: true,
+        scope,
+        query,
+        results: [],
+        totalFound: 0,
+        hasMore: false,
+        hint: uploadsEnabled
+          ? 'No thread context available for upload search.'
+          : 'Upload search is disabled (UPLOAD_ON_DEMAND=false).',
+      });
+    }
+  }
+
 
   try {
     // Fetch category docs + global docs + categories + rag settings in parallel.
@@ -89,6 +166,11 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
     });
 
     if (uniqueKbDocs.length === 0) {
+      // With no KB documents, the upload hits (if any) are the only results —
+      // never fail with NOT_FOUND while a matching upload section exists.
+      if (uploadHits.length > 0) {
+        return JSON.stringify(uploadSearchResponse(scope, query, uploadHits, topK));
+      }
       return JSON.stringify({
         success: false,
         error: 'The knowledge base contains no documents for the current categories.',
@@ -150,6 +232,9 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
     );
 
     if (results.documents.length === 0) {
+      if (uploadHits.length > 0) {
+        return JSON.stringify(uploadSearchResponse(scope, query, uploadHits, topK));
+      }
       return JSON.stringify({
         success: true,
         query,
@@ -214,12 +299,33 @@ async function executeKbSearch(args: KbSearchArgs): Promise<string> {
       hasMore,
     });
 
+    // Merge upload hits into the default 'all' scope: they compete for the
+    // same topK slice, uploads first (they are the user's own exact content).
+    const combinedResults = uploadHits.length > 0 && scope === 'all'
+      ? [
+          ...uploadHits.map(h => ({
+            documentId: h.documentId,
+            documentName: h.documentName,
+            seq: h.seq,
+            page_start: h.pageStart,
+            page_end: h.pageEnd,
+            char_start: h.charStart,
+            char_end: h.charEnd,
+            text: h.text.length > PASSAGE_CHAR_BUDGET
+              ? h.text.slice(0, PASSAGE_CHAR_BUDGET) + '…'
+              : h.text,
+            score: Math.round(h.score * 1000) / 1000,
+          })),
+          ...mappedResults,
+        ].slice(0, topK)
+      : mappedResults;
+
     return JSON.stringify({
       success: true,
       query,
-      results: mappedResults,
-      totalFound,
-      hasMore,
+      results: combinedResults,
+      totalFound: scope === 'all' ? totalFound + uploadHits.length : totalFound,
+      hasMore: scope === 'all' ? totalFound + uploadHits.length > combinedResults.length : hasMore,
       ...(hasMore
         ? { note: `${totalFound - mappedResults.length} more passages available — call kb_search again with a more specific query to refine, or call kb_read with a filename to open the full document.` }
         : {}),
@@ -266,6 +372,15 @@ export const kbSearchTool: ToolDefinition = {
           top_k: {
             type: 'number',
             description: `Number of passages to return (default ${DEFAULT_TOP_K}, max ${MAX_TOP_K}). Increase for broader coverage or decrease for precision.`,
+          },
+          scope: {
+            type: 'string',
+            enum: ['kb', 'uploads', 'all'],
+            description: "'kb' → knowledge base collections only; 'uploads' → files uploaded to this thread only; 'all' → both (default).",
+          },
+          document_id: {
+            type: 'string',
+            description: "Restrict the search to a single uploaded document (from kb_summary scope='uploads'). Only used for upload scopes.",
           },
         },
         required: ['query'],

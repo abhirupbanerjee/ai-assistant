@@ -18,6 +18,9 @@ import {
 } from './storage';
 import { isSupportedExtension, getMimeTypeFromFilename, isImage } from './document-extractor';
 import { getUserId } from './users';
+import { enqueueUploadExtraction, isUploadOnDemandEnabled } from './upload-processing';
+import { deleteUploadDocumentsByThread, deleteUploadDocument, getUploadDocumentByUploadId } from './db/compat';
+import { deleteUploadVectors, deleteUploadCollection } from './upload-source';
 import { getUploadLimits } from './db/compat/config';
 import { invalidateThreadEmbeddingCache } from './redis';
 import {
@@ -279,6 +282,17 @@ export async function deleteThread(
   // Delete from database (cascades to messages, uploads metadata, etc.)
   const result = await dbDeleteThread(threadId);
 
+  // Phase B3: cascade — extraction documents + vectors for this thread.
+  try {
+    await deleteUploadDocumentsByThread(threadId);
+    await deleteUploadCollection(threadId);
+  } catch (error) {
+    console.warn(
+      `[threads] Upload document cleanup failed for thread ${threadId}:`,
+      error instanceof Error ? error.message : error
+    );
+  }
+
   // Delete uploads directory from filesystem
   const uploadsDir = getThreadUploadPath(userId, threadId);
   await deleteDir(uploadsDir);
@@ -483,6 +497,20 @@ export async function saveUpload(
   // ThreadUploadItem construction and upload-backed canvas artifact IDs).
   const uploadRow = await dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
 
+  // Phase B3: enqueue background extraction so the document becomes
+  // on-demand readable (kb_read/kb_search) without being auto-injected into
+  // context. Fire-and-forget — never blocks or fails the upload request.
+  if (isUploadOnDemandEnabled()) {
+    enqueueUploadExtraction({
+      uploadId: uploadRow.id,
+      threadId,
+      userId,
+      filename: safeFilename,
+      filepath: filePath,
+      mimeType: getMimeTypeFromFilename(safeFilename),
+    });
+  }
+
   // Invalidate embedding cache for this file (in case of re-upload with same name)
   await invalidateThreadEmbeddingCache(threadId, safeFilename);
 
@@ -528,6 +556,21 @@ export async function deleteUpload(
 
   // Delete from database
   await dbDeleteThreadUpload(upload.id);
+
+  // Phase B3: cascade — drop the extraction document (sections cascade via
+  // FK ON DELETE CASCADE) and its vectors. Best-effort: derived data.
+  try {
+    const uploadDocument = await getUploadDocumentByUploadId(upload.id);
+    if (uploadDocument) {
+      await deleteUploadDocument(uploadDocument.id);
+      await deleteUploadVectors(threadId, uploadDocument.id);
+    }
+  } catch (error) {
+    console.warn(
+      `[threads] Upload document cleanup failed for upload ${upload.id}:`,
+      error instanceof Error ? error.message : error
+    );
+  }
 
   // Invalidate embedding cache for this file
   await invalidateThreadEmbeddingCache(threadId, filename);

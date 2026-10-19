@@ -251,6 +251,66 @@ CREATE TABLE IF NOT EXISTS thread_uploads (
 
 CREATE INDEX IF NOT EXISTS idx_thread_uploads_thread ON thread_uploads(thread_id);
 
+-- Durable extracted-source storage for chat uploads (Phase B)
+CREATE TABLE IF NOT EXISTS upload_documents (
+  id              TEXT PRIMARY KEY,
+  upload_id       INTEGER NOT NULL,
+  thread_id       TEXT NOT NULL,
+  user_id         TEXT NOT NULL,
+  organization_id INTEGER,
+  filename        TEXT NOT NULL,
+  content_hash    TEXT NOT NULL,
+  mime_type       TEXT NOT NULL DEFAULT 'application/octet-stream',
+  status          TEXT NOT NULL DEFAULT 'processing'
+                  CHECK (status IN ('processing', 'ready', 'partial', 'failed')),
+  error_message   TEXT,
+  extractor       TEXT,
+  page_count      INTEGER,
+  char_count      INTEGER,
+  outline         JSONB,
+  overview        TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_upload_documents_thread ON upload_documents(thread_id);
+CREATE INDEX IF NOT EXISTS idx_upload_documents_upload ON upload_documents(upload_id);
+
+CREATE TABLE IF NOT EXISTS upload_sections (
+  id             TEXT PRIMARY KEY,
+  document_id    TEXT NOT NULL REFERENCES upload_documents(id) ON DELETE CASCADE,
+  seq            INTEGER NOT NULL,
+  page_start     INTEGER NOT NULL,
+  page_end       INTEGER NOT NULL,
+  char_start     INTEGER NOT NULL,
+  char_end       INTEGER NOT NULL,
+  text           TEXT NOT NULL,
+  extract_status TEXT NOT NULL DEFAULT 'ok' CHECK (extract_status IN ('ok', 'failed', 'unavailable')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (document_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_upload_sections_doc ON upload_sections(document_id, seq);
+
+-- Coverage-tracked exhaustive extraction findings (Phase E) — stored OUTSIDE
+-- chat context; the knowledge_extract tool queries them on demand. The
+-- seq/page/char ranges let artifacts cite their source ranges.
+CREATE TABLE IF NOT EXISTS extraction_findings (
+  id           TEXT PRIMARY KEY,
+  document_id  TEXT NOT NULL REFERENCES upload_documents(id) ON DELETE CASCADE,
+  seq_start    INTEGER NOT NULL,
+  seq_end      INTEGER NOT NULL,
+  page_start   INTEGER,
+  page_end     INTEGER,
+  char_start   INTEGER,
+  char_end     INTEGER,
+  kind         TEXT NOT NULL,
+  payload      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_findings_doc ON extraction_findings(document_id, kind, seq_start);
+
 -- AI-generated files
 CREATE TABLE IF NOT EXISTS thread_outputs (
   id SERIAL PRIMARY KEY,

@@ -27,6 +27,7 @@ import { siteGenTool } from './tools/site-gen';
 import { kbSummaryTool } from './tools/kb-summary';
 import { kbSearchTool } from './tools/kb-search';
 import { kbReadTool } from './tools/kb-read';
+import { knowledgeExtractTool } from './tools/knowledge-extract';
 import { handoffToCategoryTool } from './tools/handoff-category';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { getCategoryToolConfigs } from './db/compat/category-tool-config';
@@ -269,6 +270,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   kb_read: { ...kbReadTool, subagentSafe: true, tags: ['knowledge-base', 'kb-read'],
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
     slashCommand: { commandKey: 'kb-read', label: 'Read KB Document', description: 'Read a specific knowledge base document', aliases: ['kb-read', 'open'], icon: 'FileText' } },
+  knowledge_extract: { ...knowledgeExtractTool, subagentSafe: false, tags: ['knowledge-base', 'knowledge-extract'],
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
 
   // ── Agent System (Phase 2.2) — single-agent routing ──
   // LLM-driven category handoff. The executor resolves the target category

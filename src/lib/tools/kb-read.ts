@@ -18,8 +18,11 @@
 import { getRequestContext } from '../request-context';
 import { getDocumentsByCategory, getGlobalDocuments } from '../db/compat';
 import { getCategoriesByIds } from '../db/compat/categories';
+import { listUploadDocumentsByThread } from '../db/compat';
 import { detectReferencedDocument, retrieveFullKbDocumentChunks } from '../document-detection';
 import type { DetectedDocument } from '../document-detection';
+import { readUploadSections, verifyUploadCursor } from '../upload-source';
+import { isUploadOnDemandEnabled } from '../upload-processing';
 import { ragLogger as logger } from '../logger';
 import type { ToolDefinition, ValidationResult } from '../tools';
 
@@ -44,6 +47,11 @@ const SUBSTRING_HIGH_LENGTH = 8;
 
 interface KbReadArgs {
   filename?: string;
+  document_id?: string;
+  page_start?: number;
+  page_end?: number;
+  from_char?: number;
+  cursor?: string;
 }
 
 /**
@@ -75,15 +83,41 @@ export function gradeConfidence(detected: DetectedDocument): KbReadConfidence {
  */
 async function executeKbRead(args: KbReadArgs): Promise<string> {
   const filename = (args?.filename || '').trim();
+  const documentId = (args?.document_id || '').trim();
+  const cursor = (args?.cursor || '').trim();
+
+  // ---- Uploads backend (§C3): reads the durable upload_sections store with
+  // server-context ownership (plan §C4) ----
+  // Filename-only requests are ALSO routed here when they match a thread
+  // upload: executeUploadRead returns null (fall through to the KB path)
+  // when the filename matches no upload, so KB reads still work unchanged.
+  const ctx = getRequestContext();
+  if (isUploadOnDemandEnabled() && ctx.threadId) {
+    const uploadOnly = Boolean(documentId || cursor);
+    const rangeOnly = !filename && (args?.page_start !== undefined || args?.from_char !== undefined);
+    if (uploadOnly || rangeOnly || filename) {
+      const uploadResult = await executeUploadRead(args, documentId, cursor, filename);
+      if (uploadResult !== null) return uploadResult;
+      // Fall through to the KB path only when no explicit upload selector
+      // (document_id/cursor/ranges) was given — otherwise surface the error.
+      if (uploadOnly || rangeOnly) {
+        return JSON.stringify({
+          success: false,
+          error: "Pass 'document_id' (from kb_summary scope=uploads), 'filename' of an uploaded file, or 'cursor' to resume.",
+          errorCode: 'VALIDATION_ERROR',
+        });
+      }
+    }
+  }
+
   if (!filename) {
     return JSON.stringify({
       success: false,
-      error: "Missing required parameter 'filename'. Pass the filename or a recognizable part of it (e.g. 'CMS RFP').",
+      error: "Missing required parameter 'filename' (or 'document_id' for uploads, or 'cursor' to resume a previous read).",
       errorCode: 'VALIDATION_ERROR',
     });
   }
 
-  const ctx = getRequestContext();
   const categoryIds = ctx.categoryIds || [];
 
   try {
@@ -218,6 +252,145 @@ async function executeKbRead(args: KbReadArgs): Promise<string> {
 }
 
 /**
+ * Read a thread upload document from `upload_sections` (durable store) with
+ * page/char ranges and signed-cursor resumability. Identity comes from the
+ * request context, never from model arguments (plan §C4).
+ */
+async function executeUploadRead(
+  args: KbReadArgs,
+  documentId: string,
+  cursor: string,
+  filename: string
+): Promise<string | null> {
+  const ctx = getRequestContext();
+  if (!isUploadOnDemandEnabled()) {
+    return null;
+  }
+  if (!ctx.threadId) {
+    return JSON.stringify({
+      success: false,
+      error: 'No thread context available for upload reads.',
+      errorCode: 'VALIDATION_ERROR',
+    });
+  }
+
+  // Decode a lone cursor first: it carries the documentId, so a continuation
+  // call does not need to repeat document_id.
+  let resolvedDocumentId = documentId;
+  if (!resolvedDocumentId && cursor) {
+    const decoded = verifyUploadCursor(cursor);
+    if (!decoded) {
+      return JSON.stringify({
+        success: false,
+        error: 'Invalid or tampered cursor. Re-read the document without the cursor to restart.',
+        errorCode: 'VALIDATION_ERROR',
+      });
+    }
+    resolvedDocumentId = decoded.documentId;
+  }
+
+  // Resolve filename → documentId against the thread's upload inventory.
+  // Returns null (NOT an error) when the filename matches no upload — the
+  // caller falls through to the KB path. Explicit selectors (cursor/ranges)
+  // always produce a terminal response instead.
+  if (!resolvedDocumentId && filename) {
+    const uploads = await listUploadDocumentsByThread(ctx.threadId);
+    const lower = filename.toLowerCase();
+    const match = uploads.find(u => u.filename.toLowerCase() === lower)
+      ?? uploads.find(u => u.filename.toLowerCase().includes(lower));
+    if (!match) {
+      const explicit = Boolean(cursor || args?.page_start !== undefined || args?.from_char !== undefined);
+      if (explicit) {
+        return JSON.stringify({
+          success: false,
+          error: `No uploaded file matching '${filename}' found in this thread.`,
+          errorCode: 'NOT_FOUND',
+          availableUploads: uploads.map(u => ({ documentId: u.id, filename: u.filename, status: u.status })),
+        });
+      }
+      return null;
+    }
+    resolvedDocumentId = match.id;
+  }
+
+  if (!resolvedDocumentId) {
+    return JSON.stringify({
+      success: false,
+      error: "Pass 'document_id' (from kb_summary scope=uploads), 'filename' of an uploaded file, or 'cursor' to resume.",
+      errorCode: 'VALIDATION_ERROR',
+    });
+  }
+
+  try {
+    const outcome = await readUploadSections({
+      threadId: ctx.threadId,
+      userId: ctx.userId || '',
+      documentId: resolvedDocumentId,
+      cursor: cursor || undefined,
+      pageStart: args?.page_start,
+      pageEnd: args?.page_end,
+      fromChar: args?.from_char,
+    });
+
+    if ('failure' in outcome) {
+      const errors: Record<string, { message: string; code: string }> = {
+        not_found: { message: `Upload document '${resolvedDocumentId}' not found.`, code: 'NOT_FOUND' },
+        forbidden: { message: 'Upload document is not accessible from this thread.', code: 'FORBIDDEN' },
+        hash_mismatch: {
+          message: 'Cursor is stale — the document changed since the cursor was issued. Re-read without the cursor.',
+          code: 'CURSOR_EXPIRED',
+        },
+      };
+      const e = errors[outcome.failure];
+      return JSON.stringify({ success: false, error: e.message, errorCode: e.code });
+    }
+
+    const { result } = outcome;
+    // Availability reporting (plan §C3): lets the model distinguish "more
+    // content remains" from "content was lost".
+    let okPages = 0;
+    let failedPages = 0;
+    let unavailablePages = 0;
+    for (const s of result.sections) {
+      if (s.extract_status === 'ok') okPages += s.page_end - s.page_start + 1;
+      else if (s.extract_status === 'failed') failedPages += s.page_end - s.page_start + 1;
+      else unavailablePages += s.page_end - s.page_start + 1;
+    }
+
+    logger.debug('Upload read tool executed', {
+      documentId: result.documentId,
+      sections: result.sections.length,
+      cursor: Boolean(cursor),
+      hasNext: Boolean(result.next),
+    });
+
+    return JSON.stringify({
+      success: true,
+      source: 'upload',
+      documentId: result.documentId,
+      filename: result.documentName,
+      status: result.status,
+      pageCount: result.pageCount,
+      contentHash: result.contentHash,
+      sections: result.sections,
+      availability: { okPages, failedPages, unavailablePages },
+      truncated: Boolean(result.next),
+      ...(result.next ? { next: result.next } : {}),
+      ...(result.next
+        ? { note: 'More content remains — call kb_read again passing the returned cursor to continue reading.' }
+        : {}),
+    });
+  } catch (err) {
+    logger.error('Upload read tool execution failed', { error: String(err) });
+    return JSON.stringify({
+      success: false,
+      error: 'Failed to read the uploaded document',
+      errorCode: 'EXECUTION_ERROR',
+    });
+  }
+}
+
+/**
  * KB Read tool definition following the ToolDefinition interface.
  */
 export const kbReadTool: ToolDefinition = {
@@ -231,12 +404,15 @@ export const kbReadTool: ToolDefinition = {
     function: {
       name: 'kb_read',
       description:
-        'Read the full content of a specific document from the knowledge base by filename or partial name. ' +
+        'Read the content of a specific document from the knowledge base (by filename) or of a file uploaded to this thread (by document_id). ' +
         'Use this AFTER kb_summary to retrieve the actual text of a document you have identified. ' +
         'Returns the document content with page numbers for citation. ' +
-        'Always prefer this over web_search for documents that exist in the knowledge base. ' +
-        "Pass the filename or a recognizable part of it (e.g. 'CMS RFP' matches 'FINAL-1-CMS-RFP-September-2024.pdf'). " +
-        'The result includes a confidence field: "high" (content returned), "ambiguous" (multiple candidates — ' +
+        'Always prefer this over web_search for documents that exist in the knowledge base or were uploaded in this thread. ' +
+        "Pass the filename or a recognizable part of it (e.g. 'CMS RFP' matches 'FINAL-1-CMS-RFP-September-2024.pdf'), " +
+        "or pass document_id of an upload with optional page_start/page_end/from_char for exact ranges. " +
+        'For uploads, results include an availability field (okPages/failedPages/unavailablePages) and, when content remains, ' +
+        'a next.cursor — pass it verbatim in a follow-up kb_read call to continue reading. ' +
+        'For KB documents the result includes a confidence field: "high" (content returned), "ambiguous" (multiple candidates — ' +
         'call request_clarification with the candidate filenames as options, then retry with the exact name), ' +
         'or "none" (no match — call kb_summary or kb_search instead).',
       parameters: {
@@ -244,10 +420,30 @@ export const kbReadTool: ToolDefinition = {
         properties: {
           filename: {
             type: 'string',
-            description: "The filename or a recognizable part of it (e.g. 'CMS RFP', 'Q3 report'). Fuzzy-matched against indexed documents.",
+            description: "The filename or a recognizable part of it (e.g. 'CMS RFP', 'Q3 report'). Fuzzy-matched against KB documents and this thread's uploads.",
+          },
+          document_id: {
+            type: 'string',
+            description: "Stable documentId of an uploaded file (from kb_summary scope='uploads'). Reads the durable extraction store with page/char range support.",
+          },
+          page_start: {
+            type: 'number',
+            description: 'First page to read (uploads only, 1-based). Combine with page_end.',
+          },
+          page_end: {
+            type: 'number',
+            description: 'Last page to read (uploads only, inclusive).',
+          },
+          from_char: {
+            type: 'number',
+            description: 'Character offset into the extracted text to start reading from (uploads only).',
+          },
+          cursor: {
+            type: 'string',
+            description: 'Opaque continuation cursor from a previous kb_read `next.cursor`. Pass verbatim to read the next slice.',
           },
         },
-        required: ['filename'],
+        required: [],
       },
     },
   },

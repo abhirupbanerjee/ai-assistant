@@ -15,6 +15,14 @@ import { getModelCompatibility } from './model-compatibility';
 import { copyToolCompletionState } from './tool-completion-state';
 import { guardFallbackAfterOutput, classifyFallbackError } from './llm-fallback-policy';
 import { streamOpenAIResponses, type OpenAIResponsesClient } from './llm/providers/openai-responses';
+// Real pure budget helpers (Phase A): the extracted openai.ts function bodies
+// reference these directly; only DB-touching resolveRequestBudget is stubbed.
+import {
+  estimateMessagesTokens,
+  estimateToolSchemaTokens,
+  RequestBudgetExceeded,
+  resolveOllamaRuntimeContextTokens,
+} from './request-budget';
 
 const noop = () => {};
 
@@ -52,10 +60,15 @@ const tools = [{ type: 'function', function: { name: 'inspect', parameters: { ty
 const source = readFileSync(new URL('./openai.ts', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('openai.ts', source, ts.ScriptTarget.Latest, true);
 const names = ['streamAnthropicCompletion', 'generateToolCompletion', 'generateToolCompletionWithFallback',
-  'generateResponseWithTools', 'convertToolsToAnthropic', 'truncateContextToBudget'];
+  'generateResponseWithTools', 'convertToolsToAnthropic', 'truncateContextToBudget',
+  'trimToolResultsToBudget', 'trimAnthropicToolResultsToBudget', 'enforceRequestBudgetBeforeCall'];
 const declarations = parsed.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? ''));
 assert.equal(declarations.length, names.length);
-const compiled = ts.transpileModule(declarations.map(node => node.getText(parsed).replace(/^export /, '')).join('\n')
+const evictionDeclaration = parsed.statements.find(node => ts.isVariableStatement(node)
+  && node.declarationList.declarations.some(d => d.name.getText(parsed) === 'EVICTED_TOOL_RESULT_STUB'));
+assert.ok(evictionDeclaration);
+const compiled = ts.transpileModule([evictionDeclaration.getText(parsed),
+  ...declarations.map(node => node.getText(parsed).replace(/^export /, ''))].join('\n')
   .replace("await import('./llm-fallback')", 'await loadFallback()'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText;
@@ -76,6 +89,18 @@ function harness(overrides: Record<string, unknown> = {}) {
     getLlmSettings: async () => ({ model: 'gpt-6-astra', temperature: 0.4 }),
     getLimitsSettings: async () => ({ maxTotalToolCalls: 10, maxPerToolCalls: 10, conversationHistoryMessages: 20 }),
     getEffectiveMaxTokens: async () => 4096,
+    // Phase A request-budget integration: permissive stub so the tool-loop
+    // fixtures exercise routing, not budget compaction. The estimation
+    // helpers and the exceeded error come from the real module (imported
+    // above — they are pure functions).
+    resolveRequestBudget: async (model: string) => ({
+      model, inputLimit: 1_000_000, maxOutputTokens: 4096,
+      contextWindow: 1_001_000, separateInputCeiling: null, safetyMargin: 512,
+    }),
+    estimateMessagesTokens,
+    estimateToolSchemaTokens,
+    RequestBudgetExceeded,
+    resolveOllamaRuntimeContextTokens,
     isToolCapableModelFromDb: async () => true,
     isModelThinkingCapable: async () => false,
     isModelForcedToolCapable: async () => true,
@@ -102,8 +127,59 @@ function harness(overrides: Record<string, unknown> = {}) {
     generateToolCompletionWithFallback: typeof import('./openai').generateToolCompletionWithFallback;
     generateResponseWithTools: typeof import('./openai').generateResponseWithTools;
     streamAnthropicCompletion: (...args: unknown[]) => Promise<ReturnType<typeof native.anthropicCompletionFromFinalMessage>>;
+    enforceRequestBudgetBeforeCall: (opts: {
+      messages: OpenAI.Chat.ChatCompletionMessageParam[];
+      anthropicMessages: Anthropic.MessageParam[];
+      tools: unknown; toolSchemaTokens: number; inputLimit: number;
+      model: string; useAnthropicDirect: boolean; callSite: string;
+    }) => void;
   };
 }
+
+test('native Claude thinking cannot bypass budget enforcement through a small OpenAI mirror', () => {
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: 'system', content: 'system' }, { role: 'user', content: 'q' }];
+  const anthropicMessages: Anthropic.MessageParam[] = [
+    { role: 'assistant', content: [{ type: 'thinking', thinking: 'x'.repeat(20000), signature: 'signed' }] },
+    { role: 'user', content: 'q' },
+  ];
+  const before = JSON.stringify(anthropicMessages);
+  assert.throws(() => harness().enforceRequestBudgetBeforeCall({ messages, anthropicMessages,
+    tools: [], toolSchemaTokens: 0, inputLimit: 1024, model: 'claude-fable-5-1',
+    useAnthropicDirect: true, callSite: 'test' }), RequestBudgetExceeded);
+  assert.equal(JSON.stringify(anthropicMessages), before, 'signed thinking must remain unmodified');
+});
+
+test('native Claude compaction includes system and schemas while preserving tool IDs and thinking', () => {
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: 'system', content: 'system'.repeat(20) }];
+  const anthropicMessages: Anthropic.MessageParam[] = [
+    { role: 'assistant', content: [{ type: 'thinking', thinking: 'reasoning', signature: 'signed' },
+      { type: 'tool_use', id: 'old', name: 'inspect', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'old', content: 'x'.repeat(20000) }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'new', name: 'inspect', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'new', content: 'latest' }] },
+  ];
+  const assistantBefore = JSON.stringify(anthropicMessages[0]);
+  const latestBefore = JSON.stringify(anthropicMessages[3]);
+  harness().enforceRequestBudgetBeforeCall({ messages, anthropicMessages, tools,
+    toolSchemaTokens: estimateToolSchemaTokens(tools), inputLimit: 1024,
+    model: 'claude-fable-5-1', useAnthropicDirect: true, callSite: 'test' });
+  assert.ok(estimateMessagesTokens(anthropicMessages)
+    + estimateMessagesTokens(messages.map(message => ({ content: message.content })))
+    + estimateToolSchemaTokens(tools) <= 1024);
+  assert.equal(JSON.stringify(anthropicMessages[0]), assistantBefore);
+  assert.equal(JSON.stringify(anthropicMessages[3]), latestBefore);
+  assert.match(JSON.stringify(anthropicMessages[1]), /Evicted/);
+  assert.match(JSON.stringify(anthropicMessages[1]), /"tool_use_id":"old"/);
+});
+
+test('native Claude budget includes system prompt and tool schemas even when native history is small', () => {
+  assert.throws(() => harness().enforceRequestBudgetBeforeCall({
+    messages: [{ role: 'system', content: 's'.repeat(4000) }],
+    anthropicMessages: [{ role: 'user', content: 'q' }], tools,
+    toolSchemaTokens: estimateToolSchemaTokens(tools), inputLimit: 1024,
+    model: 'claude-fable-5-1', useAnthropicDirect: true, callSite: 'test',
+  }), RequestBudgetExceeded);
+});
 
 function claudeMessage(turn: number, stop: Anthropic.Message['stop_reason'] = 'tool_use'): Anthropic.Message {
   return { id: `msg_${turn}`, model: 'claude-fable-5-1', type: 'message', role: 'assistant',

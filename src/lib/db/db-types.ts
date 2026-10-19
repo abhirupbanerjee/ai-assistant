@@ -218,6 +218,57 @@ export interface ThreadUploadsTable {
   uploaded_at: Generated<string>;
 }
 
+// ============ Upload Documents (Phase B: durable extracted sources) ============
+
+export interface UploadDocumentsTable {
+  id: string;
+  upload_id: number;
+  thread_id: string;
+  user_id: string;
+  organization_id: number | null;
+  filename: string;
+  content_hash: string;
+  mime_type: string;
+  status: 'processing' | 'ready' | 'partial' | 'failed';
+  error_message: string | null;
+  extractor: string | null;
+  page_count: number | null;
+  char_count: number | null;
+  outline: string | null;
+  overview: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface UploadSectionsTable {
+  id: string;
+  document_id: string;
+  seq: number;
+  page_start: number;
+  page_end: number;
+  char_start: number;
+  char_end: number;
+  text: string;
+  extract_status: 'ok' | 'failed' | 'unavailable';
+  created_at: Generated<string>;
+}
+
+// ============ Extraction Findings (Phase E: coverage-tracked exhaustive extraction) ============
+
+export interface ExtractionFindingsTable {
+  id: string;
+  document_id: string;
+  seq_start: number;
+  seq_end: number;
+  page_start: number | null;
+  page_end: number | null;
+  char_start: number | null;
+  char_end: number | null;
+  kind: string;
+  payload: unknown;
+  created_at: Generated<string>;
+}
+
 // ============ Thread Outputs ============
 
 export interface ThreadOutputsTable {
@@ -1424,6 +1475,9 @@ export interface DB {
   thread_categories: ThreadCategoriesTable;
   messages: MessagesTable;
   thread_uploads: ThreadUploadsTable;
+  upload_documents: UploadDocumentsTable;
+  upload_sections: UploadSectionsTable;
+  extraction_findings: ExtractionFindingsTable;
   thread_outputs: ThreadOutputsTable;
   personal_preference_profiles: PersonalPreferenceProfilesTable;
   personal_interests: PersonalInterestsTable;

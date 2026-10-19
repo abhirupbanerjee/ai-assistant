@@ -379,6 +379,45 @@ export {
   getThreadOutputsStorageSize,
 } from './threads';
 
+// ============ Upload Documents (durable extracted sources) ============
+export {
+  createUploadDocument,
+  findReadyUploadDocumentByHash,
+  getUploadDocumentByUploadId,
+  getUploadDocumentById,
+  listUploadDocumentsByThread,
+  updateUploadDocumentStatus,
+  deleteUploadDocument,
+  deleteUploadDocumentsByThread,
+  replaceSections,
+  getSectionsByDocument,
+  getSectionsByCharRange,
+  getSectionsByPageRange,
+  updateUploadDocumentOverview,
+} from './upload-documents';
+export type {
+  UploadDocument,
+  UploadSection,
+  UploadDocumentStatus,
+  UploadSectionStatus,
+  NewUploadSection,
+  CreateUploadDocumentInput,
+  UpdateUploadDocumentStatusInput,
+} from './upload-documents';
+
+// ============ Extraction Findings (Phase E) ============
+export {
+  createExtractionFinding,
+  createExtractionFindingsBatch,
+  getExtractionFindingsByDocument,
+  getExtractionFindingKinds,
+  getMaxExtractedSeq,
+  deleteExtractionFindingsInRange,
+  deleteExtractionFindingsByDocument,
+  deleteExtractionFindingsByThread,
+} from './extraction-findings';
+export type { ExtractionFinding, NewExtractionFinding } from './extraction-findings';
+
 // ============ Sharing ============
 export {
   generateShareToken,

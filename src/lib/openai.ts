@@ -27,6 +27,14 @@ import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
 import { isModelParallelToolCapable, isModelThinkingCapable, isModelForcedToolCapable } from './db/compat/enabled-models';
 import { getToolDisplayName, getStreamingConfigMs } from './streaming/utils';
+import {
+  resolveRequestBudget,
+  resolveOllamaRuntimeContextTokens,
+  estimateMessagesTokens,
+  estimateToolSchemaTokens,
+  RequestBudgetExceeded,
+  type RequestBudget,
+} from './request-budget';
 import { getToolDefinitions, executeTool, REQUEST_CLARIFICATION_TOOL } from './tools';
 import { resolveToolRouting } from './tool-routing';
 import { resolveSkills, determineToolChoice } from './skills/resolver';
@@ -99,17 +107,24 @@ function truncateContextToBudget(
   systemPrompt: string,
   history: Message[],
   userMessage: string,
-  maxTokens: number,
-  model: string
+  inputBudget: number,
+  model: string,
+  toolSchemaTokens: number = 0,
+  toolResultTokens: number = 0
 ): { context: string; wasTruncated: boolean } {
-  // Calculate tokens for non-context parts
+  // Calculate tokens for non-context parts. Phase A: the budget here is the
+  // resolved INPUT limit (request-budget.ts) — NOT the model's max output
+  // tokens. Tool schemas and accumulated tool-result tokens are included so
+  // the assembled request (not just the first message) stays within budget.
   const systemTokens = countTokens(systemPrompt, model);
   const historyTokens = history.reduce((sum, m) => sum + countTokens(m.content, model), 0);
   const userMessageTokens = countTokens(userMessage, model);
   const overheadTokens = 100; // Buffer for message formatting
 
-  const usedTokens = systemTokens + historyTokens + userMessageTokens + overheadTokens;
-  const availableTokens = maxTokens - usedTokens;
+  const usedTokens =
+    systemTokens + historyTokens + userMessageTokens + overheadTokens +
+    toolSchemaTokens + toolResultTokens;
+  const availableTokens = inputBudget - usedTokens;
 
   if (availableTokens <= 0) {
     console.warn('[TokenBudget] No tokens available for context after accounting for system/history');
@@ -180,6 +195,130 @@ function recordFallbackEvent(primaryModel: string, fallbackModel: string, error:
  */
 export function getRecentFallbackEvents(): FallbackEvent[] {
   return [...recentFallbackEvents];
+}
+
+/** Stub injected in place of an evicted tool result so the exchange stays valid. */
+const EVICTED_TOOL_RESULT_STUB =
+  '[Evicted to stay within the token budget. The content can be re-fetched by calling the same tool again.]';
+
+/**
+ * Phase A (A4): evict oldest tool-result messages (replacing content with a
+ * short reloadable stub) until the assembled request fits the input budget.
+ * Preserves every tool-call/result PAIR (provider requirement) — only the
+ * result payload shrinks. Never touches the last tool exchange or the
+ * trailing user message.
+ */
+function trimToolResultsToBudget(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  inputLimit: number,
+  toolSchemaTokens: number,
+  model: string
+): void {
+  const overhead = toolSchemaTokens;
+  const fits = () =>
+    estimateMessagesTokens(messages as Array<{ content: unknown; tool_calls?: unknown }>) + overhead <= inputLimit;
+
+  // Collect indices of tool results that are safe to evict (not among the
+  // final few messages, so the model can still act on the latest exchange).
+  const evictable: number[] = [];
+  for (let i = 0; i < messages.length - 2; i++) {
+    const m = messages[i] as { role: string; content?: unknown };
+    if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > EVICTED_TOOL_RESULT_STUB.length) {
+      evictable.push(i);
+    }
+  }
+
+  for (const idx of evictable) {
+    if (fits()) break;
+    const m = messages[idx] as { role: string; content: string };
+    const before = countTokens(m.content, model);
+    m.content = EVICTED_TOOL_RESULT_STUB;
+    logger.debug(`[TokenBudget] Evicted tool result at index ${idx} (~${before} tokens)`);
+  }
+
+  if (!fits()) {
+    throw new RequestBudgetExceeded(
+      estimateMessagesTokens(messages as Array<{ content: unknown; tool_calls?: unknown }>) + overhead,
+      inputLimit
+    );
+  }
+}
+
+/**
+ * Phase A (A4): Anthropic parallel-array variant. Replaces the oldest
+ * tool_result block contents with the eviction stub, keeping the
+ * tool_use/tool_result pairing intact.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function trimAnthropicToolResultsToBudget(messages: any[], inputLimit: number, model: string): void {
+  void model;
+  const evictable: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (Array.isArray(m?.content)) {
+      const hasResult = m.content.some((b: { type?: string }) => b?.type === 'tool_result');
+      if (hasResult && i < messages.length - 1) evictable.push(i);
+    }
+  }
+  for (const idx of evictable) {
+    const tokensNow = estimateMessagesTokens(messages);
+    if (tokensNow <= inputLimit) break;
+    const m = messages[idx];
+    for (const block of m.content) {
+      if (block?.type === 'tool_result' && (typeof block.content === 'string' || Array.isArray(block.content))) {
+        block.content = EVICTED_TOOL_RESULT_STUB;
+      }
+    }
+  }
+  const tokensAfter = estimateMessagesTokens(messages);
+  if (tokensAfter > inputLimit) {
+    throw new RequestBudgetExceeded(tokensAfter, inputLimit);
+  }
+}
+
+/**
+ * Phase A (A3, defect-4 fix): enforce the assembled-request budget before
+ * EVERY provider call — the initial completion, each tool-loop iteration,
+ * AND the tool-limit final-answer calls (which previously bypassed the loop
+ * enforcement entirely). Trims oldest reloadable tool results first; throws
+ * RequestBudgetExceeded when even trimmed the request cannot fit.
+ */
+function enforceRequestBudgetBeforeCall(opts: {
+  messages: OpenAI.Chat.ChatCompletionMessageParam[];
+  anthropicMessages: any[];
+  tools: unknown;
+  toolSchemaTokens: number;
+  inputLimit: number;
+  model: string;
+  useAnthropicDirect: boolean;
+  callSite: string;
+}): void {
+  if (opts.useAnthropicDirect) {
+    // Claude replays native signed thinking/tool blocks that do not exist in
+    // the OpenAI-shaped mirror. Budget the actual transport history, plus the
+    // separately supplied system prompt and tool schemas, before any return.
+    const fixedTokens = estimateMessagesTokens(opts.messages.filter(m => m.role === 'system') as Array<{ content: unknown }>)
+      + estimateToolSchemaTokens(opts.tools);
+    const nativeTokens = estimateMessagesTokens(opts.anthropicMessages) + fixedTokens;
+    if (nativeTokens <= opts.inputLimit) return;
+    logger.warn('[TokenBudget] Native Anthropic request exceeded input budget', {
+      callSite: opts.callSite, assembledTokens: nativeTokens, inputLimit: opts.inputLimit,
+    });
+    trimAnthropicToolResultsToBudget(opts.anthropicMessages, opts.inputLimit - fixedTokens, opts.model);
+    return;
+  }
+
+  const assembledTokens = estimateMessagesTokens(opts.messages as Array<{ content: unknown; tool_calls?: unknown }>)
+    + estimateToolSchemaTokens(opts.tools);
+  if (assembledTokens <= opts.inputLimit) return;
+
+  logger.warn('[TokenBudget] Assembled request exceeded input budget, trimming oldest tool results', {
+    callSite: opts.callSite,
+    assembledTokens,
+    inputLimit: opts.inputLimit,
+    messages: opts.messages.length,
+  });
+  trimToolResultsToBudget(opts.messages, opts.inputLimit, opts.toolSchemaTokens, opts.model);
 }
 
 /**
@@ -1661,7 +1800,20 @@ export async function generateResponseWithTools(
   }
 
   // Get effective max tokens early for token budget management
-  const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
+  const requestedMaxTokens = await getEffectiveMaxTokens(effectiveModel);
+
+  // Phase A (on-demand doc access): resolve the INPUT budget from the model
+  // catalog, distinct from the output allowance above. effectiveMaxTokens is
+  // the requested response size; requestBudget.inputLimit is how much input
+  // (system, history, context, tools, images) this request may carry.
+  const requestBudget: RequestBudget = await resolveRequestBudget(effectiveModel, {
+    requestedMaxTokens,
+    runtimeContextTokens: useOllamaDirect || useOllamaCloudDirect
+      ? resolveOllamaRuntimeContextTokens()
+      : undefined,
+  });
+  // Use the same catalog-capped output allowance that was reserved above.
+  const effectiveMaxTokens = requestBudget.maxOutputTokens;
 
   // Build unified conversation context with anchors, follow-up detection, and cache keys
   const limitsSettings = await getLimitsSettings();
@@ -1727,15 +1879,44 @@ export async function generateResponseWithTools(
   }
 
   // DESIGN FIX: Apply token budget management to prevent silent truncation by API
-  // Calculate effective max tokens and truncate context if needed
+  // Phase A: use the resolved INPUT budget (model catalog input ceiling or
+  // shared window minus output allowance) and account for tool schemas and
+  // any tool results already accumulated. effectiveMaxTokens remains the
+  // requested response allowance, not the input budget.
+  //
+  // Fetch the REAL (category-filtered) tool definitions ONCE, with await. The
+  // previous `getToolDefinitions()` call was unawaited, so the schema estimate
+  // counted a pending promise (~1 token) instead of the actual schemas —
+  // massively under-counting the assembled request — and it also skipped the
+  // category filter that shapes the tools actually sent to the provider.
+  let tools = effectiveEnableTools ? await getToolDefinitions(categoryIds) : undefined;
+
+  // Filter out excluded tools if specified
+  if (tools && excludeTools && excludeTools.length > 0) {
+    tools = tools.filter(tool => {
+      const toolName = tool.function?.name;
+      return toolName && !excludeTools.includes(toolName);
+    });
+  }
+
+  const toolSchemaTokens = estimateToolSchemaTokens(tools ?? []);
   const truncationResult = truncateContextToBudget(
     context,
     systemPrompt,
     historyForAPI,
     userMessage,
-    effectiveMaxTokens,
-    effectiveModel
+    requestBudget.inputLimit,
+    effectiveModel,
+    toolSchemaTokens
   );
+  logger.debug('[TokenBudget] Resolved request budget', {
+    model: effectiveModel,
+    inputLimit: requestBudget.inputLimit,
+    contextWindow: requestBudget.contextWindow,
+    separateInputCeiling: requestBudget.separateInputCeiling,
+    maxOutputTokens: requestBudget.maxOutputTokens,
+    toolSchemaTokens,
+  });
 
   // Surface truncation to user so they know document context may be incomplete
   let truncatedContext = truncationResult.context;
@@ -1835,16 +2016,8 @@ export async function generateResponseWithTools(
     }
   }
 
-  // Prepare completion params - pass categoryIds for dynamic Function API tools
-  let tools = effectiveEnableTools ? await getToolDefinitions(categoryIds) : undefined;
-
-  // Filter out excluded tools if specified
-  if (tools && excludeTools && excludeTools.length > 0) {
-    tools = tools.filter(tool => {
-      const toolName = tool.function?.name;
-      return toolName && !excludeTools.includes(toolName);
-    });
-  }
+  // Tools were fetched (awaited) and exclude-filtered above, before context
+  // truncation, so the schema estimate matches what the provider receives.
 
   // Apply tool routing to determine tool_choice
   // Check both legacy tool-routing and skills-based tool routing
@@ -2030,6 +2203,20 @@ export async function generateResponseWithTools(
     ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
     ...thinkingProfile.requestParams,
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
+
+  // Phase A (A3, defect-4 fix): the INITIAL provider call is budget-enforced
+  // too. Previously only tool-loop iterations were checked, so an oversized
+  // first request (big context + tool schemas) went out unchecked.
+  enforceRequestBudgetBeforeCall({
+    messages,
+    anthropicMessages,
+    tools,
+    toolSchemaTokens,
+    inputLimit: requestBudget.inputLimit,
+    model: effectiveModel,
+    useAnthropicDirect,
+    callSite: 'initial-completion',
+  });
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
   let responseMessage: StreamCompletionResult & ToolCompletionStateCarrier;
@@ -2687,6 +2874,21 @@ export async function generateResponseWithTools(
 
     if (totalToolCalls >= maxTotalToolCalls) break;
 
+    // Phase A (A3): re-budget before EVERY subsequent provider call. Tool
+    // results appended above grow the request after the initial check —
+    // evict the oldest reloadable tool results (keeping their stubs) when
+    // the assembled request would exceed the input limit.
+    enforceRequestBudgetBeforeCall({
+      messages,
+      anthropicMessages,
+      tools,
+      toolSchemaTokens,
+      inputLimit: requestBudget.inputLimit,
+      model: effectiveModel,
+      useAnthropicDirect,
+      callSite: 'tool-loop-iteration',
+    });
+
     // Get next response with tool results — streaming so the final text answer is forwarded live
     // Only apply forced tool_choice on first iteration, then let LLM decide
     if (useAnthropicDirect && anthropicClient) {
@@ -2793,9 +2995,29 @@ export async function generateResponseWithTools(
     logger.warn('[Tools] Max tool call iterations reached');
 
     const maxToolsMsg = 'You have reached the maximum number of tool calls. Based on all the information gathered so far, please provide a complete and helpful response to the original question.';
+    // Assemble the final instruction BEFORE enforcing the actual request.
+    if (useAnthropicDirect) {
+      anthropicMessages.push({ role: 'user', content: maxToolsMsg });
+    } else {
+      messages.push({ role: 'user', content: maxToolsMsg });
+    }
+
+    // Phase A (A3, defect-4 fix): the tool-limit FINAL answer call is a real
+    // provider request — it previously bypassed budget enforcement entirely
+    // (the loop's check sat before the `break`, so the oversized final request
+    // went straight to the API). Enforce it like any other call.
+    enforceRequestBudgetBeforeCall({
+      messages,
+      anthropicMessages,
+      tools,
+      toolSchemaTokens,
+      inputLimit: requestBudget.inputLimit,
+      model: effectiveModel,
+      useAnthropicDirect,
+      callSite: 'tool-limit-final-answer',
+    });
 
     if (useAnthropicDirect && anthropicClient) {
-      anthropicMessages.push({ role: 'user', content: maxToolsMsg });
       responseMessage = await streamAnthropicCompletion(
         anthropicClient,
         {
@@ -2814,7 +3036,6 @@ export async function generateResponseWithTools(
       accumulatedTokens += responseMessage.totalTokens;
     } else if (useMistralDirect || useGeminiDirect) {
       // Mistral/Gemini: push user message and re-call with tools disabled
-      messages.push({ role: 'user' as const, content: maxToolsMsg } as any);
       const finalMessages = messages.map(m => ({
         role: m.role as string,
         content: m.content,
@@ -2861,9 +3082,7 @@ export async function generateResponseWithTools(
         accumulatedTokens += geminiResult.totalTokens;
       }
     } else if (useOpenAIDirect) {
-      responseMessage = await streamOpenAICompletion(effectiveModel, [
-        ...messages, { role: 'user', content: maxToolsMsg },
-      ], {
+      responseMessage = await streamOpenAICompletion(effectiveModel, messages, {
         temperature: effectiveTemperature,
         maxTokens: effectiveMaxTokens,
         tools,
@@ -2877,7 +3096,6 @@ export async function generateResponseWithTools(
     } else {
       const finalMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         ...messages,
-        { role: 'user' as const, content: maxToolsMsg },
       ];
       responseMessage = await streamOneCompletionWithThinkingRetry(
         openai!,

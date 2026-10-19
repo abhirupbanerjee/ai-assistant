@@ -214,13 +214,63 @@ export function buildHistory(
     return { anchors: [], recent: [], all: [], tokens: 0 };
   }
 
-  // If we have fewer messages than the limit, include all
+  // If we have fewer messages than the limit, include all — but ONLY if they
+  // fit the token budget. Phase A fix: the previous fast path ignored
+  // maxTokens entirely, so a few very large messages could blow the history
+  // budget. We still keep the most recent message unconditionally (same rule
+  // as the slow path below).
   if (conversational.length <= maxMessages) {
-    const tokens = conversational.reduce((sum, m) => sum + countTokens(m.content), 0);
+    const totalTokens = conversational.reduce((sum, m) => sum + countTokens(m.content), 0);
+    if (totalTokens <= maxTokens) {
+      return {
+        anchors: conversational.slice(0, Math.min(2, conversational.length)),
+        recent: conversational.slice(2),
+        all: conversational,
+        tokens: totalTokens,
+      };
+    }
+
+    // Over budget: keep as many of the most recent messages as fit, walking
+    // backwards exactly like the slow path. The most recent message is kept
+    // unconditionally; anchors (oldest) are the first to be dropped.
+    const anchorCount = Math.min(2, conversational.length);
+    const keptRecent: Message[] = [];
+    let budgetLeft = maxTokens;
+    for (let i = conversational.length - 1; i >= anchorCount; i--) {
+      const msgTokens = countTokens(conversational[i].content);
+      if (msgTokens <= budgetLeft) {
+        keptRecent.unshift(conversational[i]);
+        budgetLeft -= msgTokens;
+      } else if (keptRecent.length === 0) {
+        // Always include at least the most recent message.
+        keptRecent.unshift(conversational[i]);
+        budgetLeft -= msgTokens;
+        break;
+      }
+    }
+    const keptAnchors: Message[] = [];
+    // With one or two messages there are only anchors. Reserve the newest
+    // first, before considering older anchors, just as the recent loop does.
+    const newestAnchor = conversational.length <= anchorCount ? conversational.length - 1 : -1;
+    if (newestAnchor >= 0) {
+      keptAnchors.push(conversational[newestAnchor]);
+      budgetLeft -= countTokens(conversational[newestAnchor].content);
+    }
+    for (let i = 0; i < anchorCount; i++) {
+      if (i === newestAnchor) continue;
+      const msgTokens = countTokens(conversational[i].content);
+      if (msgTokens <= budgetLeft) {
+        if (newestAnchor >= 0) keptAnchors.unshift(conversational[i]);
+        else keptAnchors.push(conversational[i]);
+        budgetLeft -= msgTokens;
+      }
+    }
+    const all = [...keptAnchors, ...keptRecent];
+    const tokens = all.reduce((sum, m) => sum + countTokens(m.content), 0);
     return {
-      anchors: conversational.slice(0, Math.min(2, conversational.length)),
-      recent: conversational.slice(2),
-      all: conversational,
+      anchors: keptAnchors,
+      recent: keptRecent,
+      all,
       tokens,
     };
   }

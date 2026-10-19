@@ -24,6 +24,7 @@ import { getResolvedSystemPrompt } from './db/compat/category-prompts';
 import { getCategoryIdsBySlugs } from './db/compat/categories';
 import { getDocumentsByCategory, getGlobalDocuments } from './db/compat';
 import { detectReferencedDocument, retrieveFullKbDocumentChunks } from './document-detection';
+import { splitUploadPaths, buildUploadOnDemandContext } from './upload-retrieval';
 import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
 import { getAvailableDataSourcesDescription } from './tools/data-source';
@@ -1093,17 +1094,22 @@ export async function ragQuery(
   // streaming route's performRAGRetrieval().
   const uploadDirected = isUploadDirectedQuery(userMessage, userDocPaths.length > 0);
 
+  // Phase D: split uploads into on-demand (durable extraction exists) vs
+  // legacy (no upload_documents row). Only legacy uploads go through
+  // per-turn full-text extraction in buildContext.
+  const { onDemandDocs, legacyPaths, enabled: onDemandEnabled } = await splitUploadPaths(userDocPaths);
+
   // Build context from documents using multiple query embeddings
   // When the query is upload-directed, use expanded chunk limits so summary/review
   // requests get more document content into context, and produce full-document
   // context (full text or LLM summary) so the LLM sees the entire uploaded file.
   const { globalChunks, userChunks, userDocErrors, fullDocContexts } = await buildContext(
     primaryEmbedding,
-    userDocPaths,
+    legacyPaths,
     additionalEmbeddings,
     ragSettings,
     categorySlugs,
-    uploadDirected ? {
+    uploadDirected && legacyPaths.length > 0 ? {
       userDocMaxChunks: MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
       userDocReturnChunks: MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
       sampleUserDocChunks: true,
@@ -1243,6 +1249,20 @@ export async function ragQuery(
       docCount: fullDocContexts.length,
       totalChars: fullDocSection.length,
     });
+  }
+
+  // Phase D: on-demand uploads — inject inventory card + top-K relevant
+  // sections from the durable index (these uploads skipped per-turn
+  // extraction entirely).
+  if (onDemandEnabled && onDemandDocs.length > 0) {
+    const onDemandContext = await buildUploadOnDemandContext(onDemandDocs, userMessage);
+    if (onDemandContext) {
+      context = onDemandContext + '\n\n---\n\n' + context;
+      logger.debug('Injected on-demand upload context', {
+        docCount: onDemandDocs.length,
+        totalChars: onDemandContext.length,
+      });
+    }
   }
 
   // BUG FIX (#5 — Silent Extraction Failure): When context is empty but user document

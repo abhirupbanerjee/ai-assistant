@@ -15,6 +15,7 @@ import { getResolvedSystemPrompt } from '../db/compat/category-prompts';
 import { getCategoryIdsBySlugs } from '../db/compat/categories';
 import { getDocumentsByCategory, getGlobalDocuments } from '../db/compat';
 import { detectReferencedDocument, retrieveFullKbDocumentChunks } from '../document-detection';
+import { splitUploadPaths, buildUploadOnDemandContext } from '../upload-retrieval';
 import { resolveSkills } from '../skills/resolver';
 import { getAvailableDataSourcesDescription } from '../tools/data-source';
 import { getToolDefinitions } from '../tools';
@@ -256,18 +257,31 @@ export async function performRAGRetrieval(
     ? await createEmbeddings(additionalQueries)
     : [];
 
-  // Build context from documents
+  // Phase D: split uploads into on-demand (durable extraction exists) vs
+  // legacy (no upload_documents row — pre-migration / flag-off). Only legacy
+  // uploads go through per-turn full-text extraction in buildContext.
+  const { onDemandDocs, legacyPaths, enabled: onDemandEnabled } = await splitUploadPaths(userDocPaths);
+  if (onDemandEnabled && onDemandDocs.length > 0) {
+    logger.debug('Uploads served from durable index', {
+      onDemand: onDemandDocs.map((d) => d.filename),
+      legacy: legacyPaths.length,
+    });
+    send?.({ type: 'operation_log', category: 'rag', message: 'Using indexed uploads (on-demand access)' });
+  }
+
+  // Build context from documents (legacy paths only — on-demand docs are
+  // served from the durable index below).
   send?.({ type: 'operation_log', category: 'rag', message: 'Searching vector database' });
-  if (uploadDirected && userDocPaths.length > 0) {
+  if (uploadDirected && legacyPaths.length > 0) {
     send?.({ type: 'operation_log', category: 'rag', message: 'Reading uploaded document(s) for full context' });
   }
   const { globalChunks, userChunks, userDocTruncations, userDocErrors, fullDocContexts } = await buildContext(
     primaryEmbedding,
-    userDocPaths,
+    legacyPaths,
     additionalEmbeddings,
     ragSettings,
     categorySlugs.length > 0 ? categorySlugs : undefined,
-    uploadDirected ? {
+    uploadDirected && legacyPaths.length > 0 ? {
       userDocMaxChunks: MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
       userDocReturnChunks: MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
       sampleUserDocChunks: true,
@@ -454,13 +468,34 @@ export async function performRAGRetrieval(
       }
     }
 
-    // Build upload status from paths
+    // Build upload status from paths. On-demand uploads (Phase D) bypass the
+    // legacy per-turn chunk path entirely, so they have NO docStats — they
+    // were wrongly reported as 'error' ("No content extracted"). Report them
+    // from the durable upload_documents inventory instead.
+    const onDemandByFilename = new Map(
+      onDemandDocs.map(d => [d.filename.toLowerCase(), d] as const)
+    );
     const uploadStatuses: UploadExtractionState[] = userDocPaths.map(path => {
       const filename = path.split('/').pop() || path;
       // Determine source type from filename
       const sourceType: UploadExtractionState['sourceType'] =
         filename.startsWith('youtube-') ? 'youtube' :
         filename.startsWith('web-') ? 'web' : 'file';
+
+      // On-demand doc: success from the durable inventory (durable index +
+      // kb_read/kb_search serve content; legacy chunk stats do not apply).
+      const onDemandDoc = onDemandByFilename.get(filename.toLowerCase());
+      if (onDemandEnabled && onDemandDoc) {
+        return {
+          filename,
+          sourceType,
+          status: 'success' as const,
+          contentLength: onDemandDoc.char_count ?? undefined,
+          contentPreview: onDemandDoc.overview
+            ? onDemandDoc.overview.substring(0, 300)
+            : undefined,
+        };
+      }
 
       // Find matching doc stats
       const stats = docStats.get(filename);
@@ -507,6 +542,20 @@ export async function performRAGRetrieval(
     });
   }
 
+  // Phase D: on-demand uploads — inject inventory card + top-K relevant
+  // sections from the durable index. These uploads skipped per-turn
+  // extraction entirely; kb_read/kb_search fetch more on demand.
+  if (onDemandEnabled && onDemandDocs.length > 0) {
+    const onDemandContext = await buildUploadOnDemandContext(onDemandDocs, userMessage);
+    if (onDemandContext) {
+      context = onDemandContext + '\n\n---\n\n' + context;
+      logger.debug('Injected on-demand upload context (streaming)', {
+        docCount: onDemandDocs.length,
+        totalChars: onDemandContext.length,
+      });
+    }
+  }
+
   // Extract sources
   const sources = extractSources(rerankedGlobalChunks, rerankedUserChunks);
 
@@ -533,7 +582,9 @@ export async function performRAGRetrieval(
     systemPrompt = `${systemPrompt}\n\n${resolvedSkills.combinedPrompt}`;
   }
 
-  if (uploadDirected) {
+  if (uploadDirected && onDemandEnabled && onDemandDocs.length > 0) {
+    systemPrompt = `${systemPrompt}\n\nThe user is asking about uploaded files in this conversation. Uploaded documents are listed in the UPLOADED DOCUMENTS inventory with their most relevant sections. You have NOT seen the full text of these files — when you need more, call kb_read (by document_id, with optional page ranges or cursor) or kb_search before answering. Prioritize uploaded-document context over the general knowledge base, and never say there was no attachment.`;
+  } else if (uploadDirected) {
     systemPrompt = `${systemPrompt}\n\nThe user is asking about uploaded files in this conversation. Prioritize the USER UPLOADED DOCUMENT context over the general knowledge base. If uploaded document content is partial or extraction failed, state that clearly instead of saying there was no attachment.`;
   }
 
